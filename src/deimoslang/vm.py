@@ -538,14 +538,9 @@ class VM:
             case InstructionKind.log_window:
                 assert type(instruction.data) == list
                 clients = self._select_players(instruction.data[0])
-                path = instruction.data[1]
-                async with asyncio.TaskGroup() as tg:
-                    for client in clients:
-                        window = await get_window_from_path(client.root_window, path)
-                        if not window:
-                            raise VMError(f"Unable to find window at path: {path}")
-                        window_str = await window.maybe_text()
-                        logger.debug(f"{client.title} - {window_str}")
+                for client in clients:
+                    text = await self.eval(instruction.data[1], client)
+                    logger.debug(f"{client.title} - {text}")
                 self._ip += 1
             case InstructionKind.log_bagcount:
                 assert type(instruction.data) == list

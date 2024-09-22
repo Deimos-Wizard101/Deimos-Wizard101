@@ -471,7 +471,8 @@ class Parser:
                     case TokenKind.identifier:
                         if self.tokens[self.i].literal == "window":
                             self.i += 1
-                            result.data = [LogKind.window, self.parse_window_path()]
+                            window_path = self.parse_window_path()
+                            result.data = [LogKind.window, Eval(EvalKind.windowtext, [window_path])]
                         else:
                             print_literal()
                     case TokenKind.command_expr_bagcount:
@@ -486,6 +487,10 @@ class Parser:
                     case TokenKind.command_expr_gold:
                         self.i += 1
                         result.data = [LogKind.gold]
+                    case TokenKind.command_expr_window_text:
+                        self.i += 1
+                        window_path = self.parse_window_path()
+                        result.data = [LogKind.window, Eval(EvalKind.windowtext, [window_path])]
                     case TokenKind.string:
                         print_literal()
                     case _:
