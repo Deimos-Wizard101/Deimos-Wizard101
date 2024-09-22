@@ -320,9 +320,9 @@ class Tokenizer:
                                         put_simple(TokenKind.keyword_orient, full)
                                     case "not":
                                         put_simple(TokenKind.keyword_not, full)
-                                    case "return":
+                                    case "return" | "exitblock":
                                         put_simple(TokenKind.keyword_return, full)
-                                    case "break":
+                                    case "break" | "exitloop":
                                         put_simple(TokenKind.keyword_break, full)
 
                                     # commands 
