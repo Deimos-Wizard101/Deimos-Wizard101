@@ -23,6 +23,14 @@ class VMError(Exception):
     pass
 
 
+class UntilInfo:
+    def __init__(self, expr: Expression, id: int, exit_point: int, stack_size: int):
+        self.expr = expr
+        self.id = id
+        self.exit_point = exit_point
+        self.stack_size = stack_size
+
+
 class VM:
     def __init__(self, clients: list[Client]):
         self._clients = upgrade_clients(clients) # guarantee it's usable
@@ -35,13 +43,13 @@ class VM:
         # Every until loop condition must be checked for every vm step.
         # Once a condition becomes True, all untils that were entered later must be exited and removed.
         # This means that the stack must be rolled back to the index stored here and the rhs of this list is discarded.
-        self._until_stack_sizes: list[tuple[Expression, int]] = []
+        self._until_infos: list[UntilInfo] = []
 
     def reset(self):
         self.program = []
         self._ip = 0
         self._stack = []
-        self._until_stack_sizes = []
+        self._until_infos = []
 
     def stop(self):
         self.running = False
@@ -466,12 +474,10 @@ class VM:
                 raise VMError(f"Unimplemented deimos call: {instruction}")
 
     async def _process_untils(self):
-        for i in range(len(self._until_stack_sizes) - 1, -1, -1):
-            (expr, stack_size) = self._until_stack_sizes[i]
-            if await self.eval(expr):
-                self._until_stack_sizes = self._until_stack_sizes[:i]
-                self._stack = self._stack[:stack_size]
-                self._ip = self._stack.pop()
+        for i in range(len(self._until_infos) - 1, -1, -1):
+            info = self._until_infos[i]
+            if await self.eval(info.expr):
+                self._ip = info.exit_point
                 return
 
     async def step(self):
@@ -509,7 +515,7 @@ class VM:
             case InstructionKind.call:
                 assert(type(instruction.data) == int)
                 self._stack.append(self._ip + 1)
-                self._ip += instruction.data 
+                self._ip += instruction.data
 
             case InstructionKind.ret:
                 self._ip = self._stack.pop()
@@ -518,8 +524,23 @@ class VM:
                 assert type(instruction.data) == list
                 exit_dist = instruction.data[1]
                 self._stack.append(self._ip + exit_dist)
-                self._until_stack_sizes.append((instruction.data[0], len(self._stack)))
-                self._ip += 1 # simply advance, if the until is finished immediately that's fine because it's checked at the start of each step
+                self._until_infos.append(UntilInfo(
+                    expr=instruction.data[0],
+                    id=instruction.data[1],
+                    exit_point=self._ip + instruction.data[2],
+                    stack_size=len(self._stack)
+                ))
+                self._ip += 1
+
+            case InstructionKind.exit_until:
+                for i in range(len(self._until_infos) - 1, -1, -1):
+                    info = self._until_infos[i]
+                    if info.id == instruction.data:
+                        self._until_infos = self._until_infos[:i]
+                        self._stack = self._stack[:info.stack_size]
+                        break
+
+                self._ip += 1
 
             case InstructionKind.log_literal:
                 assert type(instruction.data) == list
