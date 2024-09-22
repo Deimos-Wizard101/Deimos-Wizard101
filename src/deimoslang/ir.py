@@ -66,7 +66,7 @@ class StackInfo:
     def pop(self, sym: Symbol):
         self.offset -= 1
         if self.slots[sym] != self.offset:
-            raise CompilerError("Attempted to pop a stack value that is not placed at the top")
+            raise CompilerError(f"Attempted to pop a stack value that is not placed at the top: {sym}\n{self.slots}")
         del self.slots[sym]
 
     def loc(self, sym: Symbol) -> int:

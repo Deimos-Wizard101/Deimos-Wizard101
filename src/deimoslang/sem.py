@@ -39,8 +39,8 @@ class Analyzer:
         self._block_defs: list[BlockDefStmt] = []
         self._stmts = stmts
 
-        self._active_vars: set[Symbol] = set()
-        self._active_vars_stack: list[set[Symbol]] = []
+        self._active_vars: list[Symbol] = []
+        self._active_vars_stack: list[list[Symbol]] = []
 
         self._block_nesting_level = 0
         self._loop_nesting_level = 0
@@ -50,7 +50,7 @@ class Analyzer:
         self.open_scope()
 
         self._active_vars_stack.append(self._active_vars)
-        self._active_vars = set()
+        self._active_vars = []
 
         self._loop_nesting_stack.append(self._loop_nesting_level)
         self._loop_nesting_level = 0
@@ -93,15 +93,17 @@ class Analyzer:
 
     def def_var(self) -> Symbol:
         var_sym = self.gen_var_sym()
-        self._active_vars.add(var_sym)
+        self._active_vars.append(var_sym)
         return var_sym
 
     def kill_var(self, sym: Symbol):
+        if sym not in self._active_vars:
+            raise SemError(f"Attempted to deactivate an inactive variable: {sym}")
         self._active_vars.remove(sym)
 
     def gen_cleanup_all_vars(self) -> StmtList:
         res = []
-        for var in self._active_vars:
+        for var in reversed(self._active_vars):
             res.append(KillVarStmt(var))
         return StmtList(res)
 
