@@ -356,6 +356,13 @@ class KillVarStmt(Stmt):
     def __repr__(self) -> str:
         return f"KillVarS {self.sym}"
 
+class UntilRegion(Stmt):
+    def __init__(self, expr: Expression, body: Stmt) -> None:
+        self.expr = expr
+        self.body = body
+
+    def __repr__(self) -> str:
+        return f"UntilRegionS ({self.expr}) {self.body}"
 
 
 class SymbolKind(Enum):

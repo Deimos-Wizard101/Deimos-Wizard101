@@ -61,7 +61,7 @@ class Analyzer:
     def close_loop(self):
         self.close_scope()
         self._loop_nesting_level-=1
-        
+
     def open_scope(self):
         self.scope = Scope(self.scope)
 
@@ -78,6 +78,9 @@ class Analyzer:
 
     def gen_var_sym(self, name="anonymous") -> Symbol:
         return self.scope.put_sym(Symbol(f":{name}:", self.gen_sym_id(), SymbolKind.variable))
+
+    def gen_label_sym(self, name="anonymous") -> Symbol:
+        return self.scope.put_sym(Symbol(f":{name}", self.gen_sym_id(), SymbolKind.label))
 
     def sem_expr(self, expr: Expression) -> Expression:
         return expr # TODO
@@ -129,12 +132,27 @@ class Analyzer:
                 stmt.body = self.sem_stmt(stmt.body)
                 self.close_loop()
                 return stmt
-            case WhileStmt() | UntilStmt():
+            case WhileStmt():
                 stmt.expr = self.sem_expr(stmt.expr)
                 self.open_loop()
                 stmt.body = self.sem_stmt(stmt.body)
                 self.close_loop()
                 return stmt
+            case UntilStmt():
+                self.open_loop()
+                expr = self.sem_expr(stmt.expr) # sem ahead of time because it's used twice
+                body = self.sem_stmt(stmt.body)
+                self.close_loop()
+                return IfStmt(
+                    expr,
+                    branch_true=StmtList([]),
+                    branch_false=StmtList([
+                        UntilRegion(
+                            expr=expr,
+                            body=WhileStmt(expr, body),
+                        ),
+                    ])
+                )
             case TimesStmt():
                 var_sym = self.gen_var_sym()
                 prologue = [

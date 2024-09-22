@@ -28,6 +28,7 @@ class InstructionKind(Enum):
     jump_ifn = auto()
 
     enter_until = auto()
+    exit_until = auto()
 
     label = auto()
     ret = auto()
@@ -61,6 +62,9 @@ class Compiler:
         self._stack_slots: dict[Symbol, int] = {}
         self._loop_label_stack = []
 
+        # until is a bit too special and has dangerous interactions with user specified returns because of it
+        self._outermost_until: Optional[int] = None
+
     @staticmethod
     def from_text(code: str) -> "Compiler":
         tokenizer = Tokenizer()
@@ -88,7 +92,7 @@ class Compiler:
         self._program.append(Instruction(kind, data))
 
     def gen_label(self, name="anonymous") -> Symbol:
-        return Symbol(f":{name}:", self.analyzer.gen_sym_id(), SymbolKind.label)
+        return self.analyzer.gen_label_sym(name)
 
     def emit_deimos_call(self, com: Command):
         self.emit(InstructionKind.deimos_call, [com.player_selector, com.kind.name, com.data])
@@ -157,12 +161,17 @@ class Compiler:
                 case InstructionKind.call | InstructionKind.jump:
                     sym = instr.data
                     offset = offsets[sym]
-                    program[idx] = Instruction(instr.kind, offset-idx)
-                case InstructionKind.jump_if | InstructionKind.jump_ifn | InstructionKind.enter_until:
+                    instr.data = offset - idx
+                case InstructionKind.jump_if | InstructionKind.jump_ifn:
                     assert(type(instr.data) == list)
                     sym = instr.data[1]
                     offset = offsets[sym]
-                    program[idx] = Instruction(instr.kind, [instr.data[0], offset-idx])
+                    instr.data[1] = offset - idx
+                case InstructionKind.enter_until:
+                    assert(type(instr.data) == list)
+                    sym = instr.data[2]
+                    offset = offsets[sym]
+                    instr.data[2] = offset - idx
                 case _:
                     pass
 
@@ -173,7 +182,10 @@ class Compiler:
             # This is only safe because the sem stage ensures there's no nested blocks
             enter_block_label = block_def.name.sym
             self.emit(InstructionKind.label, enter_block_label)
+            prev_until = self._outermost_until
+            self._outermost_until = None
             self._compile(block_def.body)
+            self._outermost_until = prev_until
             self.emit(InstructionKind.ret)
         elif isinstance(block_def.name, IdentExpression):
             raise CompilerError(f"Encountered an unresolved block sym during compilation: {block_def}")
@@ -241,18 +253,25 @@ class Compiler:
         self.emit(InstructionKind.label, end_while_label)
         self._loop_label_stack.pop()
 
-    def compile_until_stmt(self, stmt: UntilStmt):
-        start_until_label = self.gen_label("start_until")
-        end_until_label = self.gen_label("end_until")
-        self._loop_label_stack.append(end_until_label)
-        self.prep_expression(stmt.expr)
-        self.emit(InstructionKind.jump_if, [stmt.expr, end_until_label])
-        self.emit(InstructionKind.enter_until, [stmt.expr, end_until_label]) # Order is important here. If this is after the label we blow the stack
-        self.emit(InstructionKind.label, start_until_label)
+    def compile_until_region(self, stmt: UntilRegion):
+        id = self.analyzer.gen_sym_id()
+        exit_until_label = self.gen_label("exit_until")
+        self._loop_label_stack.append(exit_until_label)
+        self.emit(InstructionKind.enter_until, [stmt.expr, id, exit_until_label])
+        is_outermost = self._outermost_until is None
+        if is_outermost:
+            self._outermost_until = id
         self._compile(stmt.body)
-        self.emit(InstructionKind.jump_ifn, [stmt.expr, start_until_label])
-        self.emit(InstructionKind.label, end_until_label)
+        if is_outermost:
+            self._outermost_until = None
+        self.emit(InstructionKind.label, exit_until_label)
+        self.emit(InstructionKind.exit_until, id)
         self._loop_label_stack.pop()
+
+    def compile_return_stmt(self):
+        if self._outermost_until is not None:
+            self.emit(InstructionKind.exit_until, self._outermost_until)
+        self.emit(InstructionKind.ret)
 
     def _compile(self, stmt: Stmt):
         match stmt:
@@ -271,8 +290,6 @@ class Compiler:
                 self.compile_loop_stmt(stmt)
             case WhileStmt():
                 self.compile_while_stmt(stmt)
-            case UntilStmt():
-                self.compile_until_stmt(stmt)
             case DefVarStmt():
                 self.push_stack(stmt.sym)
             case KillVarStmt():
@@ -284,7 +301,9 @@ class Compiler:
                 label = self._loop_label_stack[-1]
                 self.emit(InstructionKind.jump, label)
             case ReturnStmt():
-                self.emit(InstructionKind.ret)
+                self.compile_return_stmt()
+            case UntilRegion():
+                self.compile_until_region(stmt)
             case _:
                 raise CompilerError(f"Unknown statement: {stmt}\n{type(stmt)}")
 
