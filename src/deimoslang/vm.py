@@ -522,8 +522,6 @@ class VM:
 
             case InstructionKind.enter_until:
                 assert type(instruction.data) == list
-                exit_dist = instruction.data[1]
-                self._stack.append(self._ip + exit_dist)
                 self._until_infos.append(UntilInfo(
                     expr=instruction.data[0],
                     id=instruction.data[1],
@@ -539,7 +537,6 @@ class VM:
                         self._until_infos = self._until_infos[:i]
                         self._stack = self._stack[:info.stack_size]
                         break
-
                 self._ip += 1
 
             case InstructionKind.log_literal:
