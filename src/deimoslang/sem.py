@@ -168,13 +168,13 @@ class Analyzer:
             case IfStmt():
                 stmt.expr = self.sem_expr(stmt.expr)
 
-                self.open_scope()
+                self.scope = self.scope.new_branch()
                 stmt.branch_true = self.sem_stmt(stmt.branch_true)
-                self.close_scope()
+                self.scope = self.scope.parent
 
-                self.open_scope()
+                self.scope = self.scope.new_branch()
                 stmt.branch_false = self.sem_stmt(stmt.branch_false)
-                self.close_scope()
+                self.scope = self.scope.parent
                 return stmt
             case LoopStmt():
                 self.open_loop()
