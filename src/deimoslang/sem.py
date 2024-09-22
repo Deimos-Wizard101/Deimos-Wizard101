@@ -11,10 +11,24 @@ class SemError(Exception):
 
 
 class Scope:
-    def __init__(self, parent: Optional["Scope"] = None):
+    def __init__(self, parent: Optional["Scope"], is_block: bool):
         self.parent = parent
         self._syms: list[Symbol] = []
         self._unique_player_selectors: set[PlayerSelector] = set()
+        self._active_vars: list[Symbol] = []
+        self._cleaned_vars: set[Symbol] = set() # if all branching scopes agree on cleanup, do not clean up the same variables again
+        self.is_block = is_block # cleanup must not cross a block boundary as we do not have the notion of a moved variable
+
+    def new_block(self) -> "Scope":
+        return Scope(parent=self, is_block=True)
+
+    def new_branch(self) -> "Scope":
+        res = Scope(parent=self, is_block=False)
+
+        # when a branch cleans up, the variables may still be active in the parent or other branches
+        res._active_vars = self._active_vars[:]
+
+        return res
 
     # Only blocks require lookup for now. Variables are only used internally and the sym is always locally known
     def lookup_block_by_name(self, literal: str) -> Symbol:
@@ -27,55 +41,65 @@ class Scope:
             return self.parent.lookup_block_by_name(literal)
         raise SemError(f"Unable to find symbol in scope: {literal}")
 
+    def is_block_local_var(self, sym: Symbol) -> bool:
+        cur = self
+        while sym is not None:
+            if sym in cur._syms:
+                return True
+            elif cur.is_block:
+                # must be checked after cur._syms
+                break
+            cur = cur.parent
+        return False
+
     def put_sym(self, sym: Symbol) -> Symbol:
         self._syms.append(sym)
         return sym
 
+    def activate_var(self, sym: Symbol):
+        if sym in self._active_vars:
+            raise SemError(f"Attempted to activate an already active variable: {sym}")
+        self._active_vars.append(sym)
+
+    def kill_var(self, sym: Symbol):
+        if not self.is_block_local_var(sym):
+            raise SemError(f"Attempted to kill a variable that isn't local to the current block")
+        if sym not in self._active_vars:
+            raise SemError(f"Attempted to kill an inactive variable: {sym}")
+        self._cleaned_vars.add(sym)
+        self._active_vars.remove(sym)
+
 
 class Analyzer:
     def __init__(self, stmts: list[Stmt]):
-        self.scope = Scope()
+        self.scope = Scope(parent=None, is_block=True)
         self._next_sym_id = 0
         self._block_defs: list[BlockDefStmt] = []
         self._stmts = stmts
-
-        self._active_vars: list[Symbol] = []
-        self._active_vars_stack: list[list[Symbol]] = []
 
         self._block_nesting_level = 0
         self._loop_nesting_level = 0
         self._loop_nesting_stack = []
 
     def open_block(self):
-        self.open_scope()
-
-        self._active_vars_stack.append(self._active_vars)
-        self._active_vars = []
+        self.scope = self.scope.new_block()
 
         self._loop_nesting_stack.append(self._loop_nesting_level)
         self._loop_nesting_level = 0
         self._block_nesting_level += 1
 
     def close_block(self):
-        self.close_scope()
+        self.scope = self.scope.parent
         self._loop_nesting_level = self._loop_nesting_stack.pop()
         self._block_nesting_level -= 1
 
-        self._active_vars = self._active_vars_stack.pop()
-
     def open_loop(self):
-        self.open_scope()
+        self.scope = self.scope.new_branch()
         self._loop_nesting_level += 1
 
     def close_loop(self):
-        self.close_scope()
-        self._loop_nesting_level-=1
-
-    def open_scope(self):
-        self.scope = Scope(self.scope)
-
-    def close_scope(self):
         self.scope = self.scope.parent
+        self._loop_nesting_level-=1
 
     def gen_sym_id(self) -> int:
         result = self._next_sym_id
@@ -93,17 +117,16 @@ class Analyzer:
 
     def def_var(self) -> Symbol:
         var_sym = self.gen_var_sym()
-        self._active_vars.append(var_sym)
+        self.scope.activate_var(var_sym)
         return var_sym
 
-    def kill_var(self, sym: Symbol):
-        if sym not in self._active_vars:
-            raise SemError(f"Attempted to deactivate an inactive variable: {sym}")
-        self._active_vars.remove(sym)
+    def mark_var_dead(self, sym: Symbol):
+        self.scope.kill_var(sym)
 
     def gen_cleanup_all_vars(self) -> StmtList:
         res = []
-        for var in reversed(self._active_vars):
+        for var in reversed(self.scope._active_vars):
+            self.mark_var_dead(var)
             res.append(KillVarStmt(var))
         return StmtList(res)
 
@@ -116,6 +139,7 @@ class Analyzer:
                 if not isinstance(stmt.name, IdentExpression):
                     raise SemError(f"Only IdentExpression is allowed during block declaration")
                 sym = self.gen_block_sym(stmt.name.ident)
+                stmt.body.stmts.append(ReturnStmt())
                 self.open_block()
                 stmt.body = self.sem_stmt(stmt.body)
                 self.close_block()
@@ -193,7 +217,7 @@ class Analyzer:
                 )
 
                 res = StmtList(prologue + [self.sem_stmt(WhileStmt(cond, stmt.body))] + epilogue)
-                self.kill_var(var_sym)
+                self.mark_var_dead(var_sym)
                 return res
             case ReturnStmt():
                 if self._block_nesting_level <= 0:

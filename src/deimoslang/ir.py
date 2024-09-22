@@ -65,6 +65,7 @@ class StackInfo:
 
     def pop(self, sym: Symbol):
         self.offset -= 1
+        # mostly here for debugging
         if self.slots[sym] != self.offset:
             raise CompilerError(f"Attempted to pop a stack value that is not placed at the top: {sym}\n{self.slots}")
         del self.slots[sym]
@@ -208,7 +209,6 @@ class Compiler:
             self._outermost_until = None
             self._compile(block_def.body)
             self._outermost_until = prev_until
-            self.emit(InstructionKind.ret)
         elif isinstance(block_def.name, IdentExpression):
             raise CompilerError(f"Encountered an unresolved block sym during compilation: {block_def}")
         else:
