@@ -54,12 +54,32 @@ class Instruction:
         return f"{self.kind.name}"
 
 
+class StackInfo:
+    def __init__(self):
+        self.offset = 0
+        self.slots: dict[Symbol, int] = {}
+
+    def push(self, sym: Symbol):
+        self.slots[sym] = self.offset
+        self.offset += 1
+
+    def pop(self, sym: Symbol):
+        self.offset -= 1
+        if self.slots[sym] != self.offset:
+            raise CompilerError("Attempted to pop a stack value that is not placed at the top")
+        del self.slots[sym]
+
+    def loc(self, sym: Symbol) -> int:
+        return self.slots[sym] - self.offset
+
+
 class Compiler:
     def __init__(self, analyzer: Analyzer):
         self.analyzer = analyzer
         self._program: list[Instruction] = []
-        self._stack_offset = 0
-        self._stack_slots: dict[Symbol, int] = {}
+
+        self._stacks = [StackInfo()]
+
         self._loop_label_stack = []
 
         # until is a bit too special and has dangerous interactions with user specified returns because of it
@@ -73,20 +93,22 @@ class Compiler:
         analyzer.analyze_program()
         return Compiler(analyzer=analyzer)
 
-    def push_stack(self, sym: Symbol) -> int:
-        self.emit(InstructionKind.push_stack)
-        res = self._stack_offset
-        self._stack_offset += 1
-        self._stack_slots[sym] = res
-        return res
+    # a branch may clean up variables that must continue to exist in the next segment
+    def enter_branch(self):
+        top = self._stacks[-1]
+        new_top = StackInfo()
+        new_top.offset = top.offset
+        new_top.slots = top.slots.copy()
+        self._stacks.append(new_top)
 
-    def pop_stack(self, sym: Symbol):
-        del self._stack_slots[sym]
-        self._stack_offset -= 1
-        self.emit(InstructionKind.pop_stack)
+    def exit_branch(self):
+        self._stacks.pop()
 
-    def stack_loc(self, sym: Symbol):
-        return self._stack_slots[sym] - self._stack_offset
+    def stack_loc(self, sym: Symbol) -> int:
+        for info in self._stacks:
+            if sym in info.slots:
+                return info.loc(sym)
+        raise CompilerError(f"Failed to determine the stack location for symbol {sym}")
 
     def emit(self, kind: InstructionKind, data: Any | None = None):
         self._program.append(Instruction(kind, data))
@@ -225,10 +247,14 @@ class Compiler:
         branch_true_label = self.gen_label("branch_true")
         self.prep_expression(stmt.expr)
         self.emit(InstructionKind.jump_if, [stmt.expr, branch_true_label])
+        self.enter_branch()
         self._compile(stmt.branch_false)
+        self.exit_branch()
         self.emit(InstructionKind.jump, after_if_label)
         self.emit(InstructionKind.label, branch_true_label)
+        self.enter_branch()
         self._compile(stmt.branch_true)
+        self.exit_branch()
         self.emit(InstructionKind.label, after_if_label)
 
     def compile_loop_stmt(self, stmt: LoopStmt):
@@ -236,7 +262,9 @@ class Compiler:
         end_loop_label = self.gen_label("end_loop")
         self._loop_label_stack.append(end_loop_label)
         self.emit(InstructionKind.label, start_loop_label)
+        self.enter_branch()
         self._compile(stmt.body)
+        self.exit_branch()
         self.emit(InstructionKind.jump, start_loop_label)
         self.emit(InstructionKind.label, end_loop_label)
         self._loop_label_stack.pop()
@@ -248,7 +276,9 @@ class Compiler:
         self.prep_expression(stmt.expr)
         self.emit(InstructionKind.jump_ifn, [stmt.expr, end_while_label])
         self.emit(InstructionKind.label, start_while_label)
+        self.enter_branch()
         self._compile(stmt.body)
+        self.exit_branch()
         self.emit(InstructionKind.jump_if, [stmt.expr, start_while_label])
         self.emit(InstructionKind.label, end_while_label)
         self._loop_label_stack.pop()
@@ -261,7 +291,9 @@ class Compiler:
         is_outermost = self._outermost_until is None
         if is_outermost:
             self._outermost_until = id
+        self.enter_branch()
         self._compile(stmt.body)
+        self.exit_branch()
         if is_outermost:
             self._outermost_until = None
         self.emit(InstructionKind.label, exit_until_label)
@@ -291,9 +323,11 @@ class Compiler:
             case WhileStmt():
                 self.compile_while_stmt(stmt)
             case DefVarStmt():
-                self.push_stack(stmt.sym)
+                self._stacks[-1].push(stmt.sym)
+                self.emit(InstructionKind.push_stack)
             case KillVarStmt():
-                self.pop_stack(stmt.sym)
+                self.emit(InstructionKind.pop_stack)
+                self._stacks[-1].pop(stmt.sym)
             case WriteVarStmt():
                 self.prep_expression(stmt.expr)
                 self.emit(InstructionKind.write_stack, [self.stack_loc(stmt.sym), stmt.expr])

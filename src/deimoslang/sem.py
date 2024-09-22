@@ -39,12 +39,19 @@ class Analyzer:
         self._block_defs: list[BlockDefStmt] = []
         self._stmts = stmts
 
+        self._active_vars: set[Symbol] = set()
+        self._active_vars_stack: list[set[Symbol]] = []
+
         self._block_nesting_level = 0
         self._loop_nesting_level = 0
         self._loop_nesting_stack = []
 
     def open_block(self):
         self.open_scope()
+
+        self._active_vars_stack.append(self._active_vars)
+        self._active_vars = set()
+
         self._loop_nesting_stack.append(self._loop_nesting_level)
         self._loop_nesting_level = 0
         self._block_nesting_level += 1
@@ -53,6 +60,8 @@ class Analyzer:
         self.close_scope()
         self._loop_nesting_level = self._loop_nesting_stack.pop()
         self._block_nesting_level -= 1
+
+        self._active_vars = self._active_vars_stack.pop()
 
     def open_loop(self):
         self.open_scope()
@@ -81,6 +90,20 @@ class Analyzer:
 
     def gen_label_sym(self, name="anonymous") -> Symbol:
         return self.scope.put_sym(Symbol(f":{name}", self.gen_sym_id(), SymbolKind.label))
+
+    def def_var(self) -> Symbol:
+        var_sym = self.gen_var_sym()
+        self._active_vars.add(var_sym)
+        return var_sym
+
+    def kill_var(self, sym: Symbol):
+        self._active_vars.remove(sym)
+
+    def gen_cleanup_all_vars(self) -> StmtList:
+        res = []
+        for var in self._active_vars:
+            res.append(KillVarStmt(var))
+        return StmtList(res)
 
     def sem_expr(self, expr: Expression) -> Expression:
         return expr # TODO
@@ -154,7 +177,7 @@ class Analyzer:
                     ])
                 )
             case TimesStmt():
-                var_sym = self.gen_var_sym()
+                var_sym = self.def_var()
                 prologue = [
                     DefVarStmt(var_sym),
                     WriteVarStmt(var_sym, NumberExpression(stmt.num)),
@@ -167,13 +190,16 @@ class Analyzer:
                     WriteVarStmt(var_sym, SubExpression(ReadVarExpr(SymExpression(var_sym)), NumberExpression(1)))
                 )
 
-                res = StmtList(prologue + [WhileStmt(cond, stmt.body)] + epilogue)
-                self.sem_stmt(res)
+                res = StmtList(prologue + [self.sem_stmt(WhileStmt(cond, stmt.body))] + epilogue)
+                self.kill_var(var_sym)
                 return res
             case ReturnStmt():
                 if self._block_nesting_level <= 0:
                     raise SemError(f"Return used outside of block scope")
-                return stmt
+                return StmtList([
+                    self.gen_cleanup_all_vars(),
+                    stmt
+                ])
             case BreakStmt():
                 if self._loop_nesting_level <= 0:
                     raise SemError(f"Break used outside of loop scope")
