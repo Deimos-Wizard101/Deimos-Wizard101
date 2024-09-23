@@ -198,7 +198,10 @@ class Analyzer:
                     branch_false=StmtList([
                         UntilRegion(
                             expr=expr,
-                            body=WhileStmt(expr, body),
+                            body=WhileStmt(
+                                UnaryExpression(Token(TokenKind.keyword_not, "not", LineInfo(-1, -1, -1)), expr),
+                                body
+                            ),
                         ),
                     ])
                 )
