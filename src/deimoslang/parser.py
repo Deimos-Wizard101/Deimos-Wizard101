@@ -609,7 +609,7 @@ class Parser:
                 if arg is not None:
                     result.data = [TeleportKind.entity_literal, arg.value]
                 else:
-                    result.data = [TeleportKind.entity_vague, self.consume_any_ident()]
+                    result.data = [TeleportKind.entity_vague, self.consume_any_ident().ident]
                 self.end_line()
             case TokenKind.command_tozone:
                 result.kind = CommandKind.tozone
