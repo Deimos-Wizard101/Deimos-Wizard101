@@ -800,12 +800,12 @@ async def main():
 			hotkey_status = False
 
 	def get_foreground_client():
-		if foreground_client:
-			return foreground_client
 		foreground = [c for c in walker.clients if c.is_foreground]
 		if len(foreground) > 0:
 			return foreground[0]
-		return walker.clients[0]
+		if not foreground_client:
+			return walker.clients[0]
+		return foreground_client
 
 	def get_background_clients():
 		return [c for c in walker.clients if not c.is_foreground]
