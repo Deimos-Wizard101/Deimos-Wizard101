@@ -49,7 +49,7 @@ class Instruction:
         self.data = data
 
     def __repr__(self) -> str:
-        if self.data:
+        if self.data is not None:
             return f"{self.kind.name} {self.data}"
         return f"{self.kind.name}"
 
@@ -165,6 +165,7 @@ class Compiler:
                 raise CompilerError(f"Unimplemented command: {com}")
 
     def process_labels(self, program: list[Instruction]):
+        new_program: list[Instruction] = []
         offsets = {}
 
         # discover labels
@@ -172,15 +173,18 @@ class Compiler:
             match instr.kind:
                 case InstructionKind.label:
                     sym = instr.data
-                    offsets[sym] = idx
+                    offsets[sym] = len(new_program)
+                    if idx + 1 == len(program):
+                        # special case, jumping to the end may need padding
+                        new_program.append(Instruction(InstructionKind.nop))
                 case _:
-                    pass
+                    new_program.append(instr)
+
+        program = new_program
 
         # resolve labels
         for idx, instr in enumerate(program):
             match instr.kind:
-                case InstructionKind.label:
-                    program[idx] = Instruction(InstructionKind.nop)
                 case InstructionKind.call | InstructionKind.jump:
                     sym = instr.data
                     offset = offsets[sym]
@@ -194,7 +198,7 @@ class Compiler:
                     assert(type(instr.data) == list)
                     sym = instr.data[2]
                     offset = offsets[sym]
-                    instr.data[2] = offset - idx + 1
+                    instr.data[2] = offset - idx
                 case _:
                     pass
 
@@ -217,7 +221,6 @@ class Compiler:
     def compile_call(self, call: CallStmt):
         if isinstance(call.name, SymExpression):
             self.emit(InstructionKind.call, call.name.sym)
-            self.emit(InstructionKind.nop)
         elif isinstance(call.name, IdentExpression):
             raise CompilerError(f"Encountered an unresolved call during compilation: {call}")
         else:
@@ -355,7 +358,7 @@ class Compiler:
 
 if __name__ == "__main__":
     from pathlib import Path
-    compiler = Compiler.from_text(Path("./src/deimoslang/testbot.txt").read_text())
+    compiler = Compiler.from_text(Path("./testbot.txt").read_text())
     prog = compiler.compile()
     for i in prog:
         print(i)
