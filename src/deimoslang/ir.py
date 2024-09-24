@@ -194,7 +194,7 @@ class Compiler:
                     assert(type(instr.data) == list)
                     sym = instr.data[2]
                     offset = offsets[sym]
-                    instr.data[2] = offset - idx
+                    instr.data[2] = offset - idx + 1
                 case _:
                     pass
 
@@ -355,7 +355,7 @@ class Compiler:
 
 if __name__ == "__main__":
     from pathlib import Path
-    compiler = Compiler.from_text(Path("./testbot.txt").read_text())
+    compiler = Compiler.from_text(Path("./src/deimoslang/testbot.txt").read_text())
     prog = compiler.compile()
     for i in prog:
         print(i)
