@@ -99,18 +99,20 @@ class PlayerSelector:
         self.player_nums: list[int] = []
         self.mass = False
         self.inverted = False
+        self.wildcard = False
 
     def validate(self):
         assert not (self.mass and self.inverted), "Invalid player selector: mass + except"
         assert not (self.mass and len(self.player_nums) > 0), "Invalid player selector: mass + specified players"
         assert not (self.inverted and len(self.player_nums) == 0), "Invalid player selector: inverted + 0 players"
+        assert (not self.wildcard) or (self.wildcard and not (self.mass) and len(self.player_nums) == 0), "Invalid player selector: wildcard + mass or player_nums"
         self.player_nums.sort()
 
     def __hash__(self) -> int:
         return hash((frozenset(self.player_nums), self.mass, self.inverted))
 
     def __repr__(self) -> str:
-        return f"PlayerSelector(nums: {self.player_nums}, mass: {self.mass}, inverted: {self.inverted})"
+        return f"PlayerSelector(nums: {self.player_nums}, mass: {self.mass}, inverted: {self.inverted}, wildcard: {self.wildcard})"
 
 class Command:
     def __init__(self):

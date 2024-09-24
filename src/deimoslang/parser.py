@@ -331,8 +331,8 @@ class Parser:
 
     def parse_player_selector(self) -> PlayerSelector:
         result = PlayerSelector()
-        valid_toks = [TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.colon]
-        expected_toks = [TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num]
+        valid_toks = [TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard, TokenKind.colon]
+        expected_toks = [TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard]
         while self.i < len(self.tokens) and self.tokens[self.i].kind in valid_toks:
             if self.tokens[self.i].kind not in expected_toks:
                 self.err(self.tokens[self.i], f"Invalid player selector encountered: {self.tokens[self.i]}")
@@ -349,13 +349,17 @@ class Parser:
                     result.player_nums.append(int(self.tokens[self.i].value))
                     expected_toks = [TokenKind.colon]
                     self.i += 1
+                case TokenKind.player_wildcard:
+                    result.wildcard = True
+                    expected_toks = []
+                    self.i += 1
                 case TokenKind.colon:
                     expected_toks = [TokenKind.player_num]
                     self.i += 1
                 case _:
                     assert False
         result.validate()
-        if len(result.player_nums) == 0:
+        if len(result.player_nums) == 0 and not result.wildcard:
             result.mass = True
         result.validate() # sanity check
         return result
@@ -680,9 +684,6 @@ class Parser:
                     if self.tokens[self.i].kind == TokenKind.keyword_else:
                         self.i += 1
                         else_body = self.parse_block()
-                        if len(elif_body_stack) > 0:
-                            elif_body_stack[-1].branch_false = else_body
-                            else_body = StmtList([elif_body_stack[0]])
                         break
                     elif self.tokens[self.i].kind == TokenKind.keyword_elif:
                         self.i += 1
@@ -692,15 +693,19 @@ class Parser:
                         if len(elif_body_stack) > 0:
                             elif_body_stack[-1].branch_false = StmtList([elif_stmt])
                         elif_body_stack.append(elif_stmt)
+                if len(elif_body_stack) > 0:
+                    elif_body_stack[-1].branch_false = else_body
+                    else_body = StmtList([elif_body_stack[0]])
+
                 return IfStmt(expr, true_body, else_body)
             case TokenKind.keyword_break:
                 self.i += 1
                 self.end_line()
-                return BreakStmt();
+                return BreakStmt()
             case TokenKind.keyword_return:
                 self.i += 1
                 self.end_line()
-                return ReturnStmt();
+                return ReturnStmt()
             case _:
                 return CommandStmt(self.parse_command())
 
@@ -713,7 +718,7 @@ class Parser:
 def add_indent(string, indent):
     for _ in range(indent):
         string += '    '
-    return string;
+    return string
 
 def print_cmd(input_str:str):
     final_string = ""

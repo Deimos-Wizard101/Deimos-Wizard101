@@ -11,6 +11,7 @@ class Percent(float):
 
 class TokenKind(Enum):
     player_num = auto()
+    player_wildcard = auto()
     string = auto()
     number = auto()
     contains = auto()
@@ -279,6 +280,9 @@ class Tokenizer:
                                 put_simple(TokenKind.path, full, full.split("/"))
                             elif full[0].lower() == "p" and full[1:len(full)].isnumeric():
                                 put_simple(TokenKind.player_num, full, int(full[1:len(full)]))
+                            # TODO: Implement wildcards in all stages
+                            #elif full.lower() == "p?":
+                            #    put_simple(TokenKind.player_wildcard, full)
                             else:
                                 match normalize_ident(full):
                                     # keywords
@@ -325,7 +329,7 @@ class Tokenizer:
                                     case "break" | "exitloop":
                                         put_simple(TokenKind.keyword_break, full)
 
-                                    # commands 
+                                    # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":
                                         put_simple(TokenKind.command_kill, full)
                                     case "sleep" | "wait" | "delay":
