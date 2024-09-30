@@ -1,10 +1,12 @@
 import asyncio
 
+from asyncio import Task as AsyncTask
+
 from wizwalker import AddressOutOfRange, Client, XYZ, Keycode, MemoryReadError, Primitive
 from wizwalker.memory import DynamicClientObject
 from wizwalker.memory.memory_objects.quest_data import QuestData, GoalData
 from wizwalker.extensions.wizsprinter import SprintyClient
-from wizwalker.extensions.wizsprinter.wiz_sprinter import upgrade_clients
+from wizwalker.extensions.wizsprinter.wiz_sprinter import Coroutine, upgrade_clients
 from wizwalker.extensions.wizsprinter.wiz_navigator import toZone
 
 from .tokenizer import *
@@ -17,6 +19,31 @@ from src.command_parser import teleport_to_friend_from_list
 from src.config_combat import delegate_combat_configs, default_config
 
 from loguru import logger
+
+class Task:
+    def __init__(self, stack=None, ip=0):
+        self.stack = stack or []
+        self.ip = ip
+        self.running = True  # Task is active unless marked otherwise
+        self.waitfor:AsyncTask|None = None
+
+class Scheduler:
+    def __init__(self):
+        # a task represents a stack
+        self.tasks:list[Task] = []
+        self.current_task_index = 0
+
+    def add_task(self, task):
+        self.tasks.append(task)
+
+    def remove_task(self, task):
+        self.tasks.remove(task)
+
+    def get_current_task(self):
+        return self.tasks[self.current_task_index]
+
+    def switch_task(self):
+        self.current_task_index = (self.current_task_index + 1) % len(self.tasks)
 
 
 class VMError(Exception):
@@ -37,8 +64,25 @@ class VM:
         self.program: list[Instruction] = []
         self.running = False
         self.killed = False
-        self._ip = 0 # instruction pointer
-        self._stack = []
+
+        tok1 = Token(TokenKind.string, "Test 1", LineInfo(-1, -1, -1), "Test 1")
+        player_selector = PlayerSelector()
+        player_selector.player_nums = [0]
+        minus_token = Token(TokenKind.minus, '-', LineInfo(-1,-1,-1))
+        goto_instr = Instruction(InstructionKind.deimos_call, [player_selector, 'goto', [XYZExpression(UnaryExpression(minus_token, NumberExpression(11984.0)), UnaryExpression(minus_token, NumberExpression(11272.0)), NumberExpression(615.3))]]) 
+        self._scheduler = Scheduler()
+        self._scheduler.add_task(Task())
+        #self._scheduler.add_task(Task(ip=3))
+
+        self.test_program = [
+            Instruction(InstructionKind.jump, 1),
+            Instruction(InstructionKind.log_literal, [tok1]),
+            Instruction(InstructionKind.jump, -1),
+            goto_instr,
+            Instruction(InstructionKind.nop),
+        ]
+
+        self.current_task = self._scheduler.get_current_task()
 
         # Every until loop condition must be checked for every vm step.
         # Once a condition becomes True, all untils that were entered later must be exited and removed.
@@ -47,8 +91,10 @@ class VM:
 
     def reset(self):
         self.program = []
-        self._ip = 0
-        self._stack = []
+        for _ in self._scheduler.tasks:
+            self._scheduler.tasks.pop()
+        self._scheduler.add_task(Task())
+        self.current_task = self._scheduler.get_current_task()
         self._until_infos = []
 
     def stop(self):
@@ -61,6 +107,7 @@ class VM:
     def load_from_text(self, code: str):
         compiler = Compiler.from_text(code)
         self.program = compiler.compile()
+        #self.program = self.test_program
 
     def player_by_num(self, num: int) -> SprintyClient:
         i = num - 1
@@ -259,13 +306,15 @@ class VM:
             case ReadVarExpr():
                 loc = await self.eval(expression.loc)
                 assert(loc != None and type(loc) == int)
-                test = self._stack[loc]
+                test = self.current_task.stack[loc]
                 return test
             case StackLocExpression():
                 return expression.offset
             case SubExpression():
                 lhs = await self.eval(expression.lhs, client)
                 rhs = await self.eval(expression.rhs, client)
+                assert(isinstance(lhs, (int, float)))
+                assert(isinstance(rhs, (int, float)))
                 return lhs - rhs
             case ContainsStringExpression():
                 lhs = await self.eval(expression.lhs, client)
@@ -477,15 +526,28 @@ class VM:
         for i in range(len(self._until_infos) - 1, -1, -1):
             info = self._until_infos[i]
             if await self.eval(info.expr):
-                self._ip = info.exit_point
+                #self._ip = info.exit_point
+                self.current_task.ip = info.exit_point
                 return
+
+    async def run_waitfor(self, coro):
+        if not self.current_task.waitfor:
+            self.current_task.waitfor = asyncio.create_task(coro)
+        if self.current_task.waitfor.done():
+            self.current_task.waitfor = None
+            self.current_task.ip += 1
 
     async def step(self):
         if not self.running:
             return
         await asyncio.sleep(0)
+        self.current_task = self._scheduler.get_current_task()
         await self._process_untils() # must run before the next instruction is fetched
-        instruction = self.program[self._ip]
+        if not self.current_task.running:
+            self._scheduler.switch_task()
+            return
+        instruction = self.program[self.current_task.ip]
+
         match instruction.kind:
             case InstructionKind.kill:
                 self.kill()
@@ -495,50 +557,45 @@ class VM:
                 time = await self.eval(instruction.data)
                 assert type(time) is float
                 await asyncio.sleep(time)
-                self._ip += 1
+                self.current_task.ip += 1
             case InstructionKind.jump:
                 assert type(instruction.data) == int
-                self._ip += instruction.data
+                self.current_task.ip += instruction.data
             case InstructionKind.jump_if:
                 assert type(instruction.data) == list
                 if await self.eval(instruction.data[0]):
-                    self._ip += instruction.data[1]
+                    self.current_task.ip += instruction.data[1]
                 else:
-                    self._ip += 1
+                    self.current_task.ip += 1
             case InstructionKind.jump_ifn:
                 assert type(instruction.data) == list
                 if await self.eval(instruction.data[0]):
-                    self._ip += 1
+                    self.current_task.ip += 1
                 else:
-                    self._ip += instruction.data[1]
-
+                    self.current_task.ip += instruction.data[1]
             case InstructionKind.call:
                 assert(type(instruction.data) == int)
-                self._stack.append(self._ip + 1)
-                self._ip += instruction.data
-
+                self.current_task.stack.append(self.current_task.ip + 1)
+                self.current_task.ip += instruction.data
             case InstructionKind.ret:
-                self._ip = self._stack.pop()
-
+                self.current_task.ip = self.current_task.stack.pop()
             case InstructionKind.enter_until:
                 assert type(instruction.data) == list
                 self._until_infos.append(UntilInfo(
                     expr=instruction.data[0],
                     id=instruction.data[1],
-                    exit_point=self._ip + instruction.data[2],
-                    stack_size=len(self._stack)
+                    exit_point=self.current_task.ip + instruction.data[2],
+                    stack_size=len(self.current_task.stack)
                 ))
-                self._ip += 1
-
+                self.current_task.ip += 1
             case InstructionKind.exit_until:
                 for i in range(len(self._until_infos) - 1, -1, -1):
                     info = self._until_infos[i]
                     if info.id == instruction.data:
                         self._until_infos = self._until_infos[:i]
-                        self._stack = self._stack[:info.stack_size]
+                        self.current_task.stack = self.current_task.stack[:info.stack_size]
                         break
-                self._ip += 1
-
+                self.current_task.ip += 1
             case InstructionKind.log_literal:
                 assert type(instruction.data) == list
                 strs = []
@@ -552,58 +609,58 @@ class VM:
                             raise VMError(f"Unable to log: {x}")
                 s = " ".join(strs)
                 logger.debug(s)
-                self._ip += 1
+                self.current_task.ip += 1
             case InstructionKind.log_window:
                 assert type(instruction.data) == list
                 clients = self._select_players(instruction.data[0])
                 for client in clients:
                     text = await self.eval(instruction.data[1], client)
                     logger.debug(f"{client.title} - {text}")
-                self._ip += 1
+                self.current_task.ip += 1
             case InstructionKind.log_bagcount:
                 assert type(instruction.data) == list
                 clients: list[SprintyClient] = self._select_players(instruction.data[0])
                 for client in clients:
                     bag_space = await client.backpack_space()
                     logger.debug(f'{client.title} - {bag_space[0]}/{bag_space[1]}')
-                self._ip += 1
+                self.current_task.ip += 1
             case InstructionKind.log_health:
                 assert type(instruction.data) == list
                 clients: list[SprintyClient] = self._select_players(instruction.data[0])
                 for client in clients:
                     logger.debug(f'{client.title} - {await client.stats.current_hitpoints()}/{await client.stats.max_hitpoints()}')
-                self._ip += 1
+                self.current_task.ip += 1
 
             case InstructionKind.log_mana:
                 assert type(instruction.data) == list
                 clients: list[SprintyClient] = self._select_players(instruction.data[0])
                 for client in clients:
                     logger.debug(f'{client.title} - {await client.stats.current_mana()}/{await client.stats.max_mana()}')
-                self._ip += 1
+                self.current_task.ip += 1
 
             case InstructionKind.log_gold:
                 assert type(instruction.data) == list
                 clients: list[SprintyClient] = self._select_players(instruction.data[0])
                 for client in clients:
                     logger.debug(f'{client.title} - {await client.stats.current_gold()}/{await client.stats.base_gold_pouch()}')
-                self._ip += 1
+                self.current_task.ip += 1
 
             case InstructionKind.label | InstructionKind.nop:
-                self._ip += 1
+                self.current_task.ip += 1
 
             case InstructionKind.push_stack:
-                self._stack.append(None)
-                self._ip += 1
+                self.current_task.stack.append(None)
+                self.current_task.ip += 1
 
             case InstructionKind.write_stack:
                 assert(instruction.data != None)
                 offset, expr = instruction.data
-                self._stack[offset] = await self.eval(expr)
-                self._ip += 1
+                self.current_task.stack[offset] = await self.eval(expr)
+                self.current_task.ip += 1
 
             case InstructionKind.pop_stack:
-                self._stack.pop()
-                self._ip += 1
+                self.current_task.stack.pop()
+                self.current_task.ip += 1
 
             case InstructionKind.load_playstyle:
                 logger.debug("Loading playstyle")
@@ -611,16 +668,20 @@ class VM:
                 logger.debug(delegated)
                 for i, client in enumerate(self._clients):
                     client.combat_config = delegated.get(i, default_config)
-                self._ip += 1
+                self.current_task.ip += 1
 
             case InstructionKind.deimos_call:
-                await self.exec_deimos_call(instruction)
-                self._ip += 1
+                await self.run_waitfor(self.exec_deimos_call(instruction))
+                #await self.exec_deimos_call(instruction)
             case _:
                 raise VMError(f"Unimplemented instruction: {instruction}")
-        if self._ip >= len(self.program):
+        if self.current_task.ip >= len(self.program):
+            self.current_task.running = False
+        if not True in [t.running for t in self._scheduler.tasks] or not self.running:
+            print("STOPPING...")
             self.stop()
         else:
+            self._scheduler.switch_task()
             await asyncio.sleep(0)
 
     async def run(self):
