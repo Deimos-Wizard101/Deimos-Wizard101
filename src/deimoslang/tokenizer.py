@@ -90,6 +90,7 @@ class TokenKind(Enum):
     command_expr_window_disabled = auto()
     command_expr_same_place = auto()
     command_expr_window_text = auto()
+    command_expr_potion_count = auto()
 
     colon = auto() # :
     comma = auto()
@@ -424,6 +425,8 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_same_place, full)
                                     case "windowtext":
                                         put_simple(TokenKind.command_expr_window_text, full)
+                                    case "potioncount":
+                                        put_simple(TokenKind.command_expr_potion_count, full)
                                     case _:
                                         put_simple(TokenKind.identifier, full)
                             i = j

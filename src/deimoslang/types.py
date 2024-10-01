@@ -45,6 +45,8 @@ class EvalKind(Enum):
     gold = auto()
     max_gold = auto()
     windowtext = auto()
+    potioncount = auto()
+    max_potioncount = auto()
 
 class WaitforKind(Enum):
     dialog = auto()

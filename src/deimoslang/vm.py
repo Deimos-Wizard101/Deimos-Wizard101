@@ -353,7 +353,10 @@ class VM:
                     return text
                 except (ValueError, MemoryReadError):
                     raise Exception(f'Cannot read window.')
-
+            case EvalKind.potioncount:
+                return await client.stats.potion_charge()
+            case EvalKind.max_potioncount:
+                return await client.stats.potion_max()
 
 
     async def exec_deimos_call(self, instruction: Instruction):
