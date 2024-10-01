@@ -511,7 +511,12 @@ class VM:
                                 tg.create_task(proxy(client, x, y))
                             case ClickKind.window:
                                 path = args[1]
-                                tg.create_task(click_window_by_path(client, path))
+                                async def proxy(client: SprintyClient, path: list):
+                                    window = await get_window_from_path(client.root_window, path)
+                                    if window:
+                                        async with client.mouse_handler:
+                                            await client.mouse_handler.click_window(window)
+                                tg.create_task(proxy(client, path))
                             case _:
                                 raise VMError(f"Unimplemented click kind: {instruction}")
             case "tozone":
@@ -533,7 +538,7 @@ class VM:
     async def run_waitfor(self, coro):
         if not self.current_task.waitfor:
             self.current_task.waitfor = asyncio.create_task(coro)
-        if self.current_task.waitfor.done():
+        elif self.current_task.waitfor.done():
             self.current_task.waitfor = None
             self.current_task.ip += 1
 
