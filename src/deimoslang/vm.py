@@ -348,8 +348,10 @@ class VM:
                 window = await get_window_from_path(client.root_window, path)
                 try:
                     text = await window.maybe_text()
-                    if not text:
-                        text = await window.read_wide_string_from_offset(616)
+                    return text
+                except (ValueError, MemoryReadError): pass
+                try:
+                    text = await window.read_wide_string_from_offset(616)
                     return text
                 except (ValueError, MemoryReadError):
                     raise Exception(f'Cannot read window.')
