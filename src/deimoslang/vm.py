@@ -357,6 +357,7 @@ class VM:
                             return text
                 except (ValueError, MemoryReadError): 
                     raise Exception(f'Cannot read window. {path}')
+                return ""
             case EvalKind.potioncount:
                 return await client.stats.potion_charge()
             case EvalKind.max_potioncount:
