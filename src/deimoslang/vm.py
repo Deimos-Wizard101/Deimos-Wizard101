@@ -1,5 +1,4 @@
 import asyncio
-
 from asyncio import Task as AsyncTask
 
 from wizwalker import AddressOutOfRange, Client, XYZ, Keycode, MemoryReadError, Primitive
