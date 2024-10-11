@@ -1,5 +1,4 @@
 import asyncio
-
 from asyncio import Task as AsyncTask
 
 from wizwalker import AddressOutOfRange, Client, XYZ, Keycode, MemoryReadError, Primitive
@@ -374,12 +373,18 @@ class VM:
                 assert(type(path) == list)
                 window = await get_window_from_path(client.root_window, path)
                 try:
-                    text = await window.maybe_text()
-                    if not text:
+                    if (window):
                         text = await window.read_wide_string_from_offset(616)
-                    return text
-                except (ValueError, MemoryReadError):
-                    raise Exception(f'Cannot read window.')
+                        return text
+                except (ValueError, MemoryReadError): pass
+                try:
+                    if (window):
+                        text = await window.maybe_text()
+                        if text:
+                            return text
+                except (ValueError, MemoryReadError): 
+                    raise Exception(f'Cannot read window. {path}')
+                return ""
             case EvalKind.potioncount:
                 return await client.stats.potion_charge()
             case EvalKind.max_potioncount:
