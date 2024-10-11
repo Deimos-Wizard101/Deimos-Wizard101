@@ -145,6 +145,21 @@ class VM:
         name: str = await client.cache_handler.get_langcode_name(name_key)
         return name.lower().strip()
 
+    async def _fetch_quests(self, client: SprintyClient) -> list[tuple[int, QuestData]]:
+        result = []
+        qm = await client.quest_manager()
+        for quest_id, quest in (await qm.quest_data()).items():
+            result.append((quest_id, quest))
+        return result
+
+    async def _fetch_quest_text(self, client: SprintyClient, quest: QuestData) -> str:
+        name_key = await quest.name_lang_key()
+        if name_key == "Quest Finder":
+            name = name_key
+        else:
+            name: str = await client.cache_handler.get_langcode_name(name_key)
+        return name.lower().strip()
+
     async def _fetch_tracked_goal_text(self, client: SprintyClient) -> str:
         goal_txt = await get_quest_name(client)
         if '(' in goal_txt:
@@ -236,6 +251,18 @@ class VM:
             case ExprKind.in_combat:
                 for client in clients:
                     if not await client.in_battle():
+                        return False
+                return True
+            case ExprKind.has_quest:
+                expected_text = expression.command.data[1]
+                assert type(expected_text) == str
+                for client in clients:
+                    found = False
+                    for _, quest in await self._fetch_quests(client):
+                        if await self._fetch_quest_text(client, quest) == expected_text:
+                            found = True
+                            break
+                    if not found:
                         return False
                 return True
             case ExprKind.has_dialogue:

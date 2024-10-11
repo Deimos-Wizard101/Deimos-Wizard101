@@ -110,6 +110,11 @@ class Parser:
                 result.kind = CommandKind.expr
                 self.i += 1
                 result.data = [ExprKind.in_combat]
+            case TokenKind.command_expr_has_quest:
+                result.kind = CommandKind.expr
+                self.i += 1
+                text: str = self.expect_consume(TokenKind.string).value # type: ignore
+                result.data = [ExprKind.has_quest, text.lower()]
             case TokenKind.command_expr_has_dialogue:
                 result.kind = CommandKind.expr
                 self.i += 1

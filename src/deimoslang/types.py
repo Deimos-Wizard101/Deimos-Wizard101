@@ -78,6 +78,7 @@ class ExprKind(Enum):
     in_combat = auto()
     has_dialogue = auto()
     has_xyz = auto()
+    has_quest = auto()
     health_below = auto()
     health_above = auto()
     health = auto()

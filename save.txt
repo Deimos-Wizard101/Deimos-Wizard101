@@ -1,0 +1,105 @@
+
+block player_check {
+	if playercount 3 {
+		if p1 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R01 {
+			if p1 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p1 tp XYZ(-52.23322296142578, 2896.3291015625, 0.0006103515625)
+				p1 waitforzonechange completion
+				sleep 1
+			}
+		}
+		if p1 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R02 {
+			if p1 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p1 tp XYZ(3167.017333984375, -1.6047120094299316, -58.322998046875)
+				p1 waitforzonechange completion
+				sleep 1
+			}
+		}
+
+		if p2 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R01 {
+			if p1 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p2 tp XYZ(-52.23322296142578, 2896.3291015625, 0.0006103515625)
+				p2 waitforzonechange completion
+				sleep 1
+			}
+		}
+		if p2 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R02 {
+			if p1 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p2 tp XYZ(3167.017333984375, -1.6047120094299316, -58.322998046875)
+				p2 waitforzonechange completion
+				sleep 1
+			}
+		}
+
+		if p3 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R01 {
+			if p3 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p3 tp XYZ(-52.23322296142578, 2896.3291015625, 0.0006103515625)
+				p3 waitforzonechange completion
+				sleep 1
+			}
+		}
+		if p3 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R02 {
+			if p3 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p3 tp XYZ(3167.017333984375, -1.6047120094299316, -58.322998046875)
+				p3 waitforzonechange completion
+				sleep 1
+			}
+		}
+
+	}
+
+	if playercount 4 {
+		if p1 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R01 {
+			if p1 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p1 tp XYZ(-52.23322296142578, 2896.3291015625, 0.0006103515625)
+				p1 waitforzonechange completion
+				sleep 1
+			}
+		}
+		if p1 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R02 {
+			if p1 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p1 tp XYZ(3167.017333984375, -1.6047120094299316, -58.322998046875)
+				p1 waitforzonechange completion
+				sleep 1
+			}
+		}
+
+		if p2 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R01 {
+			if p1 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p2 tp XYZ(-52.23322296142578, 2896.3291015625, 0.0006103515625)
+				p2 waitforzonechange completion
+				sleep 1
+			}
+		}
+		if p2 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R02 {
+			if p1 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p2 tp XYZ(3167.017333984375, -1.6047120094299316, -58.322998046875)
+				p2 waitforzonechange completion
+				sleep 1
+			}
+		}
+
+		if p3 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R01 {
+			if p3 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p3 tp XYZ(-52.23322296142578, 2896.3291015625, 0.0006103515625)
+				p3 waitforzonechange completion
+				sleep 1
+			}
+		}
+		if p3 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R02 {
+			if p3 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p3 tp XYZ(3167.017333984375, -1.6047120094299316, -58.322998046875)
+				p3 waitforzonechange completion
+				sleep 1
+			}
+		}
+		if p4 inzone Housing_GHGauntlet/GH_WinterbaneGauntlet01/GH_WinterbaneGauntlet01_R02 {
+			if p4 tracking_goal "locate wretched elexorien in winterbane hall" {
+				p4 tp XYZ(3167.017333984375, -1.6047120094299316, -58.322998046875)
+				p4 waitforzonechange completion
+				sleep 1
+			}
+		}
+	}
+}
+
