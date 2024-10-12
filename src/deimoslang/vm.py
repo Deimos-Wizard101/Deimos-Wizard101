@@ -300,14 +300,14 @@ class VM:
                 try:
                     text = await window.maybe_text()
                     if text:
-                        return text
+                        return text.lower()
                 except (ValueError, MemoryReadError):
                     pass
 
                 # retry with the less reliable offset that is only defined for control elements
                 try:
                     text = await window.read_wide_string_from_offset(616)
-                    return text
+                    return text.lower()
                 except (ValueError, MemoryReadError):
                     raise VMError(f'Cannot read window text from path: {path}')
 

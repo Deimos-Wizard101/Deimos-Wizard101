@@ -283,12 +283,12 @@ class Parser:
                 self.i += 1
                 window_path = self.parse_window_path()
                 contains = self.consume_optional(TokenKind.contains)
-                target = self.expect_consume(TokenKind.string)
-                assert(type(window_path) == list and type(target.value) == str)
+                target: str = self.expect_consume(TokenKind.string).value
+                assert(type(window_path) == list and type(target) == str)
                 if contains:
-                    return SelectorGroup(player_selector, ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(target.value)))
+                    return SelectorGroup(player_selector, ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(target.lower())))
                 else:
-                    return SelectorGroup(player_selector, EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(target.value)))
+                    return SelectorGroup(player_selector, EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(target.lower())))
             case TokenKind.command_expr_playercount:
                 result.kind = CommandKind.expr
                 self.i += 1
