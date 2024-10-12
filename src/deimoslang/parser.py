@@ -303,6 +303,11 @@ class Parser:
                 result.kind = CommandKind.expr
                 self.i += 1
                 result.data = [ExprKind.window_disabled, self.parse_window_path()]
+            case TokenKind.command_expr_in_range:
+                result.kind = CommandKind.expr
+                self.i += 1
+                text: str = self.expect_consume(TokenKind.string).value # type: ignore
+                result.data = [ExprKind.in_range, text.lower()]
             case TokenKind.command_expr_same_place:
                 result.kind = CommandKind.expr
                 self.i += 1
@@ -638,7 +643,11 @@ class Parser:
                 self.i += 1
                 result.data = [self.expect_consume(TokenKind.string).value]
                 self.end_line()
-
+            case TokenKind.command_set_yaw:
+                result.kind = CommandKind.set_yaw
+                self.i += 1
+                result.data = [self.expect_consume(TokenKind.number).value]
+                self.end_line()
             case _:
                 self.err(self.tokens[self.i], "Unhandled command token")
         return result

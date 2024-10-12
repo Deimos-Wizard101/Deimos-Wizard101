@@ -36,6 +36,7 @@ class InstructionKind(Enum):
     deimos_call = auto()
 
     load_playstyle = auto()
+    set_yaw = auto()
 
     push_stack = auto()
     pop_stack = auto()
@@ -159,6 +160,8 @@ class Compiler:
                 if com.data[1] == True:
                     self.emit_deimos_call(com)
 
+            case CommandKind.set_yaw:
+                self.emit(InstructionKind.set_yaw, [com.player_selector, com.data[0]])
             case CommandKind.load_playstyle:
                 self.emit(InstructionKind.load_playstyle, com.data[0])
             case _:

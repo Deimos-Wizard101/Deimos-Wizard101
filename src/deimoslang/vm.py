@@ -1,5 +1,5 @@
 import asyncio
-from asyncio import Task as AsyncTask
+from asyncio import Task as AsyncTask, TaskGroup
 
 from wizwalker import AddressOutOfRange, Client, XYZ, Keycode, MemoryReadError, Primitive
 from wizwalker.memory import DynamicClientObject
@@ -187,6 +187,19 @@ class VM:
                     if window == False:
                         return False
                     elif not await window.is_control_grayed():
+                        return False
+                return True
+            case ExprKind.in_range:
+                target = expression.command.data[1]
+                for client in clients:
+                    entities = await client.get_base_entity_list()
+                    found = False
+                    for entity in entities:
+                        entity_name = await entity.object_name()
+                        if not entity_name: continue
+                        if entity_name.lower() == target: 
+                            found = True
+                    if not found:
                         return False
                 return True
             case ExprKind.same_place:
@@ -702,6 +715,14 @@ class VM:
                 self.current_task.stack.pop()
                 self.current_task.ip += 1
 
+            case InstructionKind.set_yaw:
+                assert(type(instruction.data)==list)
+                clients: list[SprintyClient] = self._select_players(instruction.data[0])
+                yaw = instruction.data[1]
+                async with TaskGroup() as tg:
+                    for client in clients:
+                        tg.create_task(client.body.write_yaw(yaw));
+                self.current_task.ip += 1
             case InstructionKind.load_playstyle:
                 logger.debug("Loading playstyle")
                 delegated = delegate_combat_configs(instruction.data, len(self._clients)) # type: ignore

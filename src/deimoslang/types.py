@@ -24,6 +24,7 @@ class CommandKind(Enum):
     click = auto()
     tozone = auto()
     load_playstyle = auto()
+    set_yaw = auto()
 
 class TeleportKind(Enum):
     position = auto()
@@ -93,6 +94,7 @@ class ExprKind(Enum):
     gold_below = auto()
     window_disabled = auto()
     same_place = auto()
+    in_range = auto()
 
 
 # TODO: Replace asserts
