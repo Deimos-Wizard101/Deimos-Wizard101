@@ -174,14 +174,16 @@ class VM:
                         return False
                 return True
             case ExprKind.in_range:
+                data = [await c.client_object.global_id_full() for c in clients]
                 target = expression.command.data[1]
                 for client in clients:
                     entities = await client.get_base_entity_list()
                     found = False
                     for entity in entities:
                         entity_name = await entity.object_name()
-                        en = await entity.display_name()
-                        print(en)
+                        entity_gid = await entity.global_id_full()
+
+                        if entity_gid in data: continue
                         if not entity_name: continue
                         if entity_name.lower() == target: 
                             found = True
