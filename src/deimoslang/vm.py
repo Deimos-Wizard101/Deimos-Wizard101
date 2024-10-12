@@ -180,6 +180,8 @@ class VM:
                     found = False
                     for entity in entities:
                         entity_name = await entity.object_name()
+                        en = await entity.display_name()
+                        print(en)
                         if not entity_name: continue
                         if entity_name.lower() == target: 
                             found = True
@@ -716,8 +718,8 @@ class VM:
                 self.current_task.ip += 1
 
             case InstructionKind.deimos_call:
-                await self.run_waitfor(self.exec_deimos_call(instruction))
-                #await self.exec_deimos_call(instruction)
+                #await self.run_waitfor(self.exec_deimos_call(instruction))
+                await self.exec_deimos_call(instruction)
             case _:
                 raise VMError(f"Unimplemented instruction: {instruction}")
         if self.current_task.ip >= len(self.program):
