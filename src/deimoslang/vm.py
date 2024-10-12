@@ -84,19 +84,27 @@ class VM:
                     result.append(self.player_by_num(num))
             return result
 
+    async def _fetch_quests(self, client: SprintyClient) -> dict[int, QuestData]:
+        # just a basic wrapper
+        qm = await client.quest_manager()
+        return await qm.quest_data()
+
+    async def _fetch_quest_name(self, client: SprintyClient, quest: QuestData) -> str:
+        result: str = await quest.name_lang_key()
+        if result != "Quest Finder":
+            result = await client.cache_handler.get_langcode_name(result)
+        return result.lower().strip()
+
     async def _fetch_tracked_quest(self, client: SprintyClient) -> QuestData:
         tracked_id = await client.quest_id()
-        qm = await client.quest_manager()
-        for quest_id, quest in (await qm.quest_data()).items():
+        for quest_id, quest in (await self._fetch_quests(client)).items():
             if quest_id == tracked_id:
                 return quest
         raise VMError(f"Unable to fetch the currently tracked quest for client with title {client.title}")
 
     async def _fetch_tracked_quest_text(self, client: SprintyClient) -> str:
         quest = await self._fetch_tracked_quest(client)
-        name_key = await quest.name_lang_key()
-        name: str = await client.cache_handler.get_langcode_name(name_key)
-        return name.lower().strip()
+        return self._fetch_quest_name(client, quest)
 
     async def _fetch_tracked_goal_text(self, client: SprintyClient) -> str:
         goal_txt = await get_quest_name(client)
@@ -203,7 +211,19 @@ class VM:
                     if abs(target_pos - client_pos) > 1:
                         return False
                 return True
-
+            case ExprKind.has_quest:
+                expected_text = expression.command.data[1]
+                assert type(expected_text) == str
+                for client in clients:
+                    found = False
+                    for quest in (await self._fetch_quests(client)).values():
+                        if await self._fetch_quest_name(client, quest) == expected_text:
+                            break
+                    else:
+                        # Python falls through into the else branch of a for loop when a break has not been hit.
+                        # In this case that means the quest was not found.
+                        return False
+                return True
             case _:
                 raise VMError(f"Unimplemented expression: {expression}")
 

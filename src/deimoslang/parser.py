@@ -123,6 +123,11 @@ class Parser:
                 self.i += 1
                 xyz = self.parse_xyz()
                 result.data = [ExprKind.has_xyz, xyz]
+            case TokenKind.command_expr_has_quest:
+                result.kind = CommandKind.expr
+                self.i += 1
+                text: str = self.expect_consume(TokenKind.string).value
+                result.data = [ExprKind.has_quest, text.lower()]
             case TokenKind.command_expr_health_above:
                 self.i += 1
                 num = self.expect_consume_any([TokenKind.number, TokenKind.percent])
