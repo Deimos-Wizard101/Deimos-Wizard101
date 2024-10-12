@@ -372,20 +372,20 @@ class VM:
             case EvalKind.windowtext:
                 path = eval.args[0]
                 assert(type(path) == list)
+                window = await get_window_from_path(client.root_window, path)
                 try:
-                    window = await get_window_from_path(client.root_window, path)
-                    if (window):
-                        text = await window.maybe_text()
-                        if text:
-                            return text
-                except (ValueError, MemoryReadError): pass
+                    text = await window.maybe_text()
+                    if text:
+                        return text.lower()
+                except (ValueError, MemoryReadError):
+                    pass
+
+                # retry with the less reliable offset that is only defined for control elements
                 try:
-                    window = await get_window_from_path(client.root_window, path)
-                    if (window):
-                        text = await window.read_wide_string_from_offset(616)
-                        return text
-                except (ValueError, MemoryReadError): pass
-                raise Exception(f'Cannot read window. {path}')
+                    text = await window.read_wide_string_from_offset(616)
+                    return text.lower()
+                except (ValueError, MemoryReadError):
+                    raise VMError(f'Cannot read window text from path: {path}')
             case EvalKind.potioncount:
                 return await client.stats.potion_charge()
             case EvalKind.max_potioncount:

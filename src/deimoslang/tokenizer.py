@@ -373,7 +373,7 @@ class Tokenizer:
                                         put_simple(TokenKind.command_tozone, full)
                                     case "loadplaystyle":
                                         put_simple(TokenKind.command_load_playstyle, full)
-                                    case "yaw":
+                                    case "turncam" | "setcamyaw":
                                         put_simple(TokenKind.command_set_yaw, full)
 
                                     # expression commands
