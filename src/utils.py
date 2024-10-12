@@ -274,13 +274,11 @@ async def safe_click_window(client: Client, path):
 async def click_window_by_path(client: Client, path: list[str], hooks: bool = False):
     # FULL CREDIT TO SIROLAF FOR THIS FUNCTION, notfaj was here :3
     # clicks window from path, must actually exist in the UI tree
-    async with client.mouse_handler:
-        root = client.root_window
-        windows = await get_window_from_path(root, path)
-        if windows:
+    root = client.root_window
+    windows = await get_window_from_path(root, path)
+    if windows:
+        async with client.mouse_handler:
             await client.mouse_handler.click_window(windows)
-        else:
-            await asyncio.sleep(0.1)
 
 
 
