@@ -63,24 +63,8 @@ class VM:
         self.program: list[Instruction] = []
         self.running = False
         self.killed = False
-
-        tok1 = Token(TokenKind.string, "Test 1", LineInfo(-1, -1, -1), "Test 1")
-        player_selector = PlayerSelector()
-        player_selector.player_nums = [0]
-        minus_token = Token(TokenKind.minus, '-', LineInfo(-1,-1,-1))
-        goto_instr = Instruction(InstructionKind.deimos_call, [player_selector, 'goto', [XYZExpression(UnaryExpression(minus_token, NumberExpression(11984.0)), UnaryExpression(minus_token, NumberExpression(11272.0)), NumberExpression(615.3))]]) 
         self._scheduler = Scheduler()
         self._scheduler.add_task(Task())
-        #self._scheduler.add_task(Task(ip=3))
-
-        self.test_program = [
-            Instruction(InstructionKind.jump, 1),
-            Instruction(InstructionKind.log_literal, [tok1]),
-            Instruction(InstructionKind.jump, -1),
-            goto_instr,
-            Instruction(InstructionKind.nop),
-        ]
-
         self.current_task = self._scheduler.get_current_task()
 
         # Every until loop condition must be checked for every vm step.
