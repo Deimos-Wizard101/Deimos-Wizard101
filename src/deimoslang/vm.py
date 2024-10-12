@@ -722,6 +722,7 @@ class VM:
             case InstructionKind.deimos_call:
                 #await self.run_waitfor(self.exec_deimos_call(instruction))
                 await self.exec_deimos_call(instruction)
+                self.current_task.ip += 1
             case _:
                 raise VMError(f"Unimplemented instruction: {instruction}")
         if self.current_task.ip >= len(self.program):
