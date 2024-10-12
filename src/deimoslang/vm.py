@@ -330,6 +330,10 @@ class VM:
                     return text.lower()
                 except (ValueError, MemoryReadError):
                     raise VMError(f'Cannot read window text from path: {path}')
+            case EvalKind.potioncount:
+                return await client.stats.potion_charge()
+            case EvalKind.max_potioncount:
+                return await client.stats.potion_max()
 
 
 

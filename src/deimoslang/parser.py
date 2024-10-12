@@ -317,6 +317,18 @@ class Parser:
                 self.i += 1
                 text: str = self.expect_consume(TokenKind.string).value # type: ignore
                 result.data = [ExprKind.tracking_goal, text.lower()]
+            case TokenKind.command_expr_potion_count:
+                self.i += 1
+                num = self.expect_consume_any([TokenKind.number, TokenKind.percent])
+                target = NumberExpression(num.value)
+
+                if num.kind == TokenKind.percent:
+                    evaluated = DivideExpression(Eval(EvalKind.potioncount), Eval(EvalKind.max_potioncount))
+                else:
+                    evaluated = Eval(EvalKind.potioncount)
+
+                # target == evaluated
+                return self.gen_equivalent_expression(target, evaluated, player_selector)
 
             case _:
                 return self.parse_unary_expression()
