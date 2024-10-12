@@ -173,7 +173,7 @@ class VM:
                     elif not await window.is_control_grayed():
                         return False
                 return True
-            case ExprKind.in_range:
+            case ExprKind.in_range: # NOTE: if client is playing as pet, they are counted as an entity
                 data = [await c.client_object.global_id_full() for c in clients]
                 target = expression.command.data[1]
                 for client in clients:
