@@ -517,11 +517,16 @@ class VM:
                         if len(args) > 0:
                             health_num: float = await self.eval(args[0], client) # type: ignore
                             mana_num: float = await self.eval(args[1], client) # type: ignore
-                            async with client.mouse_handler:
-                                await client.use_potion_if_needed(int(health_num), int(mana_num))
+                            async def _proxy():
+                                async with client.mouse_handler:
+                                    await client.use_potion_if_needed(int(health_num), int(mana_num))
+                            tg.create_task(_proxy())
+
                         else:
-                            async with client.mouse_handler:
-                                await client.use_potion()
+                            async def _proxy():
+                                async with client.mouse_handler:
+                                    await client.use_potion()
+                            tg.create_task(_proxy())
             case "buypotions":
                 args = instruction.data[2]
                 ifneeded = args[0]
