@@ -64,14 +64,7 @@ class ClickKind(Enum):
 
 class LogKind(Enum):
     eval = auto()
-    window = auto()
     literal = auto()
-    bagcount = auto()
-    mana = auto()
-    health = auto()
-    gold = auto()
-    potioncount = auto()
-    playercount = auto()
 
 class ExprKind(Enum):
     window_visible = auto()
