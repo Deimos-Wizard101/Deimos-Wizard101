@@ -517,9 +517,16 @@ class VM:
                         if len(args) > 0:
                             health_num: float = await self.eval(args[0], client) # type: ignore
                             mana_num: float = await self.eval(args[1], client) # type: ignore
-                            tg.create_task(client.use_potion_if_needed(int(health_num), int(mana_num)))
+                            async def _proxy():
+                                async with client.mouse_handler:
+                                    await client.use_potion_if_needed(int(health_num), int(mana_num))
+                            tg.create_task(_proxy())
+
                         else:
-                            tg.create_task(client.use_potion())
+                            async def _proxy():
+                                async with client.mouse_handler:
+                                    await client.use_potion()
+                            tg.create_task(_proxy())
             case "buypotions":
                 args = instruction.data[2]
                 ifneeded = args[0]
@@ -548,10 +555,7 @@ class VM:
                             case ClickKind.window:
                                 path = args[1]
                                 async def proxy(client: SprintyClient, path: list):
-                                    window = await get_window_from_path(client.root_window, path)
-                                    if window:
-                                        async with client.mouse_handler:
-                                            await client.mouse_handler.click_window(window)
+                                    await click_window_by_path(client, path)
                                 tg.create_task(proxy(client, path))
                             case _:
                                 raise VMError(f"Unimplemented click kind: {instruction}")
@@ -728,7 +732,6 @@ class VM:
         if self.current_task.ip >= len(self.program):
             self.current_task.running = False
         if not True in [t.running for t in self._scheduler.tasks] or not self.running:
-            print("STOPPING...")
             self.stop()
         else:
             self._scheduler.switch_task()
