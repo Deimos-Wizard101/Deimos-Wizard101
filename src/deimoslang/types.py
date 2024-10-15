@@ -48,6 +48,8 @@ class EvalKind(Enum):
     windowtext = auto()
     potioncount = auto()
     max_potioncount = auto()
+    playercount = auto()
+    max_playercount = auto()
 
 class WaitforKind(Enum):
     dialog = auto()
@@ -61,12 +63,15 @@ class ClickKind(Enum):
     position = auto()
 
 class LogKind(Enum):
+    eval = auto()
     window = auto()
     literal = auto()
     bagcount = auto()
     mana = auto()
     health = auto()
     gold = auto()
+    potioncount = auto()
+    playercount = auto()
 
 class ExprKind(Enum):
     window_visible = auto()

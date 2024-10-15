@@ -69,6 +69,8 @@ class TokenKind(Enum):
     command_expr_in_zone = auto()
     command_expr_same_zone = auto()
     command_expr_playercount = auto()
+    command_expr_playercountabove = auto()
+    command_expr_playercountbelow = auto()
     command_expr_tracking_quest = auto()
     command_expr_tracking_goal = auto()
     command_expr_loading = auto()
@@ -92,6 +94,8 @@ class TokenKind(Enum):
     command_expr_same_place = auto()
     command_expr_window_text = auto()
     command_expr_potion_count = auto()
+    command_expr_potion_countabove = auto()
+    command_expr_potion_countbelow = auto()
     command_expr_has_quest = auto()
 
     colon = auto() # :
@@ -387,6 +391,10 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_same_zone, full)
                                     case "playercount" | "clientcount":
                                         put_simple(TokenKind.command_expr_playercount, full)
+                                    case "playercountabove" | "clientcountabove":
+                                        put_simple(TokenKind.command_expr_playercountabove, full)
+                                    case "playercountbelow" | "clientcountbelow":
+                                        put_simple(TokenKind.command_expr_playercountbelow, full)
                                     case "trackingquest":
                                         put_simple(TokenKind.command_expr_tracking_quest, full)
                                     case "trackinggoal":
@@ -431,6 +439,10 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_window_text, full)
                                     case "potioncount":
                                         put_simple(TokenKind.command_expr_potion_count, full)
+                                    case "potioncountabove":
+                                        put_simple(TokenKind.command_expr_potion_countabove, full)
+                                    case "potioncountbelow":
+                                        put_simple(TokenKind.command_expr_potion_countbelow, full)
                                     case "hasquest":
                                         put_simple(TokenKind.command_expr_has_quest, full)
                                     case "inrange":

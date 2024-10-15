@@ -386,6 +386,10 @@ class VM:
                     return text.lower()
                 except (ValueError, MemoryReadError):
                     raise VMError(f'Cannot read window text from path: {path}')
+            case EvalKind.playercount:
+                return len(self._clients)
+            case EvalKind.max_playercount:
+                return 4 # NOTE: arbitrary value used for percentage
             case EvalKind.potioncount:
                 return await client.stats.potion_charge()
             case EvalKind.max_potioncount:
@@ -655,41 +659,22 @@ class VM:
                 s = " ".join(strs)
                 logger.debug(s)
                 self.current_task.ip += 1
-            case InstructionKind.log_window:
+            case InstructionKind.log_eval:
                 assert type(instruction.data) == list
                 clients = self._select_players(instruction.data[0])
+                lhs = instruction.data[1][0]
+                rhs = None
+                if len(instruction.data[1]) > 1:
+                    rhs = instruction.data[1][1]
                 for client in clients:
-                    text = await self.eval(instruction.data[1], client)
-                    logger.debug(f"{client.title} - {text}")
+                    current = await self.eval(lhs, client)
+                    total = None
+                    if rhs:
+                        total = await self.eval(rhs, client)
+                        logger.debug(f"{client.title} - {current}/{total}")
+                    else:
+                        logger.debug(f"{client.title} - {current}")
                 self.current_task.ip += 1
-            case InstructionKind.log_bagcount:
-                assert type(instruction.data) == list
-                clients: list[SprintyClient] = self._select_players(instruction.data[0])
-                for client in clients:
-                    bag_space = await client.backpack_space()
-                    logger.debug(f'{client.title} - {bag_space[0]}/{bag_space[1]}')
-                self.current_task.ip += 1
-            case InstructionKind.log_health:
-                assert type(instruction.data) == list
-                clients: list[SprintyClient] = self._select_players(instruction.data[0])
-                for client in clients:
-                    logger.debug(f'{client.title} - {await client.stats.current_hitpoints()}/{await client.stats.max_hitpoints()}')
-                self.current_task.ip += 1
-
-            case InstructionKind.log_mana:
-                assert type(instruction.data) == list
-                clients: list[SprintyClient] = self._select_players(instruction.data[0])
-                for client in clients:
-                    logger.debug(f'{client.title} - {await client.stats.current_mana()}/{await client.stats.max_mana()}')
-                self.current_task.ip += 1
-
-            case InstructionKind.log_gold:
-                assert type(instruction.data) == list
-                clients: list[SprintyClient] = self._select_players(instruction.data[0])
-                for client in clients:
-                    logger.debug(f'{client.title} - {await client.stats.current_gold()}/{await client.stats.base_gold_pouch()}')
-                self.current_task.ip += 1
-
             case InstructionKind.label | InstructionKind.nop:
                 self.current_task.ip += 1
 
