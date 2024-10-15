@@ -304,9 +304,9 @@ class VM:
             case StringExpression():
                 return expression.string
             case StrFormatExpression():
-                format_str = expression.string
+                format_str = expression.format_str
                 values = []
-                for eval in expression.evals:
+                for eval in expression.values:
                     result = await self.eval(eval, client)
                     values.append(result)
                 return format_str % tuple(values)
@@ -697,7 +697,7 @@ class VM:
                 yaw = instruction.data[1]
                 async with TaskGroup() as tg:
                     for client in clients:
-                        tg.create_task(client.body.write_yaw(yaw));
+                        tg.create_task(client.body.write_yaw(yaw))
                 self.current_task.ip += 1
             case InstructionKind.load_playstyle:
                 logger.debug("Loading playstyle")

@@ -151,12 +151,12 @@ class StringExpression(Expression):
         return f"String({self.string})"
 
 class StrFormatExpression(Expression):
-    def __init__(self, string:str, *args):
-        self.string = string;
-        self.evals = args;
+    def __init__(self, format_str: str, *args):
+        self.format_str = format_str
+        self.values = args
 
     def __repr__(self) -> str:
-        return f"StrFormat({self.string}, {self.evals})"
+        return f"StrFormat({self.format_str}, {self.values})"
 
 class UnaryExpression(Expression):
     def __init__(self, operator: Token, expr: Expression):
