@@ -303,6 +303,13 @@ class VM:
                         raise VMError(f"Unimplemented unary expression: {expression}")
             case StringExpression():
                 return expression.string
+            case StrFormatExpression():
+                format_str = expression.string
+                values = []
+                for eval in expression.evals:
+                    result = await self.eval(eval, client)
+                    values.append(result)
+                return format_str % tuple(values)
             case KeyExpression():
                 key = expression.key
                 if key not in Keycode.__members__:
@@ -662,17 +669,10 @@ class VM:
             case InstructionKind.log_eval:
                 assert type(instruction.data) == list
                 clients = self._select_players(instruction.data[0])
-                lhs = instruction.data[1][0]
-                rhs = None
-                if len(instruction.data[1]) > 1:
-                    rhs = instruction.data[1][1]
+                expr = instruction.data[1]
                 for client in clients:
-                    current = await self.eval(lhs, client)
-                    if rhs:
-                        total = await self.eval(rhs, client)
-                        logger.debug(f"{client.title} - {current}/{total}")
-                    else:
-                        logger.debug(f"{client.title} - {current}")
+                    string = await self.eval(expr, client)
+                    logger.debug(f"{client.title} - {string}")
                 self.current_task.ip += 1
             case InstructionKind.label | InstructionKind.nop:
                 self.current_task.ip += 1

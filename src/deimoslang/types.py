@@ -150,6 +150,14 @@ class StringExpression(Expression):
     def __repr__(self) -> str:
         return f"String({self.string})"
 
+class StrFormatExpression(Expression):
+    def __init__(self, string:str, *args):
+        self.string = string;
+        self.evals = args;
+
+    def __repr__(self) -> str:
+        return f"StrFormat({self.string}, {self.evals})"
+
 class UnaryExpression(Expression):
     def __init__(self, operator: Token, expr: Expression):
         self.operator = operator
