@@ -668,7 +668,6 @@ class VM:
                     rhs = instruction.data[1][1]
                 for client in clients:
                     current = await self.eval(lhs, client)
-                    total = None
                     if rhs:
                         total = await self.eval(rhs, client)
                         logger.debug(f"{client.title} - {current}/{total}")
