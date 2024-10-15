@@ -17,13 +17,6 @@ class InstructionKind(Enum):
     sleep = auto()
 
     log_literal = auto()
-    log_window = auto()
-    log_bagcount = auto()
-    log_mana = auto()
-    log_health = auto()
-    log_gold = auto()
-    log_playercount = auto()
-    log_potioncount = auto()
     log_eval = auto()
 
     jump = auto()
