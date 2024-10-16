@@ -49,7 +49,6 @@ class EvalKind(Enum):
     potioncount = auto()
     max_potioncount = auto()
     playercount = auto()
-    max_playercount = auto()
 
 class WaitforKind(Enum):
     dialog = auto()

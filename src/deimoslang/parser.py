@@ -569,7 +569,7 @@ class Parser:
                         result.data = [LogKind.eval, StrFormatExpression("potioncount: %d/%d", Eval(EvalKind.potioncount), Eval(EvalKind.max_potioncount))]
                     case TokenKind.command_expr_playercount:
                         self.i += 1
-                        result.data = [LogKind.eval, StrFormatExpression("playercount: %d/%d", Eval(EvalKind.playercount), Eval(EvalKind.max_playercount))]
+                        result.data = [LogKind.eval, StrFormatExpression("playercount: %d", Eval(EvalKind.playercount))]
                     case TokenKind.command_expr_window_text:
                         self.i += 1
                         window_path = self.parse_window_path()

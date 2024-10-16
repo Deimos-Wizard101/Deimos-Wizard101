@@ -395,8 +395,6 @@ class VM:
                     raise VMError(f'Cannot read window text from path: {path}')
             case EvalKind.playercount:
                 return len(self._clients)
-            case EvalKind.max_playercount:
-                return 4 # NOTE: arbitrary value used for percentage
             case EvalKind.potioncount:
                 return await client.stats.potion_charge()
             case EvalKind.max_potioncount:
