@@ -129,7 +129,7 @@ class Compiler:
                     case LogKind.eval:
                         self.emit(InstructionKind.log_eval, [com.player_selector, com.data[1]])
                     case LogKind.literal:
-                        self.emit(InstructionKind.log_literal, com.data[1:len(com.data)])
+                        self.emit(InstructionKind.log_literal, com.data[1])
                     case _:
                         raise CompilerError(f"Unimplemented log kind: {com}")
 

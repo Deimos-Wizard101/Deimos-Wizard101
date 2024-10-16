@@ -653,18 +653,8 @@ class VM:
                         break
                 self.current_task.ip += 1
             case InstructionKind.log_literal:
-                assert type(instruction.data) == list
-                strs = []
-                for x in instruction.data:
-                    match x.kind:
-                        case TokenKind.string:
-                            strs.append(x.value)
-                        case TokenKind.identifier:
-                            strs.append(x.literal)
-                        case _:
-                            raise VMError(f"Unable to log: {x}")
-                s = " ".join(strs)
-                logger.debug(s)
+                assert(type(instruction.data)==StringExpression)
+                logger.debug(await self.eval(instruction.data))
                 self.current_task.ip += 1
             case InstructionKind.log_eval:
                 assert type(instruction.data) == list

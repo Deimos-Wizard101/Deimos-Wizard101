@@ -296,40 +296,28 @@ class Parser:
                     return SelectorGroup(player_selector, EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(target.value.lower())))
             case TokenKind.command_expr_playercount:
                 self.i += 1
-                num = self.expect_consume_any([TokenKind.number, TokenKind.percent])
+                num = self.expect_consume(TokenKind.number)
                 assert(num.value!=None)
                 target = NumberExpression(num.value)
-
-                if num.kind == TokenKind.percent:
-                    evaluated = DivideExpression(Eval(EvalKind.playercount), Eval(EvalKind.max_playercount))
-                else:
-                    evaluated = Eval(EvalKind.playercount)
+                evaluated = Eval(EvalKind.playercount)
 
                 # target == evaluated
                 return self.gen_equivalent_expression(target, evaluated, player_selector)
             case TokenKind.command_expr_playercountabove:
                 self.i += 1
-                num = self.expect_consume_any([TokenKind.number, TokenKind.percent])
+                num = self.expect_consume(TokenKind.number)
                 assert(num.value!=None)
                 target = NumberExpression(num.value)
-
-                if num.kind == TokenKind.percent:
-                    evaluated = DivideExpression(Eval(EvalKind.playercount), Eval(EvalKind.max_playercount))
-                else:
-                    evaluated = Eval(EvalKind.playercount)
+                evaluated = Eval(EvalKind.playercount)
 
                 # evaluated_value > target_value
                 return self.gen_greater_expression(evaluated, target, player_selector)
             case TokenKind.command_expr_playercountbelow:
                 self.i += 1
-                num = self.expect_consume_any([TokenKind.number, TokenKind.percent])
+                num = self.expect_consume(TokenKind.number)
                 assert(num.value!=None)
                 target = NumberExpression(num.value)
-
-                if num.kind == TokenKind.percent:
-                    evaluated = DivideExpression(Eval(EvalKind.playercount), Eval(EvalKind.max_playercount))
-                else:
-                    evaluated = Eval(EvalKind.playercount)
+                evaluated = Eval(EvalKind.playercount)
 
                 # target > evaluated
                 return self.gen_greater_expression(target, evaluated, player_selector)
@@ -546,13 +534,16 @@ class Parser:
                 kind = self.tokens[self.i].kind
                 result.kind = CommandKind.log
                 def print_literal():
-                    result.data = [LogKind.literal]
+                    final_str = ""
                     while self.tokens[self.i].kind != TokenKind.END_LINE:
                         tok = self.tokens[self.i]
-                        if tok.kind != TokenKind.string:
-                            tok.kind = TokenKind.identifier
-                        result.data.append(tok)
+                        match tok.kind:
+                            case TokenKind.string:
+                                final_str += f"{tok.value} "
+                            case _:
+                                final_str += f"{tok.literal} "
                         self.i += 1
+                    result.data = [LogKind.literal, StringExpression(final_str)]
                 match kind:
                     case TokenKind.identifier:
                         if self.tokens[self.i].literal == "window":
