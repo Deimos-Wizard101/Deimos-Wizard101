@@ -16,8 +16,8 @@ class InstructionKind(Enum):
     kill = auto()
     sleep = auto()
 
-    log_literal = auto()
-    log_eval = auto()
+    log_single = auto()
+    log_multi = auto()
 
     jump = auto()
     jump_if = auto()
@@ -126,10 +126,10 @@ class Compiler:
             case CommandKind.log:
                 kind = com.data[0]
                 match kind:
-                    case LogKind.eval:
-                        self.emit(InstructionKind.log_eval, [com.player_selector, com.data[1]])
-                    case LogKind.literal:
-                        self.emit(InstructionKind.log_literal, com.data[1])
+                    case LogKind.multi:
+                        self.emit(InstructionKind.log_multi, [com.player_selector, com.data[1]])
+                    case LogKind.single:
+                        self.emit(InstructionKind.log_single, com.data[1])
                     case _:
                         raise CompilerError(f"Unimplemented log kind: {com}")
 

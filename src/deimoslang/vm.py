@@ -328,8 +328,7 @@ class VM:
                 right = await self.eval(expression.rhs, client)
                 return (left > right) #type: ignore
             case Eval():
-                assert(client != None)
-                return await self._eval_expression(expression, client)
+                return await self._eval_expression(expression, client) #type: ignore
             case SelectorGroup():
                 players = self._select_players(expression.players)
                 expr = expression.expr
@@ -642,6 +641,7 @@ class VM:
                     stack_size=len(self.current_task.stack)
                 ))
                 self.current_task.ip += 1
+
             case InstructionKind.exit_until:
                 for i in range(len(self._until_infos) - 1, -1, -1):
                     info = self._until_infos[i]
@@ -650,11 +650,13 @@ class VM:
                         self.current_task.stack = self.current_task.stack[:info.stack_size]
                         break
                 self.current_task.ip += 1
-            case InstructionKind.log_literal:
-                assert(type(instruction.data)==StringExpression)
+
+            case InstructionKind.log_single:
+                assert(isinstance(instruction.data, Expression))
                 logger.debug(await self.eval(instruction.data))
                 self.current_task.ip += 1
-            case InstructionKind.log_eval:
+
+            case InstructionKind.log_multi:
                 assert type(instruction.data) == list
                 clients = self._select_players(instruction.data[0])
                 expr = instruction.data[1]
@@ -662,6 +664,7 @@ class VM:
                     string = await self.eval(expr, client)
                     logger.debug(f"{client.title} - {string}")
                 self.current_task.ip += 1
+
             case InstructionKind.label | InstructionKind.nop:
                 self.current_task.ip += 1
 

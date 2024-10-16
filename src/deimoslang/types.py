@@ -62,8 +62,8 @@ class ClickKind(Enum):
     position = auto()
 
 class LogKind(Enum):
-    eval = auto()
-    literal = auto()
+    multi = auto()
+    single = auto()
 
 class ExprKind(Enum):
     window_visible = auto()
