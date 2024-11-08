@@ -142,10 +142,10 @@ class Compiler:
                 # copy the original data to split inverted waitfor in two
                 non_inverted_com = copy.copy(com)
                 data1 = com.data[:]
-                data1[1] = False
+                data1[-1] = False
                 non_inverted_com.data = data1
                 self.emit_deimos_call(non_inverted_com)
-                if com.data[1] == True:
+                if com.data[-1] == True:
                     self.emit_deimos_call(com)
 
             case CommandKind.set_yaw:
