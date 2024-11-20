@@ -230,6 +230,7 @@ freecam_status = False
 hotkey_status = False
 questing_status = False
 auto_pet_status = False
+auto_potion_status = False
 side_quest_status = False
 tool_status = True
 original_client_locations = dict()
@@ -733,6 +734,21 @@ async def main():
 				logger.debug(f'Enabling auto pet.')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Auto PetStatus', 'Enabled')))
 				auto_pet_task = asyncio.create_task(try_task_coro(auto_pet_loop, walker.clients, True))
+
+
+	async def toggle_auto_potion_hotkey():
+		global auto_potion_status
+		
+		if not freecam_status:
+			auto_potion_status ^= True
+			
+			if auto_potion_status:
+				logger.debug(f'Enabling auto potion.')
+				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Auto PotionStatus', 'Enabled')))
+			else:
+				logger.debug(f'Disabling auto potion.')
+				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Auto PotionStatus', 'Disabled')))
+
 
 	# async def toggle_side_quests():
 	# 	global side_quest_status
@@ -1271,6 +1287,9 @@ async def main():
 									case GUIKeys.toggle_auto_pet:
 										await toggle_auto_pet_hotkey()
 
+									case GUIKeys.toggle_auto_potion:
+										await toggle_auto_potion_hotkey()
+
 									case GUIKeys.toggle_freecam:
 										await toggle_freecam_hotkey()
 
@@ -1624,7 +1643,7 @@ async def main():
 			if use_potions:
 				while True:
 					await asyncio.sleep(1)
-					if await is_free(client) and not any([freecam_status, client.sigil_status, client.questing_status]):
+					if auto_potion_status and await is_free(client) and not any([freecam_status, client.sigil_status, client.questing_status]):
 						await auto_potions(client, buy = False)
 
 		await asyncio.gather(*[async_potion(p) for p in walker.clients])
