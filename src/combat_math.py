@@ -2,9 +2,30 @@ from typing import List, Coroutine, Any
 import math
 from wizwalker import Client
 from wizwalker.combat import CombatMember
-from wizwalker.memory.memory_objects.spell_effect import DynamicSpellEffect, SpellEffects
+from wizwalker.memory.memory_objects.spell_effect import DynamicSpellEffect, SpellEffects, SpellEffect
 from src.combat_objects import get_total_effects, id_to_member, school_list_ids, opposite_school_ids
 from src.combat_utils import add_universal_stat
+from dataclasses import dataclass
+
+
+@dataclass
+class EffectAttributes:
+    """A non-async cache of spell effect attributes used in dmg calculations"""
+    effect_param: int
+    effect_type: SpellEffects
+    damage_type: int
+    spell_template_id: int
+    enchantment_spell_template_id: int
+
+    @classmethod
+    async def from_spell_effect(cls, effect: SpellEffect):
+        return cls(
+            await effect.effect_param(),
+            await effect.effect_type(),
+            await effect.damage_type(),
+            await effect.spell_template_id(),
+            await effect.enchantment_spell_template_id()
+        )
 
 
 async def real_stat(stat_func: Coroutine[Any, Any, List[float]], uni_func: Coroutine[Any, Any, float]) -> List[float]:
@@ -56,6 +77,24 @@ async def curve_resist(client: Client, member: CombatMember, resist: float) -> f
     return resist
 
 
+def spell_effect_stacking_id(spell_template_id: int, enchantment_spell_template_id: int) -> tuple:
+    """
+    Calculate a spell effect stacking ID by combining spell_template_id and enchantment_spell_template_id.
+    If two stacking IDs match, the spell effects do not stack.
+     - Aegis and Indemity don't stack with un-enchanted versions of the SpellEffect
+    """
+    enchantments_not_stackable_with_unenchanted = {
+        655113637,  # Indemity
+        85300353,  # Aegis
+        # TODO: Idemnity (Item Card)
+        # TODO: Aegis (Item Card)
+    }
+
+    if enchantment_spell_template_id in enchantments_not_stackable_with_unenchanted:
+        enchantment_spell_template_id = 0  # For stacking purposes, these are the same as unenchanted.
+    return (spell_template_id, enchantment_spell_template_id)
+
+
 async def base_damage_calculation_from_id(client: Client, members: List[CombatMember], caster_id: int, target_id: int, damage: float, damage_type: int, global_effect: DynamicSpellEffect = None, force_crit: bool = False) -> float:
     # Calculates damage from given base damage value, and is the basis for both exact and damage potential calculation. Works based off of IDs.
 
@@ -91,37 +130,15 @@ async def base_damage_calculation_from_id(client: Client, members: List[CombatMe
     target_blocks = await real_stat(target_stats.block_rating_by_school, target_stats.block_rating_all)
 
     # Break up caster hanging effect objects
-    caster_effect_atrs = []
-    for effect in caster_effects.copy():
+    caster_effect_atrs: List[EffectAttributes] = []
+    for effect in caster_effects:
         if effect:
-            curr_effect_atr = [
-                await effect.effect_param(),
-                await effect.effect_type(),
-                await effect.damage_type(),
-                await effect.spell_template_id(),
-                await effect.enchantment_spell_template_id()
-            ]
+            caster_effect_atrs.append(await EffectAttributes.from_spell_effect(effect))
 
-            caster_effect_atrs.append(curr_effect_atr)
-
-        else:
-            caster_effects.remove(effect)
-
-    target_effect_atrs = []
-    for effect in target_effects.copy():
+    target_effect_atrs: List[EffectAttributes] = []
+    for effect in target_effects:
         if effect:
-            curr_effect_atr = [
-                await effect.effect_param(),
-                await effect.effect_type(),
-                await effect.damage_type(),
-                await effect.spell_template_id(),
-                await effect.enchantment_spell_template_id()
-            ]
-
-            target_effect_atrs.append(curr_effect_atr)
-
-        else:
-            target_effects.remove(effect)
+            target_effect_atrs.append(await EffectAttributes.from_spell_effect(effect))
 
     initial_damage_type = damage_type
     initial_damage_type_index = school_list_ids[damage_type]
@@ -141,67 +158,67 @@ async def base_damage_calculation_from_id(client: Client, members: List[CombatMe
     damage += caster_flat_damages
 
     # outgoing hanging effects (caster)
-    seen_caster_effect_template_ids = set()
-    if caster_effects:
-        for i, effect in enumerate(caster_effects):
-            # only consider effects that matches the school or are universal
-            if caster_effect_atrs[i][3] not in seen_caster_effect_template_ids \
-                    and (caster_effect_atrs[i][2] == damage_type or caster_effect_atrs[i][2] == 80289):
-                seen_caster_effect_template_ids.add(caster_effect_atrs[i][3])
-                match caster_effect_atrs[i][1]:
-                    case SpellEffects.modify_outgoing_damage:
-                        damage *= (caster_effect_atrs[i][0] / 100) + 1
+    seen_caster_effect_stacking_ids = set()
+    for effect_atr in caster_effect_atrs:
+        stacking_id = spell_effect_stacking_id(effect_atr.spell_template_id, effect_atr.enchantment_spell_template_id)
+        # only consider effects that matches the school or are universal
+        if stacking_id not in seen_caster_effect_stacking_ids \
+                and (effect_atr.damage_type == damage_type or effect_atr.damage_type == 80289):
+            seen_caster_effect_stacking_ids.add(stacking_id)
+            match effect_atr.effect_type:
+                case SpellEffects.modify_outgoing_damage:
+                    damage *= (effect_atr.effect_param / 100) + 1
 
-                    case SpellEffects.modify_outgoing_damage_flat:
-                        damage += caster_effect_atrs[i][0]
+                case SpellEffects.modify_outgoing_damage_flat:
+                    damage += effect_atr.effect_param
 
-                    case SpellEffects.modify_outgoing_armor_piercing:
-                        caster_pierce += caster_effect_atrs[i][0]
+                case SpellEffects.modify_outgoing_armor_piercing:
+                    caster_pierce += effect_atr.effect_param
 
-                    case SpellEffects.modify_outgoing_damage_type:
-                        damage_type = caster_effect_atrs[i][0]
+                case SpellEffects.modify_outgoing_damage_type:
+                    damage_type = effect_atr.effect_param
 
-                    case _:
-                        pass
+                case _:
+                    pass
 
     # incoming hanging effects (target)
-    seen_target_effect_template_ids = set()
-    if target_effects:
-        for i, effect in enumerate(target_effects):
-            if target_effect_atrs[i][2] not in seen_target_effect_template_ids \
-                    and (target_effect_atrs[i][2] == damage_type or target_effect_atrs[i][2] == 80289):
-                seen_target_effect_template_ids.add(target_effect_atrs[i][3])
-                match target_effect_atrs[i][1]:
-                    # traps/shields, and pierce handling
-                    case SpellEffects.modify_incoming_damage:
-                        ward_param = target_effect_atrs[i][0]
-                        if ward_param < 0:
-                            ward_param += caster_pierce
-                            caster_pierce += target_effect_atrs[i][0]
-                            if ward_param > 0:
-                                ward_param = 0
-                            if caster_pierce < 0:
-                                caster_pierce = 0
-                        damage *= (ward_param / 100) + 1
+    seen_target_effect_stacking_ids = set()
+    for effect_atr in target_effect_atrs:
+        stacking_id = spell_effect_stacking_id(effect_atr.spell_template_id, effect_atr.enchantment_spell_template_id)
+        if stacking_id not in seen_target_effect_stacking_ids \
+                and (effect_atr.damage_type == damage_type or effect_atr.damage_type == 80289):
+            seen_target_effect_stacking_ids.add(stacking_id)
+            match effect_atr.effect_type:
+                # traps/shields, and pierce handling
+                case SpellEffects.modify_incoming_damage:
+                    ward_param = effect_atr.effect_param
+                    if ward_param < 0:
+                        ward_param += caster_pierce
+                        caster_pierce += effect_atr.effect_param
+                        if ward_param > 0:
+                            ward_param = 0
+                        if caster_pierce < 0:
+                            caster_pierce = 0
+                    damage *= (ward_param / 100) + 1
 
-                    case SpellEffects.intercept:
-                        damage *= (target_effect_atrs[i][0] / 100) + 1
+                case SpellEffects.intercept:
+                    damage *= (effect_atr.effect_param / 100) + 1
 
-                    case SpellEffects.modify_incoming_damage_flat:
-                        damage += target_effect_atrs[i][0]
+                case SpellEffects.modify_incoming_damage_flat:
+                    damage += effect_atr.effect_param
 
-                    case SpellEffects.absorb_damage:
-                        damage += target_effect_atrs[i][0]
+                case SpellEffects.absorb_damage:
+                    damage += effect_atr.effect_param
 
-                    case SpellEffects.modify_incoming_armor_piercing:
-                        caster_pierce += target_effect_atrs[i][0]
+                case SpellEffects.modify_incoming_armor_piercing:
+                    caster_pierce += effect_atr.effect_param
 
-                    # prism handling (final damage type is the effect param)
-                    case SpellEffects.modify_incoming_damage_type:
-                        damage_type = target_effect_atrs[i][0]
+                # prism handling (final damage type is the effect param)
+                case SpellEffects.modify_incoming_damage_type:
+                    damage_type = effect_atr.effect_param
 
-                    case _:
-                        pass
+                case _:
+                    pass
 
     final_damage_type = damage_type
     final_damage_type_index = school_list_ids[final_damage_type]
