@@ -198,6 +198,14 @@ async def parse_command(clients: List[Client], command_str: str):
 
                                 await asyncio.gather(*[client.teleport(xyz) for client, xyz in zip(clients, xyzs)])
 
+                case 'sync' | 'xyzsync':
+                    # Syncs all client locations to the specifieds clients location
+                    for p in all_clients:
+                        if p.title == split_command[2]:
+                            client_location = await p.body.position()
+                            await asyncio.gather(*[client.teleport(client_location) for client in clients])
+                            break
+
                 case 'walkto' | 'goto':
                     # Walks in a straight line to a given XYZ (Z agnostic)
                     xyzs = []
