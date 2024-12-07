@@ -198,7 +198,7 @@ async def parse_command(clients: List[Client], command_str: str):
 
                                 await asyncio.gather(*[client.teleport(xyz) for client, xyz in zip(clients, xyzs)])
 
-                case 'sync' | 'xyzsync':
+                case 'sync' | 'xyzsync' | 'positionsync':
                     # Syncs all client locations to the specifieds clients location
                     for p in all_clients:
                         if p.title == split_command[2]:
