@@ -60,6 +60,7 @@ class TokenKind(Enum):
     command_teleport = auto()
     command_friendtp = auto()
     command_entitytp = auto()
+    command_sync = auto()
     command_tozone = auto()
     command_load_playstyle = auto()
     command_set_yaw = auto()
@@ -373,6 +374,8 @@ class Tokenizer:
                                         put_simple(TokenKind.command_friendtp, full)
                                     case "entitytp" | "entityteleport":
                                         put_simple(TokenKind.command_entitytp, full)
+                                    case "sync" | "xyzsync":
+                                        put_simple(TokenKind.command_sync, full)
                                     case "tozone":
                                         put_simple(TokenKind.command_tozone, full)
                                     case "loadplaystyle":

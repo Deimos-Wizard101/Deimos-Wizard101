@@ -690,6 +690,12 @@ class Parser:
                 else:
                     result.data = [TeleportKind.entity_vague, self.consume_any_ident().ident]
                 self.end_line()
+            case TokenKind.command_sync:
+                result.kind = CommandKind.teleport
+                self.i += 1
+                num_tok = self.consume_optional(TokenKind.player_num)
+                result.data = [TeleportKind.client_num, num_tok.value]
+                self.end_line()
             case TokenKind.command_tozone:
                 result.kind = CommandKind.tozone
                 self.i += 1
