@@ -374,7 +374,7 @@ class Tokenizer:
                                         put_simple(TokenKind.command_friendtp, full)
                                     case "entitytp" | "entityteleport":
                                         put_simple(TokenKind.command_entitytp, full)
-                                    case "sync" | "xyzsync":
+                                    case "sync" | "xyzsync" | "positionsync":
                                         put_simple(TokenKind.command_sync, full)
                                     case "tozone":
                                         put_simple(TokenKind.command_tozone, full)
