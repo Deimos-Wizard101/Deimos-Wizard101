@@ -1248,8 +1248,18 @@ async def main():
 			while True:
 				if foreground_client:
 					current_zone = await foreground_client.zone_name()
-					current_pos = await foreground_client.body.position()
-					current_rotation = await foreground_client.body.orientation()
+					try:
+						parent = await foreground_client.client_object.parent()
+						if await parent.object_name() is not None:
+							children = await parent.children()
+							pet_object = children[0]
+							current_pos = await pet_object.location()
+							current_rotation = await pet_object.orientation()
+						else:
+							current_pos = await foreground_client.body.position()
+							current_rotation = await foreground_client.body.orientation()
+					except:
+						pass
 
 					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Title', f'Client: {foreground_client.title}')))
 					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Zone', f'Zone: {current_zone}')))
