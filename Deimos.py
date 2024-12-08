@@ -1258,7 +1258,7 @@ async def main():
 						else:
 							current_pos = await foreground_client.body.position()
 							current_rotation = await foreground_client.body.orientation()
-					except:
+					except wizwalker.errors.MemoryReadError:
 						pass
 
 					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Title', f'Client: {foreground_client.title}')))
