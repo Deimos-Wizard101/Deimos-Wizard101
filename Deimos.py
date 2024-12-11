@@ -32,7 +32,7 @@ from src.teleport_math import navmap_tp, calc_Distance
 from src.questing import Quester
 from src.sigil import Sigil
 from src.utils import index_with_str, is_visible_by_path, is_free, auto_potions, auto_potions_force_buy, to_world, collect_wisps_with_limit, try_task_coro, read_webpage, override_wiz_install_using_handle#, assign_pet_level
-from src.paths import advance_dialog_path, decline_quest_path
+from src.paths import advance_dialog_path, decline_quest_path, play_button_path
 import PySimpleGUI as gui
 import pyperclip
 from src.sprinty_client import SprintyClient
@@ -1228,6 +1228,14 @@ async def main():
 
 
 	async def handle_gui():
+
+		async def handle_coord_error(error: wizwalker.errors.MemoryReadError):
+			if await is_visible_by_path(foreground_client, play_button_path):
+				return
+			if await foreground_client.is_loading():
+				return
+			raise wizwalker.errors.MemoryReadError(f"{error} (Occurred in zone: {current_zone})") from error
+
 		if show_gui:
 			global gui_send_queue
 			global bot_task
@@ -1248,9 +1256,19 @@ async def main():
 			while True:
 				if foreground_client:
 					current_zone = await foreground_client.zone_name()
-					current_pos = await foreground_client.body.position()
-					current_rotation = await foreground_client.body.orientation()
-
+					try:
+						if parent := await foreground_client.client_object.parent():
+							if await parent.object_name() is not None:
+								children = await parent.children()
+								for pet_object in children:
+									current_pos = await pet_object.location()
+									current_rotation = await pet_object.orientation()
+							else:
+								current_pos = await foreground_client.body.position()
+								current_rotation = await foreground_client.body.orientation()
+					except wizwalker.errors.MemoryReadError as e:
+						await handle_coord_error(e)
+						
 					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Title', f'Client: {foreground_client.title}')))
 					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Zone', f'Zone: {current_zone}')))
 					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('x', f'X: {current_pos.x}')))
