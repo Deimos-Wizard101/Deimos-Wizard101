@@ -1,7 +1,6 @@
 from wizwalker import Client, MemoryReadError, XYZ
 from wizwalker.memory import DynamicClientObject
 from wizwalker.constants import Primitive
-from src.teleport_math import navmap_tp
 from typing import *
 
 
@@ -183,7 +182,7 @@ class SprintyClient():
 
 	async def tp_to_closest_by_vague_name(self, name: str, only_safe: bool = False, excluded_ids: Set[int] = None) -> bool:
 		if e := await self.find_closest_by_vague_name(name, only_safe, excluded_ids):
-			await self.client.navmap_tp(await e.location())
+			await self.client.teleport(await e.location())
 			return True
 		return False
 
