@@ -1234,6 +1234,8 @@ async def main():
 				return
 			if await foreground_client.is_loading():
 				return
+			if await foreground_client.zone_name() is None:
+				return
 			raise wizwalker.errors.MemoryReadError(f"{error} (Occurred in zone: {current_zone})") from error
 
 		if show_gui:
