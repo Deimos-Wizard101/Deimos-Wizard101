@@ -1,5 +1,6 @@
 from typing import Optional
 from enum import Enum, auto
+from copy import deepcopy
 
 from .tokenizer import Tokenizer, Token
 from .parser import *
@@ -14,6 +15,7 @@ class Scope:
     def __init__(self, parent: Optional["Scope"], is_block: bool):
         self.parent = parent
         self._syms: list[Symbol] = []
+        self._mixins: set[str] = set()
         self._unique_player_selectors: set[PlayerSelector] = set()
         self._active_vars: list[Symbol] = []
         self._cleaned_vars: set[Symbol] = set() # if all branching scopes agree on cleanup, do not clean up the same variables again
@@ -31,7 +33,7 @@ class Scope:
         return res
 
     # Only blocks require lookup for now. Variables are only used internally and the sym is always locally known
-    def lookup_block_by_name(self, literal: str) -> Symbol:
+    def lookup_block_by_name(self, literal: str) -> Symbol | None:
         for sym in reversed(self._syms):
             if sym.kind != SymbolKind.block:
                 continue
@@ -39,7 +41,14 @@ class Scope:
                 return sym
         if self.parent is not None:
             return self.parent.lookup_block_by_name(literal)
-        raise SemError(f"Unable to find symbol in scope: {literal}")
+        return None
+
+    def is_mixin(self, literal: str) -> bool:
+        if literal in self._mixins:
+            return True
+        if self.parent is not None:
+            return self.parent.is_mixin(literal)
+        return False
 
     def is_block_local_var(self, sym: Symbol) -> bool:
         cur = self
@@ -72,10 +81,11 @@ class Scope:
 
 class Analyzer:
     def __init__(self, stmts: list[Stmt]):
-        self.scope = Scope(parent=None, is_block=True)
+        self.scope = Scope(parent=None, is_block=False)
         self._next_sym_id = 0
         self._block_defs: list[BlockDefStmt] = []
         self._stmts = stmts
+        self._mixin_cache: dict[int, Symbol] = {} # {(block_sym, [mixed_syms]): mixed_block}
 
         self._block_nesting_level = 0
         self._loop_nesting_level = 0
@@ -98,6 +108,8 @@ class Analyzer:
         self._loop_nesting_level += 1
 
     def close_loop(self):
+        if len(self.scope._mixins) > 0:
+            raise SemError("Mixins are only allowed at the top level of a block")
         self.scope = self.scope.parent
         self._loop_nesting_level-=1
 
@@ -133,6 +145,59 @@ class Analyzer:
     def sem_expr(self, expr: Expression) -> Expression:
         return expr # TODO
 
+    def mix_block(self, stmt: BlockDefStmt, source_sym: Symbol) -> BlockDefStmt:
+        def _mix_stmt(stmt: Stmt, mixins: set[str]):
+            match stmt:
+                case StmtList():
+                    for inner in stmt.stmts:
+                        _mix_stmt(inner, mixins)
+                case CallStmt():
+                    if isinstance(stmt.name, IdentExpression):
+                        if stmt.name.ident in mixins:
+                            sym = self.scope.lookup_block_by_name(stmt.name.ident)
+                            if sym.defnode is None:
+                                # The target is unfinished. Trust that it will be valid in the future
+                                stmt.name = SymExpression(sym)
+                            else:
+                                assert isinstance(sym.defnode, BlockDefStmt)
+                                if len(sym.defnode.mixins) > 0:
+                                    raise SemError(f"Recursive mixins aren't allowed")
+                                if sym is None:
+                                    raise SemError(f"Unable to find symbol in scope: {stmt.name.ident}")
+                                stmt.name = SymExpression(sym)
+                        else:
+                            raise SemError(f"Undeclared identifer during mixin stage: {stmt.name.ident}")
+                    elif isinstance(stmt.name, SymExpression):
+                        assert isinstance(stmt.name.sym.defnode, BlockDefStmt)
+                        if len(stmt.name.sym.defnode.mixins) > 0:
+                            raise SemError(f"Recursive mixins aren't allowed")
+                    else:
+                        raise SemError(f"Invalid call target: {stmt.name}")
+                case WhileStmt():
+                    _mix_stmt(stmt.body, mixins)
+                case IfStmt():
+                    _mix_stmt(stmt.branch_true)
+                    _mix_stmt(stmt.branch_false)
+                case LoopStmt():
+                    _mix_stmt(stmt.body)
+                case UntilRegion():
+                    _mix_stmt(stmt.body)
+
+        mixed_syms: dict[str, Symbol] = {}
+        for m in stmt.mixins:
+            ms = self.scope.lookup_block_by_name(m)
+            if ms is None:
+                raise SemError(f"Unable to resolve mixin: {m}")
+            mixed_syms[m] = ms
+
+        assert isinstance(stmt.name, SymExpression)
+        key = hash((source_sym, frozenset(mixed_syms.values())))
+        self._mixin_cache[key] = stmt.name.sym
+
+        _mix_stmt(stmt.body, stmt.mixins)
+        stmt.mixins = set()
+        return stmt
+
     def sem_stmt(self, stmt: Stmt) -> Stmt:
         match stmt:
             case BlockDefStmt():
@@ -142,10 +207,12 @@ class Analyzer:
                 stmt.body.stmts.append(ReturnStmt())
                 self.open_block()
                 stmt.body = self.sem_stmt(stmt.body)
+                stmt.mixins = self.scope._mixins
                 self.close_block()
                 stmt.name = SymExpression(sym)
                 sym.defnode = stmt
-                self._block_defs.append(stmt)
+                if len(stmt.mixins) == 0:
+                    self._block_defs.append(stmt)
                 return None
             case StmtList():
                 res = []
@@ -160,8 +227,33 @@ class Analyzer:
                     sym = stmt.name.sym
                 else:
                     raise SemError(f"Malformed call: {stmt}")
-                stmt.name = SymExpression(sym)
-                return stmt
+                if self.scope.is_mixin(stmt.name.ident):
+                    return stmt # defer mixins until the last possible moment
+                else:
+                    if sym is None:
+                        raise SemError(f"Unable to find symbol in scope: {stmt.name.ident}")
+                    if sym.defnode is not None:
+                        assert isinstance(sym.defnode, BlockDefStmt)
+                        if len(sym.defnode.mixins) > 0:
+                            mixed_syms: dict[str, Symbol] = {}
+                            for m in sym.defnode.mixins:
+                                ms = self.scope.lookup_block_by_name(m)
+                                if ms is None:
+                                    raise SemError(f"Unable to resolve mixin: {m}")
+                                mixed_syms[m] = ms
+
+                            key = hash((sym, frozenset(mixed_syms.values())))
+                            if key in self._mixin_cache:
+                                sym = self._mixin_cache[key]
+                            else:
+                                mixed_sym = self.gen_block_sym(f":mixed_{stmt.name.ident}")
+                                mixed_sym.defnode = deepcopy(sym.defnode)
+                                mixed_sym.defnode.name = SymExpression(mixed_sym)
+                                self.mix_block(mixed_sym.defnode, sym)
+                                sym = mixed_sym
+                                self._block_defs.append(sym.defnode)
+                    stmt.name = SymExpression(sym)
+                    return stmt
             case CommandStmt():
                 self.scope._unique_player_selectors.add(stmt.command.player_selector)
                 return stmt
@@ -235,6 +327,11 @@ class Analyzer:
                 return stmt
             case DefVarStmt() | WriteVarStmt() | KillVarStmt():
                 return stmt
+            case MixinStmt():
+                if not self.scope.is_block:
+                    raise SemError("Mixin is only allowed inside blocks")
+                self.scope._mixins.add(stmt.name)
+                return None
             case _:
                 raise SemError(f"Unhandled statement type: {stmt}")
         raise SemError(f"Statement fell through: {stmt}")

@@ -789,6 +789,11 @@ class Parser:
                 self.i += 1
                 self.end_line()
                 return ReturnStmt()
+            case TokenKind.keyword_mixin:
+                self.i += 1
+                ident = self.consume_any_ident()
+                self.end_line()
+                return MixinStmt(ident.ident)
             case _:
                 return CommandStmt(self.parse_command())
 
