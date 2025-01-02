@@ -368,6 +368,10 @@ class VM:
                 return await client.stats.current_mana()
             case EvalKind.max_mana:
                 return await client.stats.max_mana()
+            case EvalKind.energy:
+                return await client.current_energy()
+            case EvalKind.max_energy:
+                return await client.stats.energy_max()
             case EvalKind.bagcount:
                 return (await client.backpack_space())[0]
             case EvalKind.max_bagcount:

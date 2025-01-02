@@ -204,6 +204,43 @@ class Parser:
                 else:
                     evaluated = Eval(EvalKind.mana)
 
+            case TokenKind.command_expr_energy_above:
+                self.i += 1
+                num = self.expect_consume_any([TokenKind.number, TokenKind.percent])
+                assert(num.value!=None)
+                target = NumberExpression(num.value)
+
+                if num.kind == TokenKind.percent:
+                    evaluated = DivideExpression(Eval(EvalKind.energy), Eval(EvalKind.energy))
+                else:
+                    evaluated = Eval(EvalKind.energy)
+
+                # evaluated > target
+                return self.gen_greater_expression(evaluated, target, player_selector)
+            case TokenKind.command_expr_energy_below:
+                self.i += 1
+                num = self.expect_consume_any([TokenKind.number, TokenKind.percent])
+                assert(num.value!=None)
+                target = NumberExpression(num.value)
+
+                if num.kind == TokenKind.percent:
+                    evaluated = DivideExpression(Eval(EvalKind.energy), Eval(EvalKind.max_energy))
+                else:
+                    evaluated = Eval(EvalKind.energy)
+
+                # target > evaluated
+                return self.gen_greater_expression(target, evaluated, player_selector)
+            case TokenKind.command_expr_energy:
+                self.i += 1
+                num = self.expect_consume_any([TokenKind.number, TokenKind.percent])
+                assert(num.value!=None)
+                target = NumberExpression(num.value)
+
+                if num.kind == TokenKind.percent:
+                    evaluated = DivideExpression(Eval(EvalKind.energy), Eval(EvalKind.max_energy))
+                else:
+                    evaluated = Eval(EvalKind.energy)
+                    
                 # target == evaluated
                 return self.gen_equivalent_expression(target, evaluated, player_selector)
             case TokenKind.command_expr_bagcount_above:
@@ -558,6 +595,9 @@ class Parser:
                     case TokenKind.command_expr_mana:
                         self.i += 1
                         result.data = [LogKind.multi, StrFormatExpression("mana: %d/%d", Eval(EvalKind.mana), Eval(EvalKind.max_mana))]
+                    case TokenKind.command_expr_energy:
+                        self.i += 1
+                        result.data = [LogKind.multi, StrFormatExpression("energy: %d/%d", Eval(EvalKind.energy), Eval(EvalKind.max_energy))]
                     case TokenKind.command_expr_health:
                         self.i += 1
                         result.data = [LogKind.multi, StrFormatExpression("health: %d/%d", Eval(EvalKind.health), Eval(EvalKind.max_health))]

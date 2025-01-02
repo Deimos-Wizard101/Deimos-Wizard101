@@ -87,6 +87,9 @@ class TokenKind(Enum):
     command_expr_mana = auto()
     command_expr_mana_above = auto()
     command_expr_mana_below = auto()
+    command_expr_energy = auto()
+    command_expr_energy_above = auto()
+    command_expr_energy_below = auto()
     command_expr_in_range = auto()
     command_expr_gold = auto()
     command_expr_gold_above = auto()
@@ -422,6 +425,12 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_mana_above, full)
                                     case "mana":
                                         put_simple(TokenKind.command_expr_mana, full)
+                                    case "energybelow":
+                                        put_simple(TokenKind.command_expr_energy_below, full)
+                                    case "energyabove":
+                                        put_simple(TokenKind.command_expr_energy_above, full)
+                                    case "energy":
+                                        put_simple(TokenKind.command_expr_energy, full)
                                     case "bagcount":
                                         put_simple(TokenKind.command_expr_bagcount, full)
                                     case "bagcountbelow":
