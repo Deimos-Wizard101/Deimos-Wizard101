@@ -3,6 +3,7 @@ import gettext
 import queue
 import re
 import PySimpleGUI as gui
+import webbrowser
 from src.combat_objects import school_id_to_names
 from src.paths import wizard_city_dance_game_path
 from src.utils import assign_pet_level
@@ -103,6 +104,7 @@ class GUIKeys:
 	button_kill_bot = "buttonkillbot"
 	button_set_playstyles = "buttonsetplaystyles"
 	button_set_scale = "buttonsetscale"
+	button_open_gen_site = "buttonopengensite"
 
 
 class GUICommand:
@@ -216,7 +218,8 @@ def create_gui(gui_theme, gui_text_color, gui_button_color, tool_name, tool_vers
 		[gui.Text(dev_utils_notice, text_color=gui_text_color)],
 		[
 			hotkey_button(tl('Copy Entity List'), GUIKeys.copy_entity_list, True),
-			hotkey_button(tl('Copy UI Tree'), GUIKeys.copy_ui_tree, True)
+			hotkey_button(tl('Copy UI Tree'), GUIKeys.copy_ui_tree, True),
+			hotkey_button(tl('Open Path Generator'), GUIKeys.button_open_gen_site, True)
 		],
 		[
 			gui.Text(tl('Zone Name') + ':', text_color=gui_text_color), gui.InputText(size=(13, 1), key='ZoneInput'),
@@ -468,6 +471,10 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 						'Roll': camera_inputs[4],
 						'Pitch': camera_inputs[5],
 					}))
+
+			case GUIKeys.button_open_gen_site:
+				path_generator_url = "https://sirolaf.github.io/wiz101uipath_page/"
+				webbrowser.open_new_tab(path_generator_url)
 
 			case GUIKeys.button_set_distance:
 				distance_inputs = [inputs['CamDistanceInput'], inputs['CamMinInput'], inputs['CamMaxInput']]
