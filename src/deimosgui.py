@@ -54,7 +54,6 @@ class GUICommandType(Enum):
 	ShowUITreePopup = auto()
 	ShowEntityListPopup = auto()
 
-
 # TODO:
 # - inherit from StrEnum in 3.11 to make this nicer
 # - fix naming convention, it's inconsistent

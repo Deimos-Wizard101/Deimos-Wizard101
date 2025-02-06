@@ -553,9 +553,9 @@ async def auto_potions_force_buy(client: Client, mark: bool = False, minimum_man
                 await client.send_key(Keycode.PAGE_DOWN, 0.1)
         # Navigate to ravenwood
         await navigate_to_ravenwood(client)
-        await asyncio.sleep(3.0)
+        # Navigate to commons
         await navigate_to_commons_from_ravenwood(client)
-        await asyncio.sleep(3.0)
+        # Navigate to hilda brewer
         await navigate_to_potions(client)
         # Buy potions
         await buy_potions(client, recall=recall)
