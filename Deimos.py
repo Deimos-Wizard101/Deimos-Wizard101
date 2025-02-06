@@ -1351,8 +1351,16 @@ async def main():
 											for entity in entities:
 												entity_pos = await entity.location()
 												entity_name = await entity.object_name()
-												entities_info += f'{entity_name}, XYZ(x={entity_pos.x}, y={entity_pos.y}, z={entity_pos.z})\n'
+												entities_info += f'{entity_name}, XYZ({entity_pos.x}, {entity_pos.y}, {entity_pos.z})\n\n'
 											pyperclip.copy(entities_info)
+											with open('entity_list.txt', 'w') as file:
+												file.write(entities_info)
+
+											if entities_info:
+												logger.success("Available Nearby Entities:")
+												gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.ShowEntityListPopup, (entities_info)))
+											else:
+												logger.error("Failed to load Entity list. Please try again.")
 
 									case GUIKeys.copy_camera_position:
 										if foreground_client:
@@ -1370,11 +1378,10 @@ async def main():
 											pyperclip.copy(f'Orient({camera_pitch}, {camera_roll}, {camera_pitch})')
 
 									case GUIKeys.copy_ui_tree:
-										foreground: Client = foreground_client
 										if foreground_client:
+											foreground: Client = foreground_client
 											ui_tree = ''
 
-											# TODO: Put this function in utils, with a parent function that can return the string properly
 											async def get_ui_tree(window: Window, depth: int = 0, depth_symbol: str = '-', seperator: str = '\n'):
 												nonlocal ui_tree
 												ui_tree += f"{depth_symbol * depth} [{await window.name()}] {await window.maybe_read_type_name()}{seperator}"
@@ -1386,6 +1393,14 @@ async def main():
 
 											logger.debug(f'Copied UI Tree for client {foreground.title}')
 											pyperclip.copy(ui_tree)
+											with open('ui_tree.txt', 'w') as f:
+												f.write(ui_tree)
+
+											if ui_tree:
+												logger.success("Available UI Paths:")
+												gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.ShowUITreePopup, (ui_tree)))
+											else:
+												logger.error("Failed to load UI tree. Please try again.")
 
 									case GUIKeys.copy_stats:
 										if enemy_stats:
