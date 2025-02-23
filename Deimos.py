@@ -1260,7 +1260,7 @@ async def main():
 					current_zone = await foreground_client.zone_name()
 					try:
 						if parent := await foreground_client.client_object.parent():
-							if await parent.object_name() is not None:
+							if await parent.object_name() == "Player Object":
 								children = await parent.children()
 								for pet_object in children:
 									current_pos = await pet_object.location()
