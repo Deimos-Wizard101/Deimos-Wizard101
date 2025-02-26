@@ -534,6 +534,9 @@ async def is_potion_needed(client: Client, minimum_mana: int = 16):
         minimum_mana = client_level
     combined_minimum_mana = int(0.23 * max_mana) + minimum_mana
 
+    if max_health == 0:
+        return False
+
     if mana < combined_minimum_mana or float(health) / float(max_health) < 0.55:
         return True
     else:
