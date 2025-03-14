@@ -425,11 +425,21 @@ class VM:
                         case TeleportKind.entity_literal:
                             name = args[-1]
                             for client in clients:
-                                tg.create_task(client.tp_to_closest_by_name(name))
+                                async def tp_to_entity(client):
+                                    entity = await client.get_base_entity_by_name(name)
+                                    if entity:
+                                        pos = await entity.location()
+                                        await navmap_tp(client, pos)
+                                tg.create_task(tp_to_entity(client))
                         case TeleportKind.entity_vague:
                             vague = args[-1]
                             for client in clients:
-                                tg.create_task(client.tp_to_closest_by_vague_name(vague))
+                                async def tp_to_vague_entity(client):
+                                    entity = await client.find_closest_by_vague_name(vague)
+                                    if entity:
+                                        pos = await entity.location()
+                                        await navmap_tp(client, pos)
+                                tg.create_task(tp_to_vague_entity(client))
                         case TeleportKind.mob:
                             for client in clients:
                                 tg.create_task(client.tp_to_closest_mob())
