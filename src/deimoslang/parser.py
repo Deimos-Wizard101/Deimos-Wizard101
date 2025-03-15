@@ -724,11 +724,22 @@ class Parser:
             case TokenKind.command_entitytp:
                 result.kind = CommandKind.teleport
                 self.i += 1
+                
+                # Check for optional 'nav' parameter
+                nav_mode = False
+                if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier and self.tokens[self.i].literal.lower() == "nav":
+                    self.i += 1 
+                    nav_mode = True
+                
                 arg = self.consume_optional(TokenKind.string)
                 if arg is not None:
                     result.data = [TeleportKind.entity_literal, arg.value]
+                    if nav_mode:
+                        result.data.insert(1, "nav")
                 else:
                     result.data = [TeleportKind.entity_vague, self.consume_any_ident().ident]
+                    if nav_mode:
+                        result.data.insert(1, "nav")
                 self.end_line()
             case TokenKind.command_tozone:
                 result.kind = CommandKind.tozone
