@@ -146,8 +146,10 @@ class VM:
 
     async def _fetch_tracked_goal_text(self, client: SprintyClient) -> str:
         goal_txt = await get_quest_name(client)
+
         if '(' in goal_txt:
             goal_txt = goal_txt[:goal_txt.find("(")]
+        
         return goal_txt.lower().strip()
 
     async def _eval_command_expression(self, expression: CommandExpression):
@@ -424,12 +426,37 @@ class VM:
                                 tg.create_task(client.teleport(pos))
                         case TeleportKind.entity_literal:
                             name = args[-1]
+                            use_navmap = False
+                            # Check if [nav] option is present
+                            if len(args) > 2 and args[-2] == "nav":
+                                use_navmap = True
+                                name = args[-1]
                             for client in clients:
-                                tg.create_task(client.tp_to_closest_by_name(name))
+                                async def tp_to_entity(client):
+                                    entity = await client.get_base_entity_by_name(name)
+                                    if entity:
+                                        pos = await entity.location()
+                                        if use_navmap:
+                                            await navmap_tp(client, pos)
+                                        else:
+                                            await client.teleport(pos)
+                                tg.create_task(tp_to_entity(client))
                         case TeleportKind.entity_vague:
                             vague = args[-1]
+                            use_navmap = False
+                            if len(args) > 2 and args[-2] == "nav":
+                                use_navmap = True
+                                vague = args[-1]
                             for client in clients:
-                                tg.create_task(client.tp_to_closest_by_vague_name(vague))
+                                async def tp_to_vague_entity(client):
+                                    entity = await client.find_closest_by_vague_name(vague)
+                                    if entity:
+                                        pos = await entity.location()
+                                        if use_navmap:
+                                            await navmap_tp(client, pos)
+                                        else:
+                                            await client.teleport(pos)
+                                tg.create_task(tp_to_vague_entity(client))
                         case TeleportKind.mob:
                             for client in clients:
                                 tg.create_task(client.tp_to_closest_mob())
