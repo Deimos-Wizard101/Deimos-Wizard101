@@ -101,6 +101,7 @@ class TokenKind(Enum):
     command_expr_potion_countabove = auto()
     command_expr_potion_countbelow = auto()
     command_expr_has_quest = auto()
+    command_expr_has_yaw = auto()
 
     colon = auto() # :
     comma = auto()
@@ -459,6 +460,8 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_has_quest, full)
                                     case "inrange":
                                         put_simple(TokenKind.command_expr_in_range, full)
+                                    case "hasyaw":
+                                        put_simple(TokenKind.command_expr_has_yaw, full)
                                     case _:
                                         put_simple(TokenKind.identifier, full)
                             i = j

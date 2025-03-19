@@ -97,6 +97,7 @@ class ExprKind(Enum):
     window_disabled = auto()
     same_place = auto()
     in_range = auto()
+    has_yaw = auto()
 
 
 # TODO: Replace asserts
