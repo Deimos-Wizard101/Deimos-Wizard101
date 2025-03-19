@@ -134,12 +134,18 @@ class Command:
             return f"{self.kind.name}({params_str})"
         else:
             return f"{self.kind.name}({params_str}) @ {self.player_selector}"
-
-
+        
 
 class Expression:
     def __init__(self):
         pass
+
+class ListExpression(Expression):
+    def __init__(self, items: list[Expression]):
+        self.items = items
+
+    def __repr__(self) -> str:
+        return f"ListE({self.items})"
 
 class NumberExpression(Expression):
     def __init__(self, number: float | int):
