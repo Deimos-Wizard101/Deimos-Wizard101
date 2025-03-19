@@ -231,9 +231,6 @@ class Compiler:
                 self.prep_expression(expr.expr)
             case UnaryExpression():
                 self.prep_expression(expr.expr)
-            case ListExpression():
-                for item in expr.items:
-                    self.prep_expression(item)
             case NumberExpression() | StringExpression() | KeyExpression() | CommandExpression() | XYZExpression() | IdentExpression() | StackLocExpression() | Eval():
                 pass
             case _:
