@@ -444,7 +444,7 @@ class VM:
                         case TeleportKind.entity_literal:
                             name = args[-1]
                             use_navmap = False
-                            if len(args) > 2 and args[-2] == "nav":
+                            if len(args) > 2 and args[-2] == TeleportKind.nav:
                                 use_navmap = True
                                 name = args[-1]
                             for client in clients:
@@ -460,7 +460,7 @@ class VM:
                         case TeleportKind.entity_vague:
                             vague = args[-1]
                             use_navmap = False
-                            if len(args) > 2 and args[-2] == "nav":
+                            if len(args) > 2 and args[-2] == TeleportKind.nav:
                                 use_navmap = True
                                 vague = args[-1]
                             for client in clients:
