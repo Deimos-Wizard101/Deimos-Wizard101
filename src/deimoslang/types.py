@@ -35,6 +35,7 @@ class TeleportKind(Enum):
     mob = auto()
     quest = auto()
     client_num = auto()
+    nav = auto()
 
 class EvalKind(Enum):
     health = auto()

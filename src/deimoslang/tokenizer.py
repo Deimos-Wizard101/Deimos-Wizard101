@@ -64,6 +64,7 @@ class TokenKind(Enum):
     command_tozone = auto()
     command_load_playstyle = auto()
     command_set_yaw = auto()
+    command_nav = auto() 
 
     # command expressions
     command_expr_window_visible = auto()
@@ -386,6 +387,8 @@ class Tokenizer:
                                         put_simple(TokenKind.command_load_playstyle, full)
                                     case "turncam" | "setcamyaw":
                                         put_simple(TokenKind.command_set_yaw, full)
+                                    case "nav" | "navtp":
+                                        put_simple(TokenKind.command_nav, full)
 
                                     # expression commands
                                     case "contains":

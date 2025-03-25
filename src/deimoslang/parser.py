@@ -333,43 +333,21 @@ class Parser:
                 
                 # Check if the next token is a square bracket for a list
                 if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
-                    string_list = []
-                    self.expect_consume(TokenKind.square_open)
-                    while self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.square_close:
-                        if self.tokens[self.i].kind == TokenKind.string:
-                            string_list.append(self.tokens[self.i].value.lower())
-                            self.i += 1
-                        elif self.tokens[self.i].kind == TokenKind.comma:
-                            self.i += 1
-                        else:
-                            self.err(self.tokens[self.i], f"Expected string or comma in string list, got {self.tokens[self.i].kind}")
-                    self.expect_consume(TokenKind.square_close)
+                    string_list = self.parse_list()
                     
                     # Create a list expression with all the strings
                     if contains:
-                        return SelectorGroup(player_selector, ContainsStringExpression(
-                            Eval(EvalKind.windowtext, [window_path]), 
-                            ListExpression([StringExpression(s) for s in string_list])
-                        ))
+                        return SelectorGroup(player_selector, ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), ListExpression(string_list)))
                     else:
-                        return SelectorGroup(player_selector, EquivalentExpression(
-                            Eval(EvalKind.windowtext, [window_path]), 
-                            StringExpression(string_list[0])
-                        ))
+                        return SelectorGroup(player_selector, EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), string_list[0]))
                 else:
                     # Original behavior for single string
                     target = self.expect_consume(TokenKind.string)
                     assert(type(window_path) == list and type(target.value) == str)
                     if contains:
-                        return SelectorGroup(player_selector, ContainsStringExpression(
-                            Eval(EvalKind.windowtext, [window_path]), 
-                            StringExpression(target.value.lower())
-                        ))
+                        return SelectorGroup(player_selector, ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(target.value.lower())))
                     else:
-                        return SelectorGroup(player_selector, EquivalentExpression(
-                            Eval(EvalKind.windowtext, [window_path]), 
-                            StringExpression(target.value.lower())
-                        ))
+                        return SelectorGroup(player_selector, EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(target.value.lower())))
             case TokenKind.command_expr_playercount:
                 self.i += 1
                 num = self.expect_consume(TokenKind.number)
@@ -766,7 +744,7 @@ class Parser:
                 
                 # Check for optional 'nav' parameter
                 nav_mode = False
-                if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier and self.tokens[self.i].literal.lower() == "nav":
+                if self.tokens[self.i].kind == TokenKind.command_nav:
                     self.i += 1 
                     nav_mode = True
                 
@@ -774,11 +752,11 @@ class Parser:
                 if arg is not None:
                     result.data = [TeleportKind.entity_literal, arg.value]
                     if nav_mode:
-                        result.data.insert(1, "nav")
+                        result.data.insert(1, TeleportKind.nav)
                 else:
                     result.data = [TeleportKind.entity_vague, self.consume_any_ident().ident]
                     if nav_mode:
-                        result.data.insert(1, "nav")
+                        result.data.insert(1, TeleportKind.nav)
                 self.end_line()
             case TokenKind.command_tozone:
                 result.kind = CommandKind.tozone
