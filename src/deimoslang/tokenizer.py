@@ -70,6 +70,9 @@ class TokenKind(Enum):
     command_expr_window_visible = auto()
     command_expr_in_zone = auto()
     command_expr_same_zone = auto()
+    command_expr_same_quest = auto()
+    command_expr_same_yaw = auto()
+    command_expr_same_xyz = auto()
     command_expr_playercount = auto()
     command_expr_playercountabove = auto()
     command_expr_playercountbelow = auto()
@@ -465,6 +468,12 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_in_range, full)
                                     case "hasyaw":
                                         put_simple(TokenKind.command_expr_has_yaw, full)
+                                    case "sameyaw":
+                                        put_simple(TokenKind.command_expr_same_yaw, full)
+                                    case "samexyz":
+                                        put_simple(TokenKind.command_expr_same_xyz, full)
+                                    case "samequest":
+                                        put_simple(TokenKind.command_expr_same_quest, full)
                                     case _:
                                         put_simple(TokenKind.identifier, full)
                             i = j
