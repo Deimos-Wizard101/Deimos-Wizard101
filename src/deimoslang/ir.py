@@ -219,6 +219,9 @@ class Compiler:
 
     def prep_expression(self, expr: Expression):
         match expr:
+            case AndExpression() | OrExpression():
+                for sub_expr in expr.expressions:
+                    self.prep_expression(sub_expr)
             case BinaryExpression():
                 self.prep_expression(expr.lhs)
                 self.prep_expression(expr.rhs)

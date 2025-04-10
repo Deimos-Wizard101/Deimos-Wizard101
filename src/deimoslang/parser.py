@@ -462,8 +462,24 @@ class Parser:
         else:
             return self.parse_command_expression()
 
+    def parse_logical_expression(self) -> Expression:
+        expr = self.parse_negation_expression()
+
+        while self.i < len(self.tokens) and self.tokens[self.i].kind in [TokenKind.keyword_and, TokenKind.keyword_or]:
+            operator = self.tokens[self.i]
+            self.i += 1
+            # Parse the right-hand side expression
+            right = self.parse_negation_expression()
+            
+            if operator.kind == TokenKind.keyword_and:
+                expr = AndExpression([expr, right])
+            else:  # TokenKind.keyword_or
+                expr = OrExpression([expr, right])
+        
+        return expr
+
     def parse_expression(self) -> Expression:
-        return self.parse_negation_expression()
+        return self.parse_logical_expression()
 
     def parse_player_selector(self) -> PlayerSelector:
         result = PlayerSelector()

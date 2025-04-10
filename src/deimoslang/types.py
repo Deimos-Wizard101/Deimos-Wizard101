@@ -229,6 +229,20 @@ class GreaterExpression(BinaryExpression):
     def __repr__(self) -> str:
         return f"GreaterE({self.lhs}, {self.rhs})"
 
+class AndExpression(Expression):
+    def __init__(self, expressions: list[Expression]):
+        self.expressions = expressions
+
+    def __repr__(self) -> str:
+        return f"AndE({', '.join(str(expr) for expr in self.expressions)})"
+
+class OrExpression(Expression):
+    def __init__(self, expressions: list[Expression]):
+        self.expressions = expressions
+
+    def __repr__(self) -> str:
+        return f"OrE({', '.join(str(expr) for expr in self.expressions)})"
+
 class SelectorGroup(Expression):
     def __init__(self, players: PlayerSelector, expr: Expression):
         self.players = players
@@ -264,7 +278,6 @@ class ReadVarExpr(Expression):
 
     def __repr__(self) -> str:
         return f"ReadVarE {self.loc}"
-
 
 class Eval(Expression):
     def __init__(self, eval_kind: EvalKind, args=[]):

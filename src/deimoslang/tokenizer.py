@@ -42,6 +42,8 @@ class TokenKind(Enum):
     keyword_return = auto()
     keyword_break = auto()
     keyword_mixin = auto()
+    keyword_and = auto()
+    keyword_or = auto()
 
     command_kill = auto()
     command_sleep = auto()
@@ -346,6 +348,10 @@ class Tokenizer:
                                         put_simple(TokenKind.keyword_break, full)
                                     case "mixin":
                                         put_simple(TokenKind.keyword_mixin, full)
+                                    case "and":
+                                        put_simple(TokenKind.keyword_and, full)
+                                    case "or":
+                                        put_simple(TokenKind.keyword_or, full)
 
                                     # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":
