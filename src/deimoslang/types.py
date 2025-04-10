@@ -99,6 +99,9 @@ class ExprKind(Enum):
     same_place = auto()
     in_range = auto()
     has_yaw = auto()
+    same_quest = auto()
+    same_xyz = auto()
+    same_yaw = auto()
 
 
 # TODO: Replace asserts

@@ -115,7 +115,7 @@ class VM:
                 for num in selector.player_nums:
                     result.append(self.player_by_num(num))
             return result
-
+            
     async def _fetch_tracked_quest(self, client: SprintyClient) -> QuestData:
         tracked_id = await client.quest_id()
         qm = await client.quest_manager()
@@ -224,6 +224,36 @@ class VM:
                 expected_zone = await clients[0].zone_name()
                 for client in clients[1:]:
                     if await client.zone_name() != expected_zone:
+                        return False
+                return True
+            case ExprKind.same_quest:
+                if len(clients) == 0:
+                    return True
+                expected_quest_text = await self._fetch_tracked_quest_text(clients[0])
+                for client in clients[1:]:
+                    quest_text = await self._fetch_tracked_quest_text(client)
+                    if expected_quest_text != quest_text:
+                        return False
+                return True
+            case ExprKind.same_yaw:
+                if len(clients) == 0:
+                    return True
+                expected_yaw = await clients[0].body.yaw()
+                rounded_expected_yaw = round(expected_yaw, 1)
+                for client in clients[1:]:
+                    yaw = await client.body.yaw()
+                    rounded_client_yaw = round(yaw, 1)
+                    if rounded_expected_yaw != rounded_client_yaw:
+                        return False
+                return True
+            case ExprKind.same_xyz:
+                if len(clients) == 0:
+                    return True
+                expected_pos = await clients[0].body.position()
+                for client in clients[1:]:
+                    pos = await client.body.position()
+                    distance = calc_Distance(expected_pos, pos)
+                    if distance > 5.0: 
                         return False
                 return True
             case ExprKind.playercount:
@@ -728,7 +758,7 @@ class VM:
             case InstructionKind.pop_stack:
                 self.current_task.stack.pop()
                 self.current_task.ip += 1
-
+                
             case InstructionKind.set_yaw:
                 assert(type(instruction.data)==list)
                 clients: list[SprintyClient] = self._select_players(instruction.data[0])

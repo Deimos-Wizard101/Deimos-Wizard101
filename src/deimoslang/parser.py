@@ -106,6 +106,18 @@ class Parser:
                 result.kind = CommandKind.expr
                 self.i += 1
                 result.data = [ExprKind.same_zone]
+            case TokenKind.command_expr_same_quest:
+                result.kind = CommandKind.expr
+                self.i += 1
+                result.data = [ExprKind.same_quest]
+            case TokenKind.command_expr_same_xyz:
+                result.kind = CommandKind.expr
+                self.i += 1
+                result.data = [ExprKind.same_xyz]
+            case TokenKind.command_expr_same_yaw:
+                result.kind = CommandKind.expr
+                self.i += 1
+                result.data = [ExprKind.same_yaw]
             case TokenKind.command_expr_in_combat:
                 result.kind = CommandKind.expr
                 self.i += 1
