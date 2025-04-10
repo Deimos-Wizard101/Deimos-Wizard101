@@ -326,6 +326,16 @@ class VM:
 
     async def eval(self, expression: Expression, client: Client | None = None):
         match expression:
+            case AndExpression():
+                for expr in expression.expressions:
+                    if not await self.eval(expr, client):
+                        return False
+                return True
+            case OrExpression():
+                for expr in expression.expressions:
+                    if await self.eval(expr, client):
+                        return True
+                return False
             case CommandExpression():
                 return await self._eval_command_expression(expression)
             case NumberExpression():
