@@ -2139,7 +2139,7 @@ def bool_to_string(input: bool):
 		return 'Disabled'
 
 
-def handle_tool_updating():
+async def handle_tool_updating():
 	version = get_latest_version()
 	update_server = None
 
@@ -2178,12 +2178,17 @@ def handle_tool_updating():
 
 
 if __name__ == "__main__":
-	# Validate configs and update the tool
-	handle_tool_updating()
+    # Validate configs and update the tool
+    async def timeout_update():
+        try:
+            await asyncio.wait_for(handle_tool_updating(), timeout=30) # Time out after 30 seconds
+        except:
+            logger.warning("Auto update timed out. Continuing without updating.")
 
-	current_log = logger.add(f"logs/{tool_name} - {generate_timestamp()}.log", encoding='utf-8', enqueue=True, backtrace=True)
-	asyncio.run(main())
-	# global gui_send_queue
-	# gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.Close))
-	# gui_task.cancel()
-	logger.remove(current_log)
+    asyncio.run(timeout_update())
+    current_log = logger.add(f"logs/{tool_name} - {generate_timestamp()}.log", encoding='utf-8', enqueue=True, backtrace=True)
+    asyncio.run(main())
+    # global gui_send_queue
+    # gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.Close))
+    # gui_task.cancel()
+    logger.remove(current_log)
