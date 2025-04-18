@@ -106,6 +106,18 @@ class Parser:
                 result.kind = CommandKind.expr
                 self.i += 1
                 result.data = [ExprKind.same_zone]
+            case TokenKind.command_expr_same_quest:
+                result.kind = CommandKind.expr
+                self.i += 1
+                result.data = [ExprKind.same_quest]
+            case TokenKind.command_expr_same_xyz:
+                result.kind = CommandKind.expr
+                self.i += 1
+                result.data = [ExprKind.same_xyz]
+            case TokenKind.command_expr_same_yaw:
+                result.kind = CommandKind.expr
+                self.i += 1
+                result.data = [ExprKind.same_yaw]
             case TokenKind.command_expr_in_combat:
                 result.kind = CommandKind.expr
                 self.i += 1
@@ -330,8 +342,7 @@ class Parser:
                 self.i += 1
                 window_path = self.parse_window_path()
                 contains = self.consume_optional(TokenKind.contains)
-                
-                # Check if the next token is a square bracket for a list
+
                 if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
                     string_list = self.parse_list()
                     
@@ -450,17 +461,37 @@ class Parser:
         else:
             return self.parse_command_expression()
 
+    def parse_logical_expression(self) -> Expression:
+        expr = self.parse_negation_expression()
+
+        while self.i < len(self.tokens) and self.tokens[self.i].kind in [TokenKind.keyword_and, TokenKind.keyword_or]:
+            operator = self.tokens[self.i]
+            self.i += 1
+            # Parse the right-hand side expression
+            right = self.parse_negation_expression()
+            
+            if operator.kind == TokenKind.keyword_and:
+                expr = AndExpression([expr, right])
+            else:  # TokenKind.keyword_or
+                expr = OrExpression([expr, right])
+        
+        return expr
+
     def parse_expression(self) -> Expression:
-        return self.parse_negation_expression()
+        return self.parse_logical_expression()
 
     def parse_player_selector(self) -> PlayerSelector:
         result = PlayerSelector()
-        valid_toks = [TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard, TokenKind.colon]
-        expected_toks = [TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard]
+        valid_toks = [TokenKind.keyword_any_player, TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard, TokenKind.colon]
+        expected_toks = [TokenKind.keyword_any_player, TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard]
         while self.i < len(self.tokens) and self.tokens[self.i].kind in valid_toks:
             if self.tokens[self.i].kind not in expected_toks:
                 self.err(self.tokens[self.i], f"Invalid player selector encountered: {self.tokens[self.i]}")
             match self.tokens[self.i].kind:
+                case TokenKind.keyword_any_player:
+                    result.any_player = True
+                    expected_toks = []
+                    self.i += 1
                 case TokenKind.keyword_mass:
                     result.mass = True
                     expected_toks = []
@@ -483,7 +514,7 @@ class Parser:
                 case _:
                     assert False
         result.validate()
-        if len(result.player_nums) == 0 and not result.wildcard:
+        if len(result.player_nums) == 0 and not result.wildcard and not result.any_player:
             result.mass = True
         result.validate() # sanity check
         return result
@@ -796,6 +827,16 @@ class Parser:
 
     def parse_stmt(self) -> Stmt:
         match self.tokens[self.i].kind:
+            case TokenKind.keyword_settimer:
+                self.i += 1
+                timer_name = self.consume_any_ident()
+                self.end_line()
+                return TimerStmt(TimerAction.start, timer_name.ident)
+            case TokenKind.keyword_endtimer:
+                self.i += 1
+                timer_name = self.consume_any_ident()
+                self.end_line()
+                return TimerStmt(TimerAction.end, timer_name.ident)
             case TokenKind.keyword_block:
                 self.i += 1
                 ident = self.consume_any_ident()

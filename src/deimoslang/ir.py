@@ -38,6 +38,9 @@ class InstructionKind(Enum):
     pop_stack = auto()
     write_stack = auto()
 
+    set_timer = auto()
+    end_timer = auto()
+
     nop = auto()
 
 class Instruction:
@@ -158,7 +161,7 @@ class Compiler:
     def process_labels(self, program: list[Instruction]):
         new_program: list[Instruction] = []
         offsets = {}
-
+    
         # discover labels
         for idx, instr in enumerate(program):
             match instr.kind:
@@ -170,9 +173,9 @@ class Compiler:
                         new_program.append(Instruction(InstructionKind.nop))
                 case _:
                     new_program.append(instr)
-
+    
         program = new_program
-
+    
         # resolve labels
         for idx, instr in enumerate(program):
             match instr.kind:
@@ -192,7 +195,7 @@ class Compiler:
                     instr.data[2] = offset - idx
                 case _:
                     pass
-
+    
         return program
 
     def compile_block_def(self, block_def: BlockDefStmt):
@@ -219,6 +222,9 @@ class Compiler:
 
     def prep_expression(self, expr: Expression):
         match expr:
+            case AndExpression() | OrExpression():
+                for sub_expr in expr.expressions:
+                    self.prep_expression(sub_expr)
             case BinaryExpression():
                 self.prep_expression(expr.lhs)
                 self.prep_expression(expr.rhs)
@@ -304,6 +310,11 @@ class Compiler:
 
     def _compile(self, stmt: Stmt):
         match stmt:
+            case TimerStmt():
+                if stmt.action == TimerAction.start:
+                    self.emit(InstructionKind.set_timer, stmt.timer_name)
+                else:  # TimerAction.end
+                    self.emit(InstructionKind.end_timer, stmt.timer_name)
             case StmtList():
                 for inner in stmt.stmts:
                     self._compile(inner)
