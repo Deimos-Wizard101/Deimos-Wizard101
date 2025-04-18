@@ -99,7 +99,13 @@ class ExprKind(Enum):
     same_place = auto()
     in_range = auto()
     has_yaw = auto()
+    same_quest = auto()
+    same_xyz = auto()
+    same_yaw = auto()
 
+class TimerAction(Enum):
+    start = auto()
+    end = auto()
 
 # TODO: Replace asserts
 
@@ -109,12 +115,14 @@ class PlayerSelector:
         self.mass = False
         self.inverted = False
         self.wildcard = False
+        self.any_player = False
 
     def validate(self):
         assert not (self.mass and self.inverted), "Invalid player selector: mass + except"
         assert not (self.mass and len(self.player_nums) > 0), "Invalid player selector: mass + specified players"
         assert not (self.inverted and len(self.player_nums) == 0), "Invalid player selector: inverted + 0 players"
         assert (not self.wildcard) or (self.wildcard and not (self.mass) and len(self.player_nums) == 0), "Invalid player selector: wildcard + mass or player_nums"
+        assert (not self.any_player) or (self.any_player and not (self.mass) and len(self.player_nums) == 0), "Invalid player selector: any_player + mass or player_nums"
         self.player_nums.sort()
 
     def __hash__(self) -> int:
@@ -226,6 +234,20 @@ class GreaterExpression(BinaryExpression):
     def __repr__(self) -> str:
         return f"GreaterE({self.lhs}, {self.rhs})"
 
+class AndExpression(Expression):
+    def __init__(self, expressions: list[Expression]):
+        self.expressions = expressions
+
+    def __repr__(self) -> str:
+        return f"AndE({', '.join(str(expr) for expr in self.expressions)})"
+
+class OrExpression(Expression):
+    def __init__(self, expressions: list[Expression]):
+        self.expressions = expressions
+
+    def __repr__(self) -> str:
+        return f"OrE({', '.join(str(expr) for expr in self.expressions)})"
+
 class SelectorGroup(Expression):
     def __init__(self, players: PlayerSelector, expr: Expression):
         self.players = players
@@ -262,7 +284,6 @@ class ReadVarExpr(Expression):
     def __repr__(self) -> str:
         return f"ReadVarE {self.loc}"
 
-
 class Eval(Expression):
     def __init__(self, eval_kind: EvalKind, args=[]):
         self.kind = eval_kind
@@ -281,6 +302,15 @@ class StmtList(Stmt):
 
     def __repr__(self) -> str:
         return "StmtList{" + "; ".join([str(x) for x in self.stmts]) + "}"
+
+class TimerStmt(Stmt):
+    def __init__(self, action: TimerAction, timer_name: str):
+        self.action = action
+        self.timer_name = timer_name
+        
+    def __str__(self):
+        action_str = "settimer" if self.action == TimerAction.start else "endtimer"
+        return f"{action_str} {self.timer_name};"
 
 class CommandStmt(Stmt):
     def __init__(self, command: Command):

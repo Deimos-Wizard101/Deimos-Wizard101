@@ -200,6 +200,8 @@ class Analyzer:
 
     def sem_stmt(self, stmt: Stmt) -> Stmt:
         match stmt:
+            case TimerStmt():
+                return stmt
             case BlockDefStmt():
                 if not isinstance(stmt.name, IdentExpression):
                     raise SemError(f"Only IdentExpression is allowed during block declaration")

@@ -42,6 +42,11 @@ class TokenKind(Enum):
     keyword_return = auto()
     keyword_break = auto()
     keyword_mixin = auto()
+    keyword_and = auto()
+    keyword_or = auto()
+    keyword_any_player = auto()
+    keyword_settimer = auto()
+    keyword_endtimer = auto()
 
     command_kill = auto()
     command_sleep = auto()
@@ -70,6 +75,9 @@ class TokenKind(Enum):
     command_expr_window_visible = auto()
     command_expr_in_zone = auto()
     command_expr_same_zone = auto()
+    command_expr_same_quest = auto()
+    command_expr_same_yaw = auto()
+    command_expr_same_xyz = auto()
     command_expr_playercount = auto()
     command_expr_playercountabove = auto()
     command_expr_playercountbelow = auto()
@@ -343,6 +351,16 @@ class Tokenizer:
                                         put_simple(TokenKind.keyword_break, full)
                                     case "mixin":
                                         put_simple(TokenKind.keyword_mixin, full)
+                                    case "and":
+                                        put_simple(TokenKind.keyword_and, full)
+                                    case "or":
+                                        put_simple(TokenKind.keyword_or, full)
+                                    case "anyplayer" | "anyclient" | "any":
+                                        put_simple(TokenKind.keyword_any_player, full)
+                                    case "createtimer" | "starttimer" | "logtimer":
+                                        put_simple(TokenKind.keyword_settimer, full)
+                                    case "endtimer" | "canceltimer" | "stoptimer":
+                                        put_simple(TokenKind.keyword_endtimer, full)
 
                                     # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":
@@ -465,6 +483,12 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_in_range, full)
                                     case "hasyaw":
                                         put_simple(TokenKind.command_expr_has_yaw, full)
+                                    case "sameyaw":
+                                        put_simple(TokenKind.command_expr_same_yaw, full)
+                                    case "samexyz":
+                                        put_simple(TokenKind.command_expr_same_xyz, full)
+                                    case "samequest":
+                                        put_simple(TokenKind.command_expr_same_quest, full)
                                     case _:
                                         put_simple(TokenKind.identifier, full)
                             i = j
