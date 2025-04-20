@@ -70,6 +70,7 @@ class TokenKind(Enum):
     command_load_playstyle = auto()
     command_set_yaw = auto()
     command_nav = auto() 
+    command_select_friend = auto()
 
     # command expressions
     command_expr_window_visible = auto()
@@ -407,6 +408,8 @@ class Tokenizer:
                                         put_simple(TokenKind.command_set_yaw, full)
                                     case "nav" | "navtp":
                                         put_simple(TokenKind.command_nav, full)
+                                    case "selectfriend" | "choosefriend":
+                                        put_simple(TokenKind.command_select_friend, full)
 
                                     # expression commands
                                     case "contains":
