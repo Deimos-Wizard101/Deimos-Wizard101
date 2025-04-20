@@ -10,6 +10,9 @@ from wizwalker.extensions.wizsprinter.wiz_sprinter import Coroutine, upgrade_cli
 from wizwalker.extensions.wizsprinter.wiz_navigator import toZone
 from src.teleport_math import navmap_tp, calc_Distance
 
+from wizwalker.extensions.scripting.utils import _maybe_get_named_window, _cycle_to_online_friends, _click_on_friend, _friend_list_entry
+from src.utils import _cycle_friends_list
+
 from .tokenizer import *
 from .parser import *
 from .ir import *
@@ -68,6 +71,8 @@ class VM:
         self._scheduler = Scheduler()
         self._scheduler.add_task(Task())
         self.current_task = self._scheduler.get_current_task()
+        self._any_player_client = [] # Using this to store the client(s) that satisfied the condition of any player
+        self._timers = {}
 
         # Every until loop condition must be checked for every vm step.
         # Once a condition becomes True, all untils that were entered later must be exited and removed.
@@ -101,9 +106,69 @@ class VM:
             raise VMError(f"Attempted to get client {num}, but only {len(self._clients)} {tail}")
         return self._clients[i]
 
+    async def select_friend_from_list(self, client: SprintyClient, name: str):
+        """
+        Selects a friend from the friend list without teleporting to them.
+        
+        Args:
+            client: The client that will select the friend
+            name: The name of the friend to select
+        """
+        async with client.mouse_handler:
+            try:
+                friends_window = await _maybe_get_named_window(
+                    client.root_window, "NewFriendsListWindow"
+                )
+                if not await friends_window.is_visible():
+                    raise ValueError("Friends list not visible")
+            except ValueError:
+                friend_button = await _maybe_get_named_window(client.root_window, "btnFriends")
+                await client.mouse_handler.click_window(friend_button)
+                await asyncio.sleep(0.4)
+                friends_window = await _maybe_get_named_window(
+                    client.root_window, "NewFriendsListWindow"
+                )
+
+            await _cycle_to_online_friends(client, friends_window)
+
+            friends_list_window = await _maybe_get_named_window(friends_window, "listFriends")
+            
+            right_button = await _maybe_get_named_window(friends_window, "btnArrowDown")
+            page_number = await _maybe_get_named_window(friends_window, "PageNumber")
+            
+            page_number_text = await page_number.maybe_text()
+            current_page, _ = map(
+                int,
+                page_number_text.replace("<center>", "")
+                    .replace("</center>", "")
+                    .replace(" ", "")
+                    .split("/"),
+            )
+
+            # Find and select the friend
+            friend, friend_index = await _cycle_friends_list(
+                client,
+                right_button,
+                friends_list_window,
+                None,
+                None,
+                name,
+                current_page,
+            )
+
+            if friend is None:
+                logger.error(f"Could not find friend with name {name}")
+                return False
+
+            # Click on the friend to select them
+            await _click_on_friend(client, friends_list_window, friend_index)
+            
+            return True
     def _select_players(self, selector: PlayerSelector) -> list[SprintyClient]:
         if selector.mass:
             return self._clients
+        elif selector.any_player:
+            return []
         else:
             result: list[SprintyClient] = []
             if selector.inverted:
@@ -115,7 +180,7 @@ class VM:
                 for num in selector.player_nums:
                     result.append(self.player_by_num(num))
             return result
-
+            
     async def _fetch_tracked_quest(self, client: SprintyClient) -> QuestData:
         tracked_id = await client.quest_id()
         qm = await client.quest_manager()
@@ -162,38 +227,76 @@ class VM:
         clients = self._select_players(selector)
         match expression.command.data[0]:
             case ExprKind.window_visible:
-                for client in clients:
-                    if not await is_visible_by_path(client, expression.command.data[1]):
-                        return False
-                return True
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        if await is_visible_by_path(client, expression.command.data[1]):
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        if not await is_visible_by_path(client, expression.command.data[1]):
+                            return False
+                    return True
             case ExprKind.window_disabled:
                 path = expression.command.data[1]
-                for client in clients:
-                    root = client.root_window
-                    window = await get_window_from_path(root, path)
-                    if window == False:
-                        return False
-                    elif not await window.is_control_grayed():
-                        return False
-                return True
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        root = client.root_window
+                        window = await get_window_from_path(root, path)
+                        if window != False and await window.is_control_grayed():
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        root = client.root_window
+                        window = await get_window_from_path(root, path)
+                        if window == False:
+                            return False
+                        elif not await window.is_control_grayed():
+                            return False
+                    return True
             case ExprKind.in_range: # NOTE: if client is playing as pet, they are counted as an entity
                 data = [await c.client_object.global_id_full() for c in clients]
                 target = expression.command.data[1]
-                for client in clients:
-                    entities = await client.get_base_entity_list()
-                    found = False
-                    for entity in entities:
-                        entity_name = await entity.object_name()
-                        entity_gid = await entity.global_id_full()
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        entities = await client.get_base_entity_list()
+                        for entity in entities:
+                            entity_name = await entity.object_name()
+                            entity_gid = await entity.global_id_full()
+                            
+                            if entity_gid in data: continue
+                            if not entity_name: continue
+                            # Check if target is a substring of entity_name
+                            if target.lower() in entity_name.lower() or entity_name.lower() == target.lower():
+                                self._any_player_client.append(client)
+                                found_any = True
+                                break
+                    return found_any
+                else:
+                    for client in clients:
+                        entities = await client.get_base_entity_list()
+                        found = False
+                        for entity in entities:
+                            entity_name = await entity.object_name()
+                            entity_gid = await entity.global_id_full()
 
-                        if entity_gid in data: continue
-                        if not entity_name: continue
-                        # Check if target is a substring of entity_name
-                        if target.lower() in entity_name.lower() or entity_name.lower() == target.lower(): 
-                            found = True
-                    if not found:
-                        return False
-                return True
+                            if entity_gid in data: continue
+                            if not entity_name: continue
+                            # Check if target is a substring of entity_name
+                            if target.lower() in entity_name.lower() or entity_name.lower() == target.lower(): 
+                                found = True
+                        if not found:
+                            return False
+                    return True
             case ExprKind.same_place:
                 data = [await c.client_object.global_id_full() for c in clients]
                 target = len(data)
@@ -212,18 +315,59 @@ class VM:
                 return True
 
             case ExprKind.in_zone:
-                for client in clients:
-                    zone = await client.zone_name()
-                    expected = "/".join(expression.command.data[1])
-                    if expected != zone:
-                        return False
-                return True
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        zone = await client.zone_name()
+                        expected = "/".join(expression.command.data[1])
+                        if expected == zone:
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        zone = await client.zone_name()
+                        expected = "/".join(expression.command.data[1])
+                        if expected != zone:
+                            return False
+                    return True
             case ExprKind.same_zone:
                 if len(clients) == 0:
                     return True
                 expected_zone = await clients[0].zone_name()
                 for client in clients[1:]:
                     if await client.zone_name() != expected_zone:
+                        return False
+                return True
+            case ExprKind.same_quest:
+                if len(clients) == 0:
+                    return True
+                expected_quest_text = await self._fetch_tracked_quest_text(clients[0])
+                for client in clients[1:]:
+                    quest_text = await self._fetch_tracked_quest_text(client)
+                    if expected_quest_text != quest_text:
+                        return False
+                return True
+            case ExprKind.same_yaw:
+                if len(clients) == 0:
+                    return True
+                expected_yaw = await clients[0].body.yaw()
+                rounded_expected_yaw = round(expected_yaw, 1)
+                for client in clients[1:]:
+                    yaw = await client.body.yaw()
+                    rounded_client_yaw = round(yaw, 1)
+                    if rounded_expected_yaw != rounded_client_yaw:
+                        return False
+                return True
+            case ExprKind.same_xyz:
+                if len(clients) == 0:
+                    return True
+                expected_pos = await clients[0].body.position()
+                for client in clients[1:]:
+                    pos = await client.body.position()
+                    distance = calc_Distance(expected_pos, pos)
+                    if distance > 5.0: 
                         return False
                 return True
             case ExprKind.playercount:
@@ -234,68 +378,159 @@ class VM:
             case ExprKind.tracking_quest:
                 expected_text = expression.command.data[1]
                 assert type(expected_text) == str
-                for client in clients:
-                    name = await self._fetch_tracked_quest_text(client)
-                    if name != expected_text:
-                        return False
-                return True
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        name = await self._fetch_tracked_quest_text(client)
+                        if name == expected_text:
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        name = await self._fetch_tracked_quest_text(client)
+                        if name != expected_text:
+                            return False
+                    return True
             case ExprKind.tracking_goal:
                 expected_text = expression.command.data[1]
                 assert type(expected_text) == str
-                for client in clients:
-                    text = await self._fetch_tracked_goal_text(client)
-                    if text != expected_text:
-                        return False
-                return True
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        text = await self._fetch_tracked_goal_text(client)
+                        if text == expected_text:
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        text = await self._fetch_tracked_goal_text(client)
+                        if text != expected_text:
+                            return False
+                    return True
             case ExprKind.loading:
-                for client in clients:
-                    if not await client.is_loading():
-                        return False
-                return True
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        if await client.is_loading():
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        if not await client.is_loading():
+                            return False
+                    return True
             case ExprKind.in_combat:
-                for client in clients:
-                    if not await client.in_battle():
-                        return False
-                return True
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        if await client.in_battle():
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        if not await client.in_battle():
+                            return False
+                    return True
             case ExprKind.has_quest:
                 expected_text = expression.command.data[1]
                 assert type(expected_text) == str
-                for client in clients:
-                    found = False
-                    for _, quest in await self._fetch_quests(client):
-                        if await self._fetch_quest_text(client, quest) == expected_text:
-                            found = True
-                            break
-                    if not found:
-                        return False
-                return True
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        for _, quest in await self._fetch_quests(client):
+                            if await self._fetch_quest_text(client, quest) == expected_text:
+                                self._any_player_client.append(client)
+                                found_any = True
+                                break
+                    return found_any
+                else:
+                    for client in clients:
+                        found = False
+                        for _, quest in await self._fetch_quests(client):
+                            if await self._fetch_quest_text(client, quest) == expected_text:
+                                found = True
+                                break
+                        if not found:
+                            return False
+                    return True
             case ExprKind.has_dialogue:
-                for client in clients:
-                    if not await client.is_in_dialog():
-                        return False
-                return True
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        if await client.is_in_dialog():
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        if not await client.is_in_dialog():
+                            return False
+                    return True
             case ExprKind.has_xyz:
                 target_pos: XYZ = await self.eval(expression.command.data[1]) # type: ignore
-                for client in clients:
-                    client_pos = await client.body.position()
-                    if abs(target_pos - client_pos) > 1:
-                        return False
-                return True
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        client_pos = await client.body.position()
+                        if abs(target_pos - client_pos) <= 1:
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        client_pos = await client.body.position()
+                        if abs(target_pos - client_pos) > 1:
+                            return False
+                    return True
             case ExprKind.has_yaw:
                 target_yaw: float = await self.eval(expression.command.data[1]) # type: ignore
-                for client in clients:
-                    client_yaw = await client.body.yaw()
-                    # Round both values to the nearest tenth for comparison
-                    rounded_client_yaw = round(client_yaw, 1)
-                    rounded_target_yaw = round(target_yaw, 1)
-                    if rounded_client_yaw != rounded_target_yaw:
-                        return False
-                return True
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        client_yaw = await client.body.yaw()
+                        # Round both values to the nearest tenth for comparison
+                        rounded_client_yaw = round(client_yaw, 1)
+                        rounded_target_yaw = round(target_yaw, 1)
+                        if rounded_client_yaw == rounded_target_yaw:
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        client_yaw = await client.body.yaw()
+                        # Round both values to the nearest tenth for comparison
+                        rounded_client_yaw = round(client_yaw, 1)
+                        rounded_target_yaw = round(target_yaw, 1)
+                        if rounded_client_yaw != rounded_target_yaw:
+                            return False
+                    return True
             case _:
                 raise VMError(f"Unimplemented expression: {expression}")
 
     async def eval(self, expression: Expression, client: Client | None = None):
         match expression:
+            case AndExpression():
+                for expr in expression.expressions:
+                    if not await self.eval(expr, client):
+                        return False
+                return True
+            case OrExpression():
+                for expr in expression.expressions:
+                    if await self.eval(expr, client):
+                        return True
+                return False
             case CommandExpression():
                 return await self._eval_command_expression(expression)
             case NumberExpression():
@@ -345,10 +580,19 @@ class VM:
             case SelectorGroup():
                 players = self._select_players(expression.players)
                 expr = expression.expr
-                for player in players:
-                    if not await self.eval(expr, player):
-                        return False
-                return True
+                if expression.players.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for anyplayer in self._clients:
+                        if await self.eval(expr, anyplayer):
+                            self._any_player_client.append(anyplayer)
+                            found_any = True
+                    return found_any
+                else:
+                    for player in players:
+                        if not await self.eval(expr, player):
+                            return False
+                    return True
             case ReadVarExpr():
                 loc = await self.eval(expression.loc)
                 assert(loc != None and type(loc) == int)
@@ -428,7 +672,18 @@ class VM:
         assert type(instruction.data) == list
 
         selector: PlayerSelector = instruction.data[0]
-        clients = self._select_players(selector)
+        if selector.any_player and self._any_player_client:
+            if isinstance(self._any_player_client, list):
+                clients = self._any_player_client
+            else:
+                clients = [self._any_player_client]
+        elif selector.any_player:
+            for client in self._clients:
+                clients = [client] #if they use the any_player flag, use the first client found
+                break
+        else:
+            clients = self._select_players(selector)
+
         # TODO: is eval always fast enough to run in order during a TaskGroup
         match instruction.data[1]:
             case "teleport":
@@ -618,7 +873,15 @@ class VM:
                 args = instruction.data[2]
                 async with asyncio.TaskGroup() as tg:
                     for client in clients:
+                        # For tozone, we don't need to evaluate anything, just pass the zone path
                         tg.create_task(toZone([client], "/".join(args[0])))
+            case "select_friend":
+                args = instruction.data[2]
+                friend_name = args[0]
+                
+                async with asyncio.TaskGroup() as tg:
+                    for client in clients:
+                        tg.create_task(self.select_friend_from_list(client, friend_name))
             case _:
                 raise VMError(f"Unimplemented deimos call: {instruction}")
 
@@ -649,7 +912,29 @@ class VM:
         instruction = self.program[self.current_task.ip]
 
         match instruction.kind:
+            case InstructionKind.set_timer:
+                assert isinstance(instruction.data, str), "Timer name must be a string"
+                timer_name = instruction.data
+                self._timers[timer_name] = asyncio.get_event_loop().time()
+                logger.debug(f"Timer '{timer_name}' started")
+                self.current_task.ip += 1
+            case InstructionKind.end_timer:
+                assert isinstance(instruction.data, str), "Timer name must be a string"
+                timer_name = instruction.data
+                if timer_name in self._timers:
+                    elapsed_seconds = asyncio.get_event_loop().time() - self._timers[timer_name]
+                    hours, remainder = divmod(int(elapsed_seconds), 3600)
+                    minutes, seconds = divmod(remainder, 60)
+                    
+                    time_str = f"{hours:02}:{minutes:02}:{seconds:02}"
+                    
+                    logger.debug(f"Timer '{timer_name}' ended - Elapsed time: {time_str}")
+                    del self._timers[timer_name]
+                else:
+                    logger.warning(f"Attempted to end timer '{timer_name}' that was never started")
+                self.current_task.ip += 1
             case InstructionKind.kill:
+                self._any_player_client = []
                 self.kill()
                 logger.debug("Bot Killed")
             case InstructionKind.sleep:
@@ -696,6 +981,7 @@ class VM:
                         self._until_infos = self._until_infos[:i]
                         self.current_task.stack = self.current_task.stack[:info.stack_size]
                         break
+                self._any_player_client = []
                 self.current_task.ip += 1
 
             case InstructionKind.log_single:
@@ -728,7 +1014,6 @@ class VM:
             case InstructionKind.pop_stack:
                 self.current_task.stack.pop()
                 self.current_task.ip += 1
-
             case InstructionKind.set_yaw:
                 assert(type(instruction.data)==list)
                 clients: list[SprintyClient] = self._select_players(instruction.data[0])
