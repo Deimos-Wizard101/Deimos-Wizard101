@@ -804,6 +804,15 @@ class Parser:
                 self.i += 1
                 result.data = [self.expect_consume(TokenKind.number).value]
                 self.end_line()
+            case TokenKind.command_select_friend:
+                result.kind = CommandKind.select_friend
+                self.i += 1
+                name_parts = []
+                while self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.END_LINE:
+                    name_parts.append(self.tokens[self.i].literal)
+                    self.i += 1
+                result.data = [" ".join(name_parts)]
+                self.end_line()
             case _:
                 self.err(self.tokens[self.i], "Unhandled command token")
         return result

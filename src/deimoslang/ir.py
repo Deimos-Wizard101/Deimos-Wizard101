@@ -141,6 +141,8 @@ class Compiler:
                 | CommandKind.relog | CommandKind.tozone:
                 self.emit_deimos_call(com)
 
+            case CommandKind.select_friend:
+                self.emit_deimos_call(com)
             case CommandKind.waitfor:
                 # copy the original data to split inverted waitfor in two
                 non_inverted_com = copy.copy(com)
