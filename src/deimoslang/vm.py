@@ -646,20 +646,26 @@ class VM:
             case EvalKind.windowtext:
                 path = eval.args[0]
                 assert(type(path) == list)
-                window = await get_window_from_path(client.root_window, path)
                 try:
-                    text = await window.maybe_text()
-                    if text:
-                        return text.lower()
-                except (ValueError, MemoryReadError):
-                    pass
+                    window = await get_window_from_path(client.root_window, path)
+                    if window:
+                        try:
+                            text = await window.maybe_text()
+                            if text:
+                                return text.lower()
+                        except (ValueError, MemoryReadError):
+                            pass
 
-                # retry with the less reliable offset that is only defined for control elements
-                try:
-                    text = await window.read_wide_string_from_offset(616)
-                    return text.lower()
-                except (ValueError, MemoryReadError):
-                    raise VMError(f'Cannot read window text from path: {path}')
+                        # retry with the less reliable offset that is only defined for control elements
+                        try:
+                            text = await window.read_wide_string_from_offset(616)
+                            return text.lower()
+                        except (ValueError, MemoryReadError):
+                            pass
+                    return "" # If window path doesn't exist or any other error occurs, return empty string
+                except Exception:
+                    # If window path doesn't exist or any other error occurs, return empty string
+                    return ""
             case EvalKind.playercount:
                 return len(self._clients)
             case EvalKind.potioncount:
@@ -696,6 +702,18 @@ class VM:
                             for client in clients:
                                 pos: XYZ = await self.eval(args[1], client) # type: ignore
                                 tg.create_task(client.teleport(pos))
+                        case TeleportKind.plusteleport:
+                            for client in clients:
+                                pluspos: XYZ = await self.eval(args[1], client) # type: ignore
+                                clientpos = await client.body.position()
+                                newpos = XYZ(clientpos.x + pluspos.x, clientpos.y + pluspos.y, clientpos.z + pluspos.z)
+                                tg.create_task(client.teleport(newpos))
+                        case TeleportKind.minusteleport:
+                            for client in clients:
+                                minuspos: XYZ = await self.eval(args[1], client) # type: ignore
+                                clientpos = await client.body.position()
+                                newpos = XYZ(clientpos.x - minuspos.x, clientpos.y - minuspos.y, clientpos.z - minuspos.z)
+                                tg.create_task(client.teleport(newpos))
                         case TeleportKind.entity_literal:
                             name = args[-1]
                             use_navmap = False

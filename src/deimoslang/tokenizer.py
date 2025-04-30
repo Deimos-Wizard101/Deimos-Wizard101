@@ -66,6 +66,8 @@ class TokenKind(Enum):
     command_teleport = auto()
     command_friendtp = auto()
     command_entitytp = auto()
+    command_plus_teleport = auto()
+    command_minus_teleport = auto()
     command_tozone = auto()
     command_load_playstyle = auto()
     command_set_yaw = auto()
@@ -410,6 +412,10 @@ class Tokenizer:
                                         put_simple(TokenKind.command_nav, full)
                                     case "selectfriend" | "choosefriend":
                                         put_simple(TokenKind.command_select_friend, full)
+                                    case "plustp" | "plusteleport":
+                                        put_simple(TokenKind.command_plus_teleport, full)
+                                    case "minustp" | "minusteleport":
+                                        put_simple(TokenKind.command_minus_teleport, full)
 
                                     # expression commands
                                     case "contains":

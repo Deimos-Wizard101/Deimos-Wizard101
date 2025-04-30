@@ -679,6 +679,16 @@ class Parser:
                 else:
                     result.data = [TeleportKind.position, self.parse_xyz()]
                 self.end_line()
+            case TokenKind.command_plus_teleport:
+                result.kind = CommandKind.teleport
+                self.i += 1
+                result.data = [TeleportKind.plusteleport, self.parse_xyz()]
+                self.end_line()
+            case TokenKind.command_minus_teleport:
+                result.kind = CommandKind.teleport
+                self.i += 1
+                result.data = [TeleportKind.minusteleport, self.parse_xyz()]
+                self.end_line()
             case TokenKind.command_sleep:
                 result.kind = CommandKind.sleep
                 self.i += 1
