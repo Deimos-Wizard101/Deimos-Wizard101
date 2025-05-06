@@ -546,12 +546,7 @@ class VM:
                     case TokenKind.minus:
                         return -(await self.eval(expression.expr, client)) # type: ignore
                     case TokenKind.keyword_not:
-                        result = not (await self.eval(expression.expr, client))
-                        if isinstance(expression.expr, CommandExpression) and expression.expr.command.player_selector.any_player:
-                            if result: 
-                                original_matches = self._any_player_client.copy()
-                                self._any_player_client = [c for c in self._clients if c not in original_matches]
-                        return result
+                        return not (await self.eval(expression.expr, client))
                     case _:
                         raise VMError(f"Unimplemented unary expression: {expression}")
             case StringExpression():
@@ -684,11 +679,13 @@ class VM:
 
         selector: PlayerSelector = instruction.data[0]
         if selector.any_player and self._any_player_client:
-            clients = self._any_player_client
+            if isinstance(self._any_player_client, list):
+                clients = self._any_player_client
+            else:
+                clients = [self._any_player_client]
         elif selector.any_player:
-            clients = [] 
             for client in self._clients:
-                clients = [client]  # Use the first client found
+                clients = [client] #if they use the any_player flag, use the first client found
                 break
         else:
             clients = self._select_players(selector)
