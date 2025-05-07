@@ -546,24 +546,7 @@ class VM:
                     case TokenKind.minus:
                         return -(await self.eval(expression.expr, client)) # type: ignore
                     case TokenKind.keyword_not:
-                        result = not (await self.eval(expression.expr, client))
-
-                        is_any_player = False
-                        #if hasattr(expression.expr, 'command') and hasattr(expression.expr.command, 'player_selector'):
-                        if expression.expr.command.player_selector.any_player:
-                            is_any_player = True
-                        
-                        if is_any_player:
-                            original_matches = self._any_player_client.copy() if hasattr(self, '_any_player_client') and self._any_player_client else []
-                            
-                            if original_matches:
-                                self._any_player_client = [c for c in self._clients if c not in original_matches]
-                            else:
-                                self._any_player_client = self._clients.copy()
-                            
-                            return len(self._any_player_client) > 0
-
-                        return result
+                        return not (await self.eval(expression.expr, client))
                     case _:
                         raise VMError(f"Unimplemented unary expression: {expression}")
             case StringExpression():
@@ -696,11 +679,13 @@ class VM:
 
         selector: PlayerSelector = instruction.data[0]
         if selector.any_player and self._any_player_client:
-            clients = self._any_player_client
+            if isinstance(self._any_player_client, list):
+                clients = self._any_player_client
+            else:
+                clients = [self._any_player_client]
         elif selector.any_player:
-            clients = [] 
             for client in self._clients:
-                clients = [client]  # Use the first client found
+                clients = [client] #if they use the any_player flag, use the first client found
                 break
         else:
             clients = self._select_players(selector)
