@@ -102,8 +102,9 @@ class VM:
     def player_by_num(self, num: int) -> SprintyClient:
         i = num - 1
         if i >= len(self._clients):
-            tail = "client is open" if len(self._clients) == 1 else "clients are open"
-            raise VMError(f"Attempted to get client {num}, but only {len(self._clients)} {tail}")
+            return None
+            #tail = "client is open" if len(self._clients) == 1 else "clients are open"
+            #raise VMError(f"Attempted to get client {num}, but only {len(self._clients)} {tail}")
         return self._clients[i]
 
     async def select_friend_from_list(self, client: SprintyClient, name: str):
@@ -178,7 +179,9 @@ class VM:
                     result.append(self.player_by_num(i + 1))
             else:
                 for num in selector.player_nums:
-                    result.append(self.player_by_num(num))
+                    client = self.player_by_num(num)
+                    if client:  # Only add the client if it exists
+                        result.append(client)
             return result
             
     async def _fetch_tracked_quest(self, client: SprintyClient) -> QuestData:
@@ -225,6 +228,11 @@ class VM:
         selector = expression.command.player_selector
         assert selector is not None
         clients = self._select_players(selector)
+        
+        # If no clients match the selector and it's not an any_player selector, return False
+        if not clients and not selector.any_player:
+            return False
+        
         match expression.command.data[0]:
             case ExprKind.window_visible:
                 if selector.any_player:
@@ -702,6 +710,10 @@ class VM:
                 break
         else:
             clients = self._select_players(selector)
+        
+        # Skip execution if no valid clients were selected
+        if not clients:
+            return
 
         # TODO: is eval always fast enough to run in order during a TaskGroup
         match instruction.data[1]:
@@ -919,8 +931,13 @@ class VM:
     async def _process_untils(self):
         for i in range(len(self._until_infos) - 1, -1, -1):
             info = self._until_infos[i]
-            if await self.eval(info.expr):
-                #self._ip = info.exit_point
+            try:
+                if await self.eval(info.expr):
+                    self.current_task.ip = info.exit_point
+                    return
+            except VMError:
+                # If evaluation fails (e.g., due to non-existent player), treat as true
+                # This will cause the VM to skip the until block
                 self.current_task.ip = info.exit_point
                 return
 
@@ -979,16 +996,27 @@ class VM:
                 self.current_task.ip += instruction.data
             case InstructionKind.jump_if:
                 assert type(instruction.data) == list
-                if await self.eval(instruction.data[0]):
-                    self.current_task.ip += instruction.data[1]
-                else:
-                    self.current_task.ip += 1
+                try:
+                    condition_met = await self.eval(instruction.data[0])
+                    if condition_met:
+                        self.current_task.ip += instruction.data[1]
+                    else:
+                        self.current_task.ip += 1
+                except VMError:
+                    if instruction.data[1] > 1:  # This is likely a while loop
+                        self.current_task.ip += instruction.data[1]  # Skip the entire scope
+                    else:
+                        self.current_task.ip += 1  # Just move to the next instruction
             case InstructionKind.jump_ifn:
                 assert type(instruction.data) == list
-                if await self.eval(instruction.data[0]):
-                    self.current_task.ip += 1
-                else:
-                    self.current_task.ip += instruction.data[1]
+                try:
+                    condition_met = await self.eval(instruction.data[0])
+                    if condition_met:
+                        self.current_task.ip += 1
+                    else:
+                        self.current_task.ip += instruction.data[1]
+                except VMError:
+                    self.current_task.ip += 1  # Move to the next instruction (skip the loop body)
             case InstructionKind.call:
                 assert(type(instruction.data) == int)
                 self.current_task.stack.append(self.current_task.ip + 1)
