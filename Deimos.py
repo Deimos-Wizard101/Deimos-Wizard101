@@ -408,11 +408,13 @@ async def xyz_sync(foreground_client : Client, background_clients : list[Client]
 			logger.debug(f'{sync_locations_key} key pressed, syncing client locations.')
 		if foreground_client:
 			xyz = await foreground_client.body.position()
+			yaw = await foreground_client.body.yaw()
 		else:
 			first_background_client = background_clients[0]
 			xyz = await first_background_client.body.position()
+			yaw = await first_background_client.body.yaw()
 
-		await asyncio.gather(*[p.teleport(xyz) for p in background_clients])
+		await asyncio.gather(*[p.teleport(xyz, yaw=yaw) for p in background_clients])
 		if turn_after:
 			await asyncio.gather(*[p.send_key(key=Keycode.A, seconds=0.1) for p in background_clients])
 			await asyncio.gather(*[p.send_key(key=Keycode.D, seconds=0.1) for p in background_clients])
