@@ -112,6 +112,7 @@ class TokenKind(Enum):
     command_expr_potion_count = auto()
     command_expr_potion_countabove = auto()
     command_expr_potion_countbelow = auto()
+    command_expr_any_player_list = auto()
     command_expr_has_quest = auto()
     command_expr_has_yaw = auto()
 
@@ -498,6 +499,8 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_same_xyz, full)
                                     case "samequest":
                                         put_simple(TokenKind.command_expr_same_quest, full)
+                                    case "anyplayerlist" | "anyclientlist":
+                                        put_simple(TokenKind.command_expr_any_player_list, full)
                                     case _:
                                         put_simple(TokenKind.identifier, full)
                             i = j

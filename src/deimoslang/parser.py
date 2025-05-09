@@ -662,6 +662,9 @@ class Parser:
                         self.i += 1
                         window_path = self.parse_window_path()
                         result.data = [LogKind.multi, StrFormatExpression("windowtext: %s", Eval(EvalKind.windowtext, [window_path]))]
+                    case TokenKind.command_expr_any_player_list:
+                        self.i += 1
+                        result.data = [LogKind.single, StrFormatExpression("clients using anyplayer: %s", Eval(EvalKind.any_player_list))]
                     case TokenKind.string:
                         print_literal()
                     case _:

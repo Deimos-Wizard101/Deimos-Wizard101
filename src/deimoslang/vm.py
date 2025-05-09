@@ -685,6 +685,8 @@ class VM:
                 return await client.stats.potion_charge()
             case EvalKind.max_potioncount:
                 return await client.stats.potion_max()
+            case EvalKind.any_player_list:
+                return [c.title for c in self._any_player_client] if self._any_player_client else ["None"]
 
     async def exec_deimos_call(self, instruction: Instruction):
         assert instruction.kind == InstructionKind.deimos_call
