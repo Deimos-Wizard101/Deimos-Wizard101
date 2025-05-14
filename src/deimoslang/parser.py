@@ -350,7 +350,21 @@ class Parser:
                     if contains:
                         return SelectorGroup(player_selector, ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), ListExpression(string_list)))
                     else:
-                        return SelectorGroup(player_selector, EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), string_list[0]))
+                        # Create an OR expression to check if the window text equals any of the strings in the list
+                        or_expressions = []
+                        for string_expr in string_list:
+                            if isinstance(string_expr, StringExpression):
+                                or_expressions.append(
+                                    EquivalentExpression(
+                                        Eval(EvalKind.windowtext, [window_path]), 
+                                        StringExpression(string_expr.string.lower())
+                                    )
+                                )
+                        
+                        if len(or_expressions) == 1:
+                            return SelectorGroup(player_selector, or_expressions[0])
+                        
+                        return SelectorGroup(player_selector, OrExpression(or_expressions))
                 else:
                     # Original behavior for single string
                     target = self.expect_consume(TokenKind.string)
