@@ -170,6 +170,8 @@ class VM:
             return self._clients
         elif selector.any_player:
             return []
+        elif selector.same_any:
+            return self._any_player_client
         else:
             result: list[SprintyClient] = []
             if selector.inverted:
@@ -687,6 +689,36 @@ class VM:
                 except Exception:
                     # If window path doesn't exist or any other error occurs, return empty string
                     return ""
+            case EvalKind.windownum:
+                path = eval.args[0]
+                assert(type(path) == list)
+                try:
+                    window = await get_window_from_path(client.root_window, path)
+                    if window:
+                        try:
+                            text = await window.maybe_text()
+                            if text:
+                                # Extract numeric value from text
+                                numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
+                                if numeric_text:
+                                    return float(numeric_text)
+                        except (ValueError, MemoryReadError):
+                            pass
+
+                        # retry with the less reliable offset that is only defined for control elements
+                        try:
+                            text = await window.read_wide_string_from_offset(616)
+                            if text:
+                                # Extract numeric value from text
+                                numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
+                                if numeric_text:
+                                    return float(numeric_text)
+                        except (ValueError, MemoryReadError):
+                            pass
+                    return 0.0  # Return 0 if no numeric value found or window doesn't exist
+                except Exception:
+                    # If window path doesn't exist or any other error occurs, return 0
+                    return 0.0
             case EvalKind.playercount:
                 return len(self._clients)
             case EvalKind.potioncount:

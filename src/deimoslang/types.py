@@ -56,6 +56,7 @@ class EvalKind(Enum):
     max_potioncount = auto()
     playercount = auto()
     any_player_list = auto()
+    windownum = auto()
 
 class WaitforKind(Enum):
     dialog = auto()
@@ -120,6 +121,7 @@ class PlayerSelector:
         self.inverted = False
         self.wildcard = False
         self.any_player = False
+        self.same_any = False
 
     def validate(self):
         assert not (self.mass and self.inverted), "Invalid player selector: mass + except"
@@ -127,6 +129,7 @@ class PlayerSelector:
         assert not (self.inverted and len(self.player_nums) == 0), "Invalid player selector: inverted + 0 players"
         assert (not self.wildcard) or (self.wildcard and not (self.mass) and len(self.player_nums) == 0), "Invalid player selector: wildcard + mass or player_nums"
         assert (not self.any_player) or (self.any_player and not (self.mass) and len(self.player_nums) == 0), "Invalid player selector: any_player + mass or player_nums"
+        assert (not self.same_any) or (self.same_any and not (self.mass) and len(self.player_nums) == 0), "Invalid player selector: same_any + mass or player_nums"
         self.player_nums.sort()
 
     def __hash__(self) -> int:

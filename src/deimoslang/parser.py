@@ -354,12 +354,7 @@ class Parser:
                         or_expressions = []
                         for string_expr in string_list:
                             if isinstance(string_expr, StringExpression):
-                                or_expressions.append(
-                                    EquivalentExpression(
-                                        Eval(EvalKind.windowtext, [window_path]), 
-                                        StringExpression(string_expr.string.lower())
-                                    )
-                                )
+                                or_expressions.append(EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(string_expr.string.lower())))
                         
                         if len(or_expressions) == 1:
                             return SelectorGroup(player_selector, or_expressions[0])
@@ -373,6 +368,29 @@ class Parser:
                         return SelectorGroup(player_selector, ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(target.value.lower())))
                     else:
                         return SelectorGroup(player_selector, EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(target.value.lower())))
+                    
+            case TokenKind.command_expr_window_num:
+                self.i += 1
+                window_path = self.parse_window_path()
+                
+                # Check for comparison operators
+                if self.i < len(self.tokens) and self.tokens[self.i].kind in [TokenKind.greater, TokenKind.less, TokenKind.equals]:
+                    operator = self.tokens[self.i]
+                    self.i += 1
+                    
+                    # Parse the right-hand side value
+                    target = self.parse_expression()
+                    evaluated = Eval(EvalKind.windownum, [window_path])
+                    
+                    # Create appropriate comparison expression
+                    if operator.kind == TokenKind.greater:
+                        return self.gen_greater_expression(evaluated, target, player_selector)
+                    elif operator.kind == TokenKind.less:
+                        return self.gen_greater_expression(target, evaluated, player_selector)
+                    elif operator.kind == TokenKind.equals:
+                        return self.gen_equivalent_expression(evaluated, target, player_selector)
+                    
+                return SelectorGroup(player_selector, Eval(EvalKind.windownum, [window_path]))
             case TokenKind.command_expr_playercount:
                 self.i += 1
                 num = self.expect_consume(TokenKind.number)
@@ -496,12 +514,16 @@ class Parser:
 
     def parse_player_selector(self) -> PlayerSelector:
         result = PlayerSelector()
-        valid_toks = [TokenKind.keyword_any_player, TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard, TokenKind.colon]
-        expected_toks = [TokenKind.keyword_any_player, TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard]
+        valid_toks = [TokenKind.keyword_same_any, TokenKind.keyword_any_player, TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard, TokenKind.colon]
+        expected_toks = [TokenKind.keyword_same_any, TokenKind.keyword_any_player, TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard]
         while self.i < len(self.tokens) and self.tokens[self.i].kind in valid_toks:
             if self.tokens[self.i].kind not in expected_toks:
                 self.err(self.tokens[self.i], f"Invalid player selector encountered: {self.tokens[self.i]}")
             match self.tokens[self.i].kind:
+                case TokenKind.keyword_same_any:
+                    result.same_any = True
+                    expected_toks = []
+                    self.i += 1
                 case TokenKind.keyword_any_player:
                     result.any_player = True
                     expected_toks = []
@@ -528,7 +550,7 @@ class Parser:
                 case _:
                     assert False
         result.validate()
-        if len(result.player_nums) == 0 and not result.wildcard and not result.any_player:
+        if len(result.player_nums) == 0 and not result.wildcard and not result.any_player and not result.same_any:
             result.mass = True
         result.validate() # sanity check
         return result

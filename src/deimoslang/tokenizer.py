@@ -18,6 +18,10 @@ class TokenKind(Enum):
     percent = auto()
     path = auto() # A/B/C
 
+    greater = auto()
+    less = auto()
+    equals = auto()
+
     keyword_block = auto()
     keyword_call = auto()
     keyword_loop = auto()
@@ -47,6 +51,7 @@ class TokenKind(Enum):
     keyword_any_player = auto()
     keyword_settimer = auto()
     keyword_endtimer = auto()
+    keyword_same_any = auto()
 
     command_kill = auto()
     command_sleep = auto()
@@ -115,6 +120,7 @@ class TokenKind(Enum):
     command_expr_any_player_list = auto()
     command_expr_has_quest = auto()
     command_expr_has_yaw = auto()
+    command_expr_window_num = auto()
 
     colon = auto() # :
     comma = auto()
@@ -222,6 +228,19 @@ class Tokenizer:
                     case "-":
                         put_simple(TokenKind.minus, c)
                         i += 1
+                    case ">":
+                        put_simple(TokenKind.greater, c)
+                        i += 1
+                    case "<":
+                        put_simple(TokenKind.less, c)
+                        i += 1
+                    case "=":
+                        if i + 1 < len(l) and l[i + 1] == "=":
+                            put_simple(TokenKind.equals, "==")
+                            i += 2
+                        else:
+                            put_simple(TokenKind.equals, c)
+                            i += 1
                     case "*":
                         if i + 1 < len(l) and l[i + 1] == "*":
                             put_simple(TokenKind.star_star, "**")
@@ -365,6 +384,8 @@ class Tokenizer:
                                         put_simple(TokenKind.keyword_settimer, full)
                                     case "endtimer" | "canceltimer" | "stoptimer":
                                         put_simple(TokenKind.keyword_endtimer, full)
+                                    case "sameany" | "sameanyplayer" | "sameanyclient":
+                                        put_simple(TokenKind.keyword_same_any, full)
 
                                     # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":
@@ -501,6 +522,8 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_same_quest, full)
                                     case "anyplayerlist" | "anyclientlist":
                                         put_simple(TokenKind.command_expr_any_player_list, full)
+                                    case "windownum":
+                                        put_simple(TokenKind.command_expr_window_num, full)
                                     case _:
                                         put_simple(TokenKind.identifier, full)
                             i = j
