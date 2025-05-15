@@ -389,7 +389,26 @@ class Parser:
                         return self.gen_greater_expression(target, evaluated, player_selector)
                     elif operator.kind == TokenKind.equals:
                         return self.gen_equivalent_expression(evaluated, target, player_selector)
-                    
+                
+                elif self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.keyword_isbetween:
+                    self.i += 1
+
+                    range_str = self.expect_consume(TokenKind.string).value
+                    try:
+                        # Split the range string and convert to numbers
+                        min_val, max_val = map(float, range_str.split('-'))
+                        
+                        evaluated = Eval(EvalKind.windownum, [window_path])
+                        
+                        min_expr = self.gen_greater_expression(evaluated, NumberExpression(min_val), player_selector)
+                        max_expr = self.gen_greater_expression(NumberExpression(max_val), evaluated, player_selector)
+                        
+                        # Combine with AND
+                        return AndExpression([min_expr, max_expr])
+                    except ValueError:
+                        self.err(self.tokens[self.i-1], f"Invalid range format: {range_str}. Expected format like '1-100'")
+                
+                # Default case - just return the numeric value
                 return SelectorGroup(player_selector, Eval(EvalKind.windownum, [window_path]))
             case TokenKind.command_expr_playercount:
                 self.i += 1

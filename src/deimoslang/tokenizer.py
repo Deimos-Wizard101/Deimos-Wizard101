@@ -52,6 +52,7 @@ class TokenKind(Enum):
     keyword_settimer = auto()
     keyword_endtimer = auto()
     keyword_same_any = auto()
+    keyword_isbetween = auto()
 
     command_kill = auto()
     command_sleep = auto()
@@ -386,6 +387,8 @@ class Tokenizer:
                                         put_simple(TokenKind.keyword_endtimer, full)
                                     case "sameany" | "sameanyplayer" | "sameanyclient":
                                         put_simple(TokenKind.keyword_same_any, full)
+                                    case "isbetween" | "between":
+                                        put_simple(TokenKind.keyword_isbetween, full)
 
                                     # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":
