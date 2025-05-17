@@ -122,6 +122,8 @@ class Compiler:
 
     def compile_command(self, com: Command):
         match com.kind:
+            case CommandKind.autopet:
+                self.emit(InstructionKind.deimos_call, [com.player_selector, com.kind.name, com.data])
             case CommandKind.kill:
                 self.emit(InstructionKind.kill)
             case CommandKind.sleep:
@@ -242,6 +244,9 @@ class Compiler:
             case ListExpression():
                 for item in expr.items:
                     self.prep_expression(item)
+            case IndexAccessExpression():
+                self.prep_expression(expr.expr)
+                self.prep_expression(expr.index)
             case NumberExpression() | StringExpression() | KeyExpression() | CommandExpression() | XYZExpression() | IdentExpression() | StackLocExpression() | Eval():
                 pass
             case _:
