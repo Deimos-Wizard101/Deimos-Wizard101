@@ -26,6 +26,7 @@ class CommandKind(Enum):
     load_playstyle = auto()
     set_yaw = auto()
     select_friend = auto()
+    autopet = auto()
 
 class TeleportKind(Enum):
     position = auto()
@@ -254,6 +255,14 @@ class OrExpression(Expression):
 
     def __repr__(self) -> str:
         return f"OrE({', '.join(str(expr) for expr in self.expressions)})"
+    
+class IndexAccessExpression(Expression):
+    def __init__(self, expr: Expression, index: Expression):
+        self.expr = expr
+        self.index = index
+
+    def __repr__(self) -> str:
+        return f"IndexAccess({self.expr}[{self.index}])"
 
 class SelectorGroup(Expression):
     def __init__(self, players: PlayerSelector, expr: Expression):

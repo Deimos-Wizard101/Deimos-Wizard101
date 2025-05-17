@@ -53,6 +53,8 @@ class TokenKind(Enum):
     keyword_endtimer = auto()
     keyword_same_any = auto()
     keyword_isbetween = auto()
+    keyword_on = auto()
+    keyword_off = auto()
 
     command_kill = auto()
     command_sleep = auto()
@@ -79,6 +81,7 @@ class TokenKind(Enum):
     command_set_yaw = auto()
     command_nav = auto() 
     command_select_friend = auto()
+    command_autopet = auto()
 
     # command expressions
     command_expr_window_visible = auto()
@@ -389,6 +392,10 @@ class Tokenizer:
                                         put_simple(TokenKind.keyword_same_any, full)
                                     case "isbetween" | "between":
                                         put_simple(TokenKind.keyword_isbetween, full)
+                                    case "on":
+                                        put_simple(TokenKind.keyword_on, full)
+                                    case "off":
+                                        put_simple(TokenKind.keyword_off, full)
 
                                     # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":
@@ -441,6 +448,8 @@ class Tokenizer:
                                         put_simple(TokenKind.command_plus_teleport, full)
                                     case "minustp" | "minusteleport":
                                         put_simple(TokenKind.command_minus_teleport, full)
+                                    case "autopet" | "toggleautopet":
+                                        put_simple(TokenKind.command_autopet, full)
 
                                     # expression commands
                                     case "contains":

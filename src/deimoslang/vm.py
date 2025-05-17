@@ -17,6 +17,8 @@ from .tokenizer import *
 from .parser import *
 from .ir import *
 
+from src.auto_pet import dancedance
+from src.dance_game_hook import attempt_activate_dance_hook
 from src.utils import is_visible_by_path, is_free, get_window_from_path, refill_potions, refill_potions_if_needed \
                     , logout_and_in, click_window_by_path, get_quest_name
 from src.command_parser import teleport_to_friend_from_list
@@ -531,6 +533,20 @@ class VM:
 
     async def eval(self, expression: Expression, client: Client | None = None):
         match expression:
+            case IndexAccessExpression():
+                container = await self.eval(expression.expr, client)
+                index = await self.eval(expression.index, client)
+                
+                if isinstance(container, list) and isinstance(index, (int, float)):
+                    index_int = int(index)
+                    if 0 <= index_int < len(container):
+                        return container[index_int]
+                    else:
+                        # Return 0 for out of bounds index
+                        return 0.0
+                else:
+                    # If not a list or index is not a number, return 0
+                    return 0.0
             case AndExpression():
                 for expr in expression.expressions:
                     if not await self.eval(expr, client):
@@ -556,20 +572,23 @@ class VM:
                     case TokenKind.minus:
                         return -(await self.eval(expression.expr, client)) # type: ignore
                     case TokenKind.keyword_not:
-                        result = not (await self.eval(expression.expr, client))
+                        # Evaluate the expression to be negated
+                        expr_result = await self.eval(expression.expr, client)
 
-                        if hasattr(expression.expr, 'command') and hasattr(expression.expr.command, 'player_selector'):
-                            if expression.expr.command.player_selector.any_player:
-                                original_matches = self._any_player_client.copy() if hasattr(self, '_any_player_client') and self._any_player_client else []
-                                
-                                if original_matches:
-                                    self._any_player_client = [c for c in self._clients if c not in original_matches]
-                                else:
-                                    self._any_player_client = self._clients.copy()
-                                
-                                return len(self._any_player_client) > 0
-
-                        return result
+                        is_selector_group = isinstance(expression.expr, SelectorGroup) and expression.expr.players.any_player
+                        
+                        if is_selector_group:
+                            if not self._any_player_client:
+                                self._any_player_client = self._clients.copy()
+                            else:
+                                # Otherwise, select all clients that didn't match
+                                self._any_player_client = [c for c in self._clients if c not in self._any_player_client]
+                            
+                            # Return True if we have any clients in the inverted selection
+                            return len(self._any_player_client) > 0
+                        
+                        # For regular expressions, just negate the result
+                        return not expr_result
                     case _:
                         raise VMError(f"Unimplemented unary expression: {expression}")
             case StringExpression():
@@ -607,9 +626,11 @@ class VM:
                     self._any_player_client = []
                     found_any = False
                     for anyplayer in self._clients:
-                        if await self.eval(expr, anyplayer):
+                        result = await self.eval(expr, anyplayer)
+                        if result:
                             self._any_player_client.append(anyplayer)
                             found_any = True
+                    
                     return found_any
                 else:
                     for player in players:
@@ -698,10 +719,20 @@ class VM:
                         try:
                             text = await window.maybe_text()
                             if text:
-                                # Extract numeric value from text
-                                numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
-                                if numeric_text:
-                                    return float(numeric_text)
+                                if '/' in text:
+                                    parts = text.split('/')
+                                    result = []
+                                    for part in parts:
+                                        numeric_text = ''.join(c for c in part if c.isdigit() or c == '.' or c == '-')
+                                        if numeric_text:
+                                            result.append(float(numeric_text))
+                                        else:
+                                            result.append(0.0)
+                                    return result
+                                else:
+                                    numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
+                                    if numeric_text:
+                                        return float(numeric_text)
                         except (ValueError, MemoryReadError):
                             pass
 
@@ -709,10 +740,20 @@ class VM:
                         try:
                             text = await window.read_wide_string_from_offset(616)
                             if text:
-                                # Extract numeric value from text
-                                numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
-                                if numeric_text:
-                                    return float(numeric_text)
+                                if '/' in text:
+                                    parts = text.split('/')
+                                    result = []
+                                    for part in parts:
+                                        numeric_text = ''.join(c for c in part if c.isdigit() or c == '.' or c == '-')
+                                        if numeric_text:
+                                            result.append(float(numeric_text))
+                                        else:
+                                            result.append(0.0)
+                                    return result
+                                else:
+                                    numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
+                                    if numeric_text:
+                                        return float(numeric_text)
                         except (ValueError, MemoryReadError):
                             pass
                     return 0.0  # Return 0 if no numeric value found or window doesn't exist
@@ -749,6 +790,33 @@ class VM:
 
         # TODO: is eval always fast enough to run in order during a TaskGroup
         match instruction.data[1]:
+            case "autopet":
+                async def vm_play_dance_game(client: Client):
+                    """Simplified version that only plays the dance game with proper hook management"""
+                    try:
+                        logger.debug(f"Client {client.title}: Starting pet dance game.")
+                        logger.debug(f"Client {client.title}: Activating dance game hook")
+                        await attempt_activate_dance_hook(client)
+
+                        await dancedance(client)
+                        
+                        logger.debug(f"Client {client.title}: Finished pet dance game.")
+                        return True
+                    except Exception as e:
+                        logger.error(f"Error in pet play dance game for {client.title}: {e}")
+                        return False
+                
+                # Create tasks for each client
+                tasks = []
+                for client in clients:
+                    task = asyncio.create_task(vm_play_dance_game(client))
+                    tasks.append(task)
+
+                # Wait for all tasks to complete
+                if tasks:
+                    await asyncio.gather(*tasks)
+                    
+                logger.debug("All clients have finished pet dance game")
             case "teleport":
                 args = instruction.data[2]
                 assert type(args) == list
