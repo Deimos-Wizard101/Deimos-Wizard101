@@ -572,22 +572,20 @@ class VM:
                     case TokenKind.minus:
                         return -(await self.eval(expression.expr, client)) # type: ignore
                     case TokenKind.keyword_not:
-                        # Evaluate the expression to be negated
                         expr_result = await self.eval(expression.expr, client)
-
-                        is_selector_group = isinstance(expression.expr, SelectorGroup) and expression.expr.players.any_player
                         
-                        if is_selector_group:
-                            if not self._any_player_client:
-                                self._any_player_client = self._clients.copy()
-                            else:
-                                # Otherwise, select all clients that didn't match
-                                self._any_player_client = [c for c in self._clients if c not in self._any_player_client]
-                            
-                            # Return True if we have any clients in the inverted selection
+                        # Handle any_player context
+                        is_any_player_context = (
+                            (isinstance(expression.expr, SelectorGroup) and expression.expr.players.any_player) or
+                            (hasattr(self, '_any_player_client') and self._any_player_client is not None)
+                        )
+                        
+                        if is_any_player_context:
+                            matching_clients = self._any_player_client.copy() if hasattr(self, '_any_player_client') and self._any_player_client is not None else []
+                            self._any_player_client = [c for c in self._clients if c not in matching_clients]
                             return len(self._any_player_client) > 0
                         
-                        # For regular expressions, just negate the result
+                        # Default case: simple negation
                         return not expr_result
                     case _:
                         raise VMError(f"Unimplemented unary expression: {expression}")
@@ -767,7 +765,7 @@ class VM:
             case EvalKind.max_potioncount:
                 return await client.stats.potion_max()
             case EvalKind.any_player_list:
-                return [c.title for c in self._any_player_client] if self._any_player_client else ["None"]
+                return [c.title for c in self._any_player_client] if self._any_player_client else [self._clients[0].title]
 
     async def exec_deimos_call(self, instruction: Instruction):
         assert instruction.kind == InstructionKind.deimos_call
@@ -792,7 +790,6 @@ class VM:
         match instruction.data[1]:
             case "autopet":
                 async def vm_play_dance_game(client: Client):
-                    """Simplified version that only plays the dance game with proper hook management"""
                     try:
                         logger.debug(f"Client {client.title}: Starting pet dance game.")
                         logger.debug(f"Client {client.title}: Activating dance game hook")
@@ -809,7 +806,13 @@ class VM:
                 # Create tasks for each client
                 tasks = []
                 for client in clients:
-                    task = asyncio.create_task(vm_play_dance_game(client))
+                    async def timeout_dance_game(client):
+                        try:
+                            await asyncio.wait_for(vm_play_dance_game(client), timeout=60)
+                        except asyncio.TimeoutError:
+                            logger.error(f"Client {client.title}: Pet dance game timed out.")
+                        return False
+                    task = asyncio.create_task(timeout_dance_game(client))
                     tasks.append(task)
 
                 # Wait for all tasks to complete

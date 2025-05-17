@@ -374,16 +374,13 @@ class Parser:
                 self.i += 1
                 window_path = self.parse_window_path()
                 
-                # Check for comparison operators
                 if self.i < len(self.tokens) and self.tokens[self.i].kind in [TokenKind.greater, TokenKind.less, TokenKind.equals]:
                     operator = self.tokens[self.i]
                     self.i += 1
                     
-                    # Parse the right-hand side value
                     target = self.parse_expression()
-                    evaluated = Eval(EvalKind.windownum, [window_path])
+                    evaluated = IndexAccessExpression(Eval(EvalKind.windownum, [window_path]), NumberExpression(0))
                     
-                    # Create appropriate comparison expression
                     if operator.kind == TokenKind.greater:
                         return self.gen_greater_expression(evaluated, target, player_selector)
                     elif operator.kind == TokenKind.less:
@@ -391,56 +388,74 @@ class Parser:
                     elif operator.kind == TokenKind.equals:
                         return self.gen_equivalent_expression(evaluated, target, player_selector)
                 
+                # Check for isbetween keyword
                 elif self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.keyword_isbetween:
                     self.i += 1
+                    range_str = self.expect_consume(TokenKind.string).value
                     
-                    if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
-                        range_list = self.parse_list()
+                    try:
+                        min_val, max_val = map(float, range_str.split('-'))
                         
-                        evaluated = Eval(EvalKind.windownum, [window_path])
-                        and_expressions = []
+                        evaluated = IndexAccessExpression(Eval(EvalKind.windownum, [window_path]), NumberExpression(0))
                         
-                        for i, range_expr in enumerate(range_list):
-                            if not isinstance(range_expr, StringExpression):
-                                self.err(self.tokens[self.i-1], f"Expected string range but got {range_expr}")
+                        min_expr = self.gen_greater_expression(evaluated, NumberExpression(min_val), player_selector)
+                        max_expr = self.gen_greater_expression(NumberExpression(max_val), evaluated, player_selector)
+                        
+                        return AndExpression([min_expr, max_expr])
+                    except ValueError:
+                        self.err(self.tokens[self.i-1], f"Invalid range format: {range_str}. Expected format like '1-100'")
+                
+                elif self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
+                    self.i += 1  # Consume the opening bracket
+                    
+                    evaluated = Eval(EvalKind.windownum, [window_path])
+                    expressions = []
+                    index = 0
+                    
+                    while self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.square_close:
+                        # Skip commas between items
+                        if self.tokens[self.i].kind == TokenKind.comma:
+                            self.i += 1
+                            continue
+                            
+                        indexed_eval = IndexAccessExpression(evaluated, NumberExpression(index))
+                        
+                        if self.tokens[self.i].kind in [TokenKind.greater, TokenKind.less, TokenKind.equals]:
+                            operator = self.tokens[self.i]
+                            self.i += 1
+                            target = self.parse_expression()
+                            
+                            if operator.kind == TokenKind.greater:
+                                expressions.append(self.gen_greater_expression(indexed_eval, target, player_selector))
+                            elif operator.kind == TokenKind.less:
+                                expressions.append(self.gen_greater_expression(target, indexed_eval, player_selector))
+                            else:  # equals
+                                expressions.append(self.gen_equivalent_expression(indexed_eval, target, player_selector))
                                 
+                        elif self.tokens[self.i].kind == TokenKind.keyword_isbetween:
+                            self.i += 1
+                            range_str = self.expect_consume(TokenKind.string).value
+                            
                             try:
-                                min_val, max_val = map(float, range_expr.string.split('-'))
-                                
-                                indexed_eval = IndexAccessExpression(evaluated, NumberExpression(i))
-                                
-                                # Create min and max comparisons
+                                min_val, max_val = map(float, range_str.split('-'))
                                 min_expr = self.gen_greater_expression(indexed_eval, NumberExpression(min_val), player_selector)
                                 max_expr = self.gen_greater_expression(NumberExpression(max_val), indexed_eval, player_selector)
-                                
-                                # Combine with AND
-                                and_expressions.append(AndExpression([min_expr, max_expr]))
+                                expressions.append(AndExpression([min_expr, max_expr]))
                             except ValueError:
-                                self.err(self.tokens[self.i-1], f"Invalid range format: {range_expr.string}. Expected format like '1-100'")
-                        
-                        # Combine all range checks with AND
-                        if len(and_expressions) == 1:
-                            return and_expressions[0]
-                        return AndExpression(and_expressions)
-                    else:
-                        # Single range
-                        range_str = self.expect_consume(TokenKind.string).value
-                        try:
-                            # Split the range string and convert to numbers
-                            min_val, max_val = map(float, range_str.split('-'))
+                                self.err(self.tokens[self.i-1], f"Invalid range format: {range_str}. Expected format like '1-100'")
+                        else:
+                            self.err(self.tokens[self.i], f"Expected comparison operator (>, <, =) or 'isbetween'")
+                            break
                             
-                            evaluated = Eval(EvalKind.windownum, [window_path])
-                            
-                            min_expr = self.gen_greater_expression(evaluated, NumberExpression(min_val), player_selector)
-                            max_expr = self.gen_greater_expression(NumberExpression(max_val), evaluated, player_selector)
-                            
-                            # Combine with AND
-                            return AndExpression([min_expr, max_expr])
-                        except ValueError:
-                            self.err(self.tokens[self.i-1], f"Invalid range format: {range_str}. Expected format like '1-100'")
+                        index += 1
+                    
+                    self.expect_consume(TokenKind.square_close)
+                    
+                    if len(expressions) == 1:
+                        return expressions[0]
+                    return AndExpression(expressions)
                 
-                # Default case - just return the numeric value
-                return SelectorGroup(player_selector, Eval(EvalKind.windownum, [window_path]))
+                return SelectorGroup(player_selector, IndexAccessExpression(Eval(EvalKind.windownum, [window_path]), NumberExpression(0)))
             case TokenKind.command_expr_playercount:
                 self.i += 1
                 num = self.expect_consume(TokenKind.number)
