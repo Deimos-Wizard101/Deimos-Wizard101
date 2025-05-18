@@ -570,22 +570,28 @@ class VM:
             case UnaryExpression():
                 match expression.operator.kind:
                     case TokenKind.minus:
-                        return -(await self.eval(expression.expr, client)) # type: ignore
+                        result = await self.eval(expression.expr, client)
+                        return -result # type: ignore
                     case TokenKind.keyword_not:
-                        expr_result = await self.eval(expression.expr, client)
-                        
-                        # Handle any_player context
-                        is_any_player_context = (
-                            (isinstance(expression.expr, SelectorGroup) and expression.expr.players.any_player) or
-                            (hasattr(self, '_any_player_client') and self._any_player_client is not None)
+                        # Check if we're dealing with a CommandExpression or SelectorGroup with any_player
+                        is_any_player = (
+                            (isinstance(expression.expr, CommandExpression) and 
+                            hasattr(expression.expr, 'player_selector') and 
+                            expression.expr.player_selector.any_player) or
+                            (isinstance(expression.expr, SelectorGroup) and 
+                            expression.expr.players.any_player)
                         )
                         
-                        if is_any_player_context:
-                            matching_clients = self._any_player_client.copy() if hasattr(self, '_any_player_client') and self._any_player_client is not None else []
-                            self._any_player_client = [c for c in self._clients if c not in matching_clients]
-                            return len(self._any_player_client) > 0
+                        # Evaluate the expression
+                        expr_result = await self.eval(expression.expr, client)
                         
-                        # Default case: simple negation
+                        # For any_player expressions, we need special handling
+                        if is_any_player and hasattr(self, '_any_player_client') and self._any_player_client is not None:
+                            # Invert the selection - clients that didn't match become the new matches
+                            current_matches = self._any_player_client.copy()
+                            self._any_player_client = [c for c in self._clients if c not in current_matches]
+                        
+                        # Return negated result
                         return not expr_result
                     case _:
                         raise VMError(f"Unimplemented unary expression: {expression}")
@@ -1034,13 +1040,8 @@ class VM:
     async def _process_untils(self):
         for i in range(len(self._until_infos) - 1, -1, -1):
             info = self._until_infos[i]
-            try:
-                if await self.eval(info.expr):
-                    self.current_task.ip = info.exit_point
-                    return
-            except VMError:
-                # If evaluation fails (e.g., due to non-existent player), treat as true
-                # This will cause the VM to skip the until block
+            if await self.eval(info.expr):
+                #self._ip = info.exit_point
                 self.current_task.ip = info.exit_point
                 return
 
@@ -1105,11 +1106,12 @@ class VM:
                         self.current_task.ip += instruction.data[1]
                     else:
                         self.current_task.ip += 1
-                except VMError:
+                except VMError as e:
                     if instruction.data[1] > 1:  # This is likely a while loop
                         self.current_task.ip += instruction.data[1]  # Skip the entire scope
                     else:
                         self.current_task.ip += 1  # Just move to the next instruction
+
             case InstructionKind.jump_ifn:
                 assert type(instruction.data) == list
                 try:
@@ -1118,8 +1120,8 @@ class VM:
                         self.current_task.ip += 1
                     else:
                         self.current_task.ip += instruction.data[1]
-                except VMError:
-                    self.current_task.ip += 1  # Move to the next instruction (skip the loop body)
+                except VMError as e:
+                    self.current_task.ip += 1
             case InstructionKind.call:
                 assert(type(instruction.data) == int)
                 self.current_task.stack.append(self.current_task.ip + 1)
@@ -1137,14 +1139,31 @@ class VM:
                 self.current_task.ip += 1
 
             case InstructionKind.exit_until:
+                found_until = False
                 for i in range(len(self._until_infos) - 1, -1, -1):
                     info = self._until_infos[i]
-                    if info.id == instruction.data:
-                        self._until_infos = self._until_infos[:i]
-                        self.current_task.stack = self.current_task.stack[:info.stack_size]
+                    until_id = instruction.data[0] if isinstance(instruction.data, list) else instruction.data
+                        
+                    if info.id == until_id:
+                        found_until = True
+                        # Find the beginning of the until loop
+                        enter_until_pos = self.current_task.ip
+                        while enter_until_pos >= 0:
+                            if (self.program[enter_until_pos].kind == InstructionKind.enter_until and 
+                                isinstance(self.program[enter_until_pos].data, list) and 
+                                self.program[enter_until_pos].data[1] == until_id):
+                                break
+                            enter_until_pos -= 1
+                            
+                        if enter_until_pos >= 0:
+                            # Jump to the instruction right after enter_until
+                            self.current_task.ip = enter_until_pos + 1
+                        else:
+                            self.current_task.ip += 1
                         break
-                self._any_player_client = []
-                self.current_task.ip += 1
+                
+                if not found_until:
+                    self.current_task.ip += 1
 
             case InstructionKind.log_single:
                 assert(isinstance(instruction.data, Expression))

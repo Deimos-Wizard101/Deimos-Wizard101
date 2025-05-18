@@ -286,18 +286,10 @@ class Analyzer:
                 expr = self.sem_expr(stmt.expr) # sem ahead of time because it's used twice
                 body = self.sem_stmt(stmt.body)
                 self.close_loop()
-                return IfStmt(
-                    expr,
-                    branch_true=StmtList([]),
-                    branch_false=StmtList([
-                        UntilRegion(
-                            expr=expr,
-                            body=WhileStmt(
-                                UnaryExpression(Token(TokenKind.keyword_not, "not", LineInfo(-1, -1, -1)), expr),
-                                body
-                            ),
-                        ),
-                    ])
+                
+                return WhileStmt(
+                    UnaryExpression(Token(TokenKind.keyword_not, "not", LineInfo(-1, -1, -1)), expr),
+                    body
                 )
             case TimesStmt():
                 var_sym = self.def_var()
