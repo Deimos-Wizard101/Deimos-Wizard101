@@ -573,20 +573,12 @@ class VM:
                         result = await self.eval(expression.expr, client)
                         return -result # type: ignore
                     case TokenKind.keyword_not:
-                        # Check if we're dealing with a CommandExpression or SelectorGroup with any_player
-                        is_any_player = (
-                            (isinstance(expression.expr, CommandExpression) and 
-                            hasattr(expression.expr, 'player_selector') and 
-                            expression.expr.player_selector.any_player) or
-                            (isinstance(expression.expr, SelectorGroup) and 
-                            expression.expr.players.any_player)
-                        )
-                        
-                        # Evaluate the expression
+                        # First evaluate the expression to populate _any_player_client
                         expr_result = await self.eval(expression.expr, client)
                         
                         # For any_player expressions, we need special handling
-                        if is_any_player and hasattr(self, '_any_player_client') and self._any_player_client is not None:
+                        if (isinstance(expression.expr, CommandExpression) and 
+                            expression.expr.command.player_selector.any_player):
                             # Invert the selection - clients that didn't match become the new matches
                             current_matches = self._any_player_client.copy()
                             self._any_player_client = [c for c in self._clients if c not in current_matches]

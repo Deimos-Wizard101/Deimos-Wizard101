@@ -125,6 +125,7 @@ class TokenKind(Enum):
     command_expr_has_quest = auto()
     command_expr_has_yaw = auto()
     command_expr_window_num = auto()
+    command_expr_has_item = auto()
 
     colon = auto() # :
     comma = auto()
@@ -536,6 +537,8 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_any_player_list, full)
                                     case "windownum":
                                         put_simple(TokenKind.command_expr_window_num, full)
+                                    case "hasitem":
+                                        put_simple(TokenKind.command_expr_has_item, full)
                                     case _:
                                         put_simple(TokenKind.identifier, full)
                             i = j

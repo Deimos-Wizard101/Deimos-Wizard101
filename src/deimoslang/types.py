@@ -108,6 +108,7 @@ class ExprKind(Enum):
     same_quest = auto()
     same_xyz = auto()
     same_yaw = auto()
+    has_item = auto()
 
 class TimerAction(Enum):
     start = auto()

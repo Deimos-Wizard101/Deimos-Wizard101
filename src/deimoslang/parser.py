@@ -127,6 +127,11 @@ class Parser:
                 self.i += 1
                 text: str = self.expect_consume(TokenKind.string).value # type: ignore
                 result.data = [ExprKind.has_quest, text.lower()]
+            case TokenKind.command_expr_has_item:
+                result.kind = CommandKind.expr
+                self.i += 1
+                item: str = self.expect_consume(TokenKind.string).value # type: ignore
+                result.data = [ExprKind.has_item, item.lower()]
             case TokenKind.command_expr_has_dialogue:
                 result.kind = CommandKind.expr
                 self.i += 1
