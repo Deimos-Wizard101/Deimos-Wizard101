@@ -576,7 +576,6 @@ class VM:
                         # First evaluate the expression to populate _any_player_client
                         expr_result = await self.eval(expression.expr, client)
                         
-                        # For any_player expressions, we need special handling
                         if (isinstance(expression.expr, CommandExpression) and 
                             expression.expr.command.player_selector.any_player):
                             # Invert the selection - clients that didn't match become the new matches
@@ -1029,6 +1028,24 @@ class VM:
             case _:
                 raise VMError(f"Unimplemented deimos call: {instruction}")
 
+    async def exec_compound_deimos_call(self, command_entries):
+        tasks = []
+        
+        for entry in command_entries:
+            player_selector, command_name, command_data = entry
+            
+            # Create an Instruction object with the deimos_call kind
+            instruction = Instruction(
+                kind=InstructionKind.deimos_call,
+                data=[player_selector, command_name, command_data]
+            )
+            
+            # Pass the instruction object to exec_deimos_call
+            tasks.append(self.exec_deimos_call(instruction))
+        
+        # Execute all commands in parallel
+        await asyncio.gather(*tasks)
+
     async def _process_untils(self):
         for i in range(len(self._until_infos) - 1, -1, -1):
             info = self._until_infos[i]
@@ -1204,9 +1221,17 @@ class VM:
                 self.current_task.ip += 1
 
             case InstructionKind.deimos_call:
-                #await self.run_waitfor(self.exec_deimos_call(instruction))
-                await self.exec_deimos_call(instruction)
+                player_selector, command_name, data = instruction.data
+                deimos_call_instruction = Instruction(
+                    kind=InstructionKind.deimos_call,
+                    data=[player_selector, command_name, data]
+                )
+                await self.exec_deimos_call(deimos_call_instruction)
                 self.current_task.ip += 1
+            case InstructionKind.compound_deimos_call:
+                # instruction.data contains a list of [player_selector, command_name, command_data] entries
+                await self.exec_compound_deimos_call(instruction.data)
+                self.current_task.ip += 1  
             case _:
                 raise VMError(f"Unimplemented instruction: {instruction}")
         if self.current_task.ip >= len(self.program):
