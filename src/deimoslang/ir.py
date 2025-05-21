@@ -41,6 +41,8 @@ class InstructionKind(Enum):
     set_timer = auto()
     end_timer = auto()
 
+    compound_deimos_call = auto()
+
     nop = auto()
 
 class Instruction:
@@ -121,7 +123,22 @@ class Compiler:
         self.emit(InstructionKind.deimos_call, [com.player_selector, com.kind.name, com.data])
 
     def compile_command(self, com: Command):
+        if isinstance(com, ParallelCommandStmt):
+                # Compile each command in the parallel statement
+                for cmd in com.commands:
+                    self.compile_command(cmd)
+                return
+
         match com.kind:
+            case CommandKind.compound:
+                command_entries = []
+                for sub_command in com.data:
+                    command_entries.append([
+                        sub_command.player_selector,
+                        sub_command.kind.name,
+                        sub_command.data
+                    ])
+                self.emit(InstructionKind.compound_deimos_call, command_entries)
             case CommandKind.autopet:
                 self.emit(InstructionKind.deimos_call, [com.player_selector, com.kind.name, com.data])
             case CommandKind.kill:
@@ -317,6 +334,11 @@ class Compiler:
 
     def _compile(self, stmt: Stmt):
         match stmt:
+            case ParallelCommandStmt():
+                command_entries = []
+                for command in stmt.commands:
+                    command_entries.append([command.player_selector, command.kind.name, command.data])
+                self.emit(InstructionKind.compound_deimos_call, command_entries)
             case TimerStmt():
                 if stmt.action == TimerAction.start:
                     self.emit(InstructionKind.set_timer, stmt.timer_name)

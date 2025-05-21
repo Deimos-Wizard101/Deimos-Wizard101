@@ -17,6 +17,7 @@ class TokenKind(Enum):
     contains = auto()
     percent = auto()
     path = auto() # A/B/C
+    logical_and = auto()
 
     greater = auto()
     less = auto()
@@ -221,6 +222,10 @@ class Tokenizer:
                 i += 1
             else:
                 match c:
+                    case "&":
+                        if i + 1 < len(l) and l[i + 1] == "&":
+                            put_simple(TokenKind.logical_and, "&&")
+                            i += 2
                     case ":":
                         put_simple(TokenKind.colon, c)
                         i += 1

@@ -27,6 +27,7 @@ class CommandKind(Enum):
     set_yaw = auto()
     select_friend = auto()
     autopet = auto()
+    compound = auto()
 
 class TeleportKind(Enum):
     position = auto()
@@ -312,6 +313,13 @@ class Eval(Expression):
 class Stmt:
     def __init__(self) -> None:
         pass
+
+class ParallelCommandStmt(Stmt):
+    def __init__(self, commands: list[Command]) -> None:
+        self.commands = commands
+    
+    def __repr__(self) -> str:
+        return f"ParallelCommandStmt({self.commands})"
 
 class StmtList(Stmt):
     def __init__(self, stmts: list[Stmt]):

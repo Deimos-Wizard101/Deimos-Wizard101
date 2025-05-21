@@ -257,8 +257,14 @@ class Analyzer:
                     stmt.name = SymExpression(sym)
                     return stmt
             case CommandStmt():
-                self.scope._unique_player_selectors.add(stmt.command.player_selector)
-                return stmt
+                if isinstance(stmt.command, ParallelCommandStmt):
+                    for cmd in stmt.command.commands:
+                        self.scope._unique_player_selectors.add(cmd.player_selector)
+                    return stmt
+                else:
+                    # Original code for single commands
+                    self.scope._unique_player_selectors.add(stmt.command.player_selector)
+                    return stmt
             case IfStmt():
                 stmt.expr = self.sem_expr(stmt.expr)
 

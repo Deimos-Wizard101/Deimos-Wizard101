@@ -580,6 +580,9 @@ class Parser:
         return expr
 
     def parse_expression(self) -> Expression:
+        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_and:
+            self.err(self.tokens[self.i], "Expected an expression before &&")
+            
         return self.parse_logical_expression()
 
     def parse_player_selector(self) -> PlayerSelector:
@@ -705,13 +708,37 @@ class Parser:
         return result
 
     def end_line(self):
+        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_and:
+            # Don't consume the 'and' token, just return
+            return
+        
+        # Otherwise, expect and consume an END_LINE token
         self.expect_consume(TokenKind.END_LINE)
 
     def end_line_optional(self):
         if self.tokens[self.i].kind == TokenKind.END_LINE:
             self.i += 1
 
-    def parse_command(self) -> Command:
+    def parse_command(self):
+        """Parse a command or a sequence of commands joined by &&"""
+        commands = []
+        
+        # Parse the first command
+        commands.append(self._parse_simple_command())
+        
+        # Check for additional commands joined by &&
+        while self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_and:
+            self.i += 1  # Consume the && token
+            commands.append(self._parse_simple_command())
+        
+        # If there's only one command, return it directly
+        if len(commands) == 1:
+            return commands[0]
+        
+        # Otherwise, return a compound command
+        return ParallelCommandStmt(commands)
+
+    def _parse_simple_command(self) -> Command:
         result = Command()
         result.player_selector = self.parse_player_selector()
 
