@@ -5,6 +5,7 @@ from asyncio import Task as AsyncTask, TaskGroup
 from wizwalker import AddressOutOfRange, Client, XYZ, Keycode, MemoryReadError, Primitive
 from wizwalker.memory import DynamicClientObject
 from wizwalker.memory.memory_objects.quest_data import QuestData, GoalData
+from wizwalker.memory.memory_objects.inventory_behavior import ClientInventoryBehavior
 from wizwalker.extensions.wizsprinter import SprintyClient
 from wizwalker.extensions.wizsprinter.wiz_sprinter import Coroutine, upgrade_clients
 from wizwalker.extensions.wizsprinter.wiz_navigator import toZone
@@ -17,6 +18,7 @@ from .tokenizer import *
 from .parser import *
 from .ir import *
 
+from src.drop_logger import get_chat, filter_drops
 from src.auto_pet import dancedance
 from src.dance_game_hook import attempt_activate_dance_hook
 from src.utils import is_visible_by_path, is_free, get_window_from_path, refill_potions, refill_potions_if_needed \
@@ -75,6 +77,11 @@ class VM:
         self.current_task = self._scheduler.get_current_task()
         self._any_player_client = [] # Using this to store the client(s) that satisfied the condition of any player
         self._timers = {}
+        self.logged_data = {
+            'goal': {},
+            'quest': {},
+            'zone': {}
+        }
 
         # Every until loop condition must be checked for every vm step.
         # Once a condition becomes True, all untils that were entered later must be exited and removed.
@@ -88,6 +95,13 @@ class VM:
         self._scheduler.add_task(Task())
         self.current_task = self._scheduler.get_current_task()
         self._until_infos = []
+        self._timers = {}
+        self._any_player_client = []
+        self.logged_data = {
+            'goal': {},
+            'quest': {},
+            'zone': {}
+        }
 
     def stop(self):
         self.running = False
@@ -110,13 +124,6 @@ class VM:
         return self._clients[i]
 
     async def select_friend_from_list(self, client: SprintyClient, name: str):
-        """
-        Selects a friend from the friend list without teleporting to them.
-        
-        Args:
-            client: The client that will select the friend
-            name: The name of the friend to select
-        """
         async with client.mouse_handler:
             try:
                 friends_window = await _maybe_get_named_window(
@@ -202,6 +209,14 @@ class VM:
         name: str = await client.cache_handler.get_langcode_name(name_key)
         return name.lower().strip()
 
+    async def _fetch_goals(self, client: SprintyClient) -> list[tuple[int, GoalData]]:
+        result = []
+        qm = await client.quest_manager()
+        for quest_id, quest in (await qm.quest_data()).items():
+            for goal_id, goal in (await quest.goal_data()).items():
+                result.append((goal_id, goal))
+        return result
+
     async def _fetch_quests(self, client: SprintyClient) -> list[tuple[int, QuestData]]:
         result = []
         qm = await client.quest_manager()
@@ -224,10 +239,55 @@ class VM:
             goal_txt = goal_txt[:goal_txt.find("(")]
         return goal_txt.lower().strip()
 
+    async def _check_drops(self, client: SprintyClient, item_name: str) -> bool:
+        chat_text = await get_chat(client)
+        if not chat_text:
+            return False
+            
+        drops = filter_drops(chat_text.split('\n'))
+
+        if not hasattr(client, '_tracked_drops'):
+            client._tracked_drops = []
+        
+        for drop in drops:
+            drop_id = f"{client.title}:{drop}"
+
+            if item_name.lower() in drop.lower():
+                is_new_drop = True
+                for tracked_drop in client._tracked_drops:
+                    if tracked_drop == drop_id:
+                        is_new_drop = False
+                        break
+                        
+                if is_new_drop:
+                    client._tracked_drops.append(drop_id)
+                    logger.debug(f"Found new dropped item matching '{item_name}': {drop}")
+                    return True
+        
+        if hasattr(client, '_tracked_drops') and len(client._tracked_drops) > 100:
+            client._tracked_drops = client._tracked_drops[-100:]
+                    
+        return False
+    
+    async def _check_duel_round(self, client: SprintyClient) -> int:
+        try:
+            if not await client.in_battle():
+                return 0
+                
+            duel = client.duel
+            if duel:
+                current_round = await duel.round_num()
+                return current_round
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting duel round: {e}")
+            return 0
+
     async def _eval_command_expression(self, expression: CommandExpression):
         assert expression.command.kind == CommandKind.expr
         assert type(expression.command.data) is list
         assert type(expression.command.data[0]) is ExprKind
+
 
         selector = expression.command.player_selector
         assert selector is not None
@@ -238,6 +298,163 @@ class VM:
             return False
         
         match expression.command.data[0]:
+            case ExprKind.zone_changed:
+                if len(expression.command.data) > 1:
+                    expected_zone = "/".join(expression.command.data[1])
+                    if selector.any_player:
+                        self._any_player_client = []
+                        found_any = False
+                        for client in self._clients:
+                            current_zone = await client.zone_name()
+                            if current_zone == expected_zone and current_zone != self.logged_data['zone'].get(client.title, None):
+                                self._any_player_client.append(client)
+                                self.logged_data['zone'][client.title] = current_zone
+                                found_any = True
+                        return found_any
+                    else:
+                        for client in clients:
+                            current_zone = await client.zone_name()
+                            if current_zone != expected_zone or current_zone == self.logged_data['zone'].get(client.title, None):
+                                return False
+                            self.logged_data['zone'][client.title] = current_zone
+                        return True
+                else:
+                    if selector.any_player:
+                        self._any_player_client = []
+                        found_any = False
+                        for client in self._clients:
+                            current_zone = await client.zone_name()
+                            last_zone = self.logged_data['zone'].get(client.title, None)
+                            if current_zone != last_zone and current_zone is not None:
+                                self._any_player_client.append(client)
+                                self.logged_data['zone'][client.title] = current_zone
+                                found_any = True
+                        return found_any
+                    else:
+                        for client in clients:
+                            current_zone = await client.zone_name()
+                            last_zone = self.logged_data['zone'].get(client.title, None)
+                            if current_zone == last_zone or current_zone is None:
+                                return False
+                            self.logged_data['zone'][client.title] = current_zone
+                        return True
+            case ExprKind.goal_changed:
+                if len(expression.command.data) > 1:
+                    expected_goal = expression.command.data[1]
+                    
+                    if selector.any_player:
+                        self._any_player_client = []
+                        found_any = False
+                        for client in self._clients:
+                            current_goal = await self._fetch_tracked_goal_text(client)
+                            if current_goal == expected_goal and current_goal != self.logged_data['goal'].get(client.title, None):
+                                self._any_player_client.append(client)
+                                self.logged_data['goal'][client.title] = current_goal
+                                found_any = True
+                        return found_any
+                    else:
+                        for client in clients:
+                            current_goal = await self._fetch_tracked_goal_text(client)
+                            if current_goal != expected_goal or current_goal == self.logged_data['goal'].get(client.title, None):
+                                return False
+                            self.logged_data['goal'][client.title] = current_goal
+                        return True
+                else:
+                    if selector.any_player:
+                        self._any_player_client = []
+                        found_any = False
+                        for client in self._clients:
+                            current_goal = await self._fetch_tracked_goal_text(client)
+                            last_goal = self.logged_data['goal'].get(client.title, None)
+                            if current_goal != last_goal and current_goal is not None:
+                                self._any_player_client.append(client)
+                                self.logged_data['goal'][client.title] = current_goal
+                                found_any = True
+                        return found_any
+                    else:
+                        for client in clients:
+                            current_goal = await self._fetch_tracked_goal_text(client)
+                            last_goal = self.logged_data['goal'].get(client.title, None)
+                            if current_goal == last_goal or current_goal is None:
+                                return False
+                            self.logged_data['goal'][client.title] = current_goal
+                        return True
+                        
+            case ExprKind.quest_changed:
+                if len(expression.command.data) > 1:
+                    expected_quest = expression.command.data[1]
+                    if selector.any_player:
+                        self._any_player_client = []
+                        found_any = False
+                        for client in self._clients:
+                            current_quest = await self._fetch_tracked_quest_text(client)
+                            if current_quest == expected_quest and current_quest != self.logged_data['quest'].get(client.title, None):
+                                self._any_player_client.append(client)
+                                self.logged_data['quest'][client.title] = current_quest
+                                found_any = True
+                        return found_any
+                    else:
+                        for client in clients:
+                            current_quest = await self._fetch_tracked_quest_text(client)
+                            if current_quest != expected_quest or current_quest == self.logged_data['quest'].get(client.title, None):
+                                return False
+                            self.logged_data['quest'][client.title] = current_quest
+                        return True
+                else:
+                    if selector.any_player:
+                        self._any_player_client = []
+                        found_any = False
+                        for client in self._clients:
+                            current_quest = await self._fetch_tracked_quest_text(client)
+                            last_quest = self.logged_data['quest'].get(client.title, None)
+                            if current_quest != last_quest and current_quest is not None:
+                                self._any_player_client.append(client)
+                                self.logged_data['quest'][client.title] = current_quest
+                                found_any = True
+                        return found_any
+                    else:
+                        for client in clients:
+                            current_quest = await self._fetch_tracked_quest_text(client)
+                            last_quest = self.logged_data['quest'].get(client.title, None)
+                            if current_quest == last_quest or current_quest is None:
+                                return False
+                            self.logged_data['quest'][client.title] = current_quest
+                        return True
+
+            case ExprKind.duel_round:
+                expected_round = expression.command.data[1]
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        current_round = await self._check_duel_round(client)
+                        if current_round == expected_round:
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        current_round = await self._check_duel_round(client)
+                        if current_round != expected_round:
+                            return False
+                    return True
+            case ExprKind.items_dropped:
+                item_name = expression.command.data[1]
+                assert type(item_name) == str
+                
+                if selector.any_player:
+                    self._any_player_client = []
+                    found_any = False
+                    for client in self._clients:
+                        if await self._check_drops(client, item_name):
+                            self._any_player_client.append(client)
+                            found_any = True
+                    return found_any
+                else:
+                    for client in clients:
+                        if not await self._check_drops(client, item_name):
+                            return False
+                    return True
             case ExprKind.window_visible:
                 if selector.any_player:
                     self._any_player_client = []
@@ -310,6 +527,7 @@ class VM:
                             return False
                     return True
             case ExprKind.same_place:
+                await asyncio.sleep(1)
                 data = [await c.client_object.global_id_full() for c in clients]
                 target = len(data)
                 for client in clients:
@@ -784,7 +1002,22 @@ class VM:
             return
 
         # TODO: is eval always fast enough to run in order during a TaskGroup
-        match instruction.data[1]:
+        match instruction.data[1]:     
+            case "set_zone":
+                for client in clients:
+                    zone_name = await client.zone_name()
+                    self.logged_data['zone'][client.title] = zone_name
+                    logger.debug(f"Client {client.title}: Current zone: {zone_name}")
+            case "set_goal":
+                for client in clients:
+                    current_goal = await self._fetch_tracked_goal_text(client)
+                    self.logged_data['goal'][client.title] = current_goal
+                    logger.debug(f"Client {client.title}: Current goal: {current_goal}")
+            case "set_quest":
+                for client in clients:
+                    current_quest = await self._fetch_tracked_quest_text(client)
+                    self.logged_data['quest'][client.title] = current_quest
+                    logger.debug(f"Client {client.title}: Current quest: {current_quest}")
             case "autopet":
                 async def vm_play_dance_game(client: Client):
                     try:
@@ -812,7 +1045,6 @@ class VM:
                     task = asyncio.create_task(timeout_dance_game(client))
                     tasks.append(task)
 
-                # Wait for all tasks to complete
                 if tasks:
                     await asyncio.gather(*tasks)
                     
@@ -965,21 +1197,27 @@ class VM:
                         tg.create_task(client.send_key(key, time))
             case "usepotion":
                 args = instruction.data[2]
-                async with asyncio.TaskGroup() as tg:
-                    for client in clients:
-                        if len(args) > 0:
-                            health_num: float = await self.eval(args[0], client) # type: ignore
-                            mana_num: float = await self.eval(args[1], client) # type: ignore
-                            async def _proxy():
-                                async with client.mouse_handler:
-                                    await client.use_potion_if_needed(int(health_num), int(mana_num))
-                            tg.create_task(_proxy())
+                potion_tasks = []
+                
+                for client in clients:
+                    if len(args) > 0:
+                        health_num: float = await self.eval(args[0], client) # type: ignore
+                        mana_num: float = await self.eval(args[1], client) # type: ignore
+                        
+                        async def _use_potion_if_needed(client, health_threshold, mana_threshold):
+                            async with client.mouse_handler:
+                                await client.use_potion_if_needed(int(health_threshold), int(mana_threshold))
+                        
+                        potion_tasks.append(_use_potion_if_needed(client, health_num, mana_num))
+                    else:
+                        async def _use_potion(client):
+                            async with client.mouse_handler:
+                                await client.use_potion()
 
-                        else:
-                            async def _proxy():
-                                async with client.mouse_handler:
-                                    await client.use_potion()
-                            tg.create_task(_proxy())
+                        potion_tasks.append(_use_potion(client))
+                
+                if potion_tasks:
+                    await asyncio.gather(*potion_tasks)
             case "buypotions":
                 args = instruction.data[2]
                 ifneeded = args[0]
@@ -1033,14 +1271,12 @@ class VM:
         
         for entry in command_entries:
             player_selector, command_name, command_data = entry
-            
-            # Create an Instruction object with the deimos_call kind
+
             instruction = Instruction(
                 kind=InstructionKind.deimos_call,
                 data=[player_selector, command_name, command_data]
             )
-            
-            # Pass the instruction object to exec_deimos_call
+
             tasks.append(self.exec_deimos_call(instruction))
         
         # Execute all commands in parallel
@@ -1206,11 +1442,23 @@ class VM:
                 self.current_task.ip += 1
             case InstructionKind.set_yaw:
                 assert(type(instruction.data)==list)
-                clients: list[SprintyClient] = self._select_players(instruction.data[0])
+                selector = instruction.data[0]
                 yaw = instruction.data[1]
-                async with TaskGroup() as tg:
-                    for client in clients:
-                        tg.create_task(client.body.write_yaw(yaw))
+                
+                if selector.any_player and self._any_player_client:
+                    clients = self._any_player_client
+                elif selector.any_player:
+                    clients = []
+                    for client in self._clients:
+                        clients = [client] 
+                        break
+                else:
+                    clients = self._select_players(selector)
+                
+                if clients:
+                    async with TaskGroup() as tg:
+                        for client in clients:
+                            tg.create_task(client.body.write_yaw(yaw))
                 self.current_task.ip += 1
             case InstructionKind.load_playstyle:
                 logger.debug("Loading playstyle")
