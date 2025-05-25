@@ -137,6 +137,7 @@ class TokenKind(Enum):
     command_expr_quest_changed = auto()
     command_expr_goal_changed = auto()
     command_expr_zone_changed = auto()
+    command_expr_account_level = auto()
 
     colon = auto() # :
     comma = auto()
@@ -574,6 +575,8 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_goal_changed, full)
                                     case "zonechanged":
                                         put_simple(TokenKind.command_expr_zone_changed, full)
+                                    case "accountlevel" | "level":
+                                        put_simple(TokenKind.command_expr_account_level, full)
                                     case _:
                                         put_simple(TokenKind.identifier, full)
                             i = j
