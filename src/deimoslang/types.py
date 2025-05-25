@@ -28,6 +28,10 @@ class CommandKind(Enum):
     select_friend = auto()
     autopet = auto()
     compound = auto()
+    set_goal = auto()
+    set_quest = auto()
+    set_zone = auto()
+    toggle_combat = auto()
 
 class TeleportKind(Enum):
     position = auto()
@@ -109,7 +113,11 @@ class ExprKind(Enum):
     same_quest = auto()
     same_xyz = auto()
     same_yaw = auto()
-    has_item = auto()
+    items_dropped = auto()
+    duel_round = auto()
+    goal_changed = auto()
+    quest_changed = auto()
+    zone_changed = auto()
 
 class TimerAction(Enum):
     start = auto()

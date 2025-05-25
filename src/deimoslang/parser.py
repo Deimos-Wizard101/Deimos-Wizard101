@@ -94,6 +94,64 @@ class Parser:
         result.player_selector = player_selector
 
         match self.tokens[self.i].kind:
+            case TokenKind.command_expr_zone_changed:
+                result.kind = CommandKind.expr
+                self.i += 1
+
+                if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_to:
+                    self.i += 1
+                    text: str = self.parse_zone_path() # type: ignore
+                    result.data = [ExprKind.zone_changed, text]
+                else:
+                    result.data = [ExprKind.zone_changed]
+            case TokenKind.command_expr_goal_changed:
+                result.kind = CommandKind.expr
+                self.i += 1
+
+                if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_to:
+                    self.i += 1
+                    text: str = self.expect_consume(TokenKind.string).value # type: ignore
+                    result.data = [ExprKind.goal_changed, text.lower()]
+                else:
+                    result.data = [ExprKind.goal_changed]
+            case TokenKind.command_expr_quest_changed:
+                result.kind = CommandKind.expr
+                self.i += 1
+                
+                if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_to:
+                    self.i += 1 
+                    text: str = self.expect_consume(TokenKind.string).value # type: ignore
+                    result.data = [ExprKind.quest_changed, text.lower()]
+                else:
+                    result.data = [ExprKind.quest_changed]
+            case TokenKind.command_expr_duel_round:
+                result.kind = CommandKind.expr
+                self.i += 1
+                duel_round: int = self.expect_consume(TokenKind.number).value
+                result.data = [ExprKind.duel_round, duel_round]
+            case TokenKind.command_expr_item_dropped:
+                result.kind = CommandKind.expr
+                self.i += 1
+
+                if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
+                    item_list = self.parse_list()
+
+                    items = []
+                    for item_expr in item_list:
+                        if isinstance(item_expr, StringExpression):
+                            items.append(item_expr.string.lower())
+                        else:
+                            self.err(self.tokens[self.i-1], f"Expected string in item list, got {item_expr}")
+
+                    result.data = [ExprKind.items_dropped, items]
+                else:
+                    item: str = self.expect_consume(TokenKind.string).value # type: ignore
+                    result.data = [ExprKind.items_dropped, item.lower()]
+            case TokenKind.command_expr_has_goal:
+                result.kind = CommandKind.expr
+                self.i += 1
+                text: str = self.expect_consume(TokenKind.string).value # type: ignore
+                result.data = [ExprKind.has_goal, text.lower()]
             case TokenKind.command_expr_window_visible:
                 result.kind = CommandKind.expr
                 self.i += 1
@@ -709,10 +767,7 @@ class Parser:
 
     def end_line(self):
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_and:
-            # Don't consume the 'and' token, just return
             return
-        
-        # Otherwise, expect and consume an END_LINE token
         self.expect_consume(TokenKind.END_LINE)
 
     def end_line_optional(self):
@@ -720,22 +775,16 @@ class Parser:
             self.i += 1
 
     def parse_command(self):
-        """Parse a command or a sequence of commands joined by &&"""
         commands = []
-        
-        # Parse the first command
         commands.append(self._parse_simple_command())
         
-        # Check for additional commands joined by &&
         while self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_and:
-            self.i += 1  # Consume the && token
+            self.i += 1 
             commands.append(self._parse_simple_command())
-        
-        # If there's only one command, return it directly
+
         if len(commands) == 1:
             return commands[0]
         
-        # Otherwise, return a compound command
         return ParallelCommandStmt(commands)
 
     def _parse_simple_command(self) -> Command:
@@ -743,6 +792,26 @@ class Parser:
         result.player_selector = self.parse_player_selector()
 
         match self.tokens[self.i].kind:
+            case TokenKind.command_toggle_combat:
+                result.kind = CommandKind.toggle_combat
+                self.i += 1
+                if self.tokens[self.i].kind in [TokenKind.logical_on, TokenKind.logical_off]:
+                    result.data = [self.expect_consume_any([TokenKind.logical_on, TokenKind.logical_off]).literal]
+                else:
+                    result.data = []
+                self.end_line()
+            case TokenKind.command_set_zone:
+                result.kind = CommandKind.set_zone
+                self.i += 1
+                self.end_line()
+            case TokenKind.command_set_goal:
+                result.kind = CommandKind.set_goal
+                self.i += 1
+                self.end_line()
+            case TokenKind.command_set_quest:
+                result.kind = CommandKind.set_quest
+                self.i += 1
+                self.end_line()
             case TokenKind.command_autopet:
                 result.kind = CommandKind.autopet
                 self.i += 1

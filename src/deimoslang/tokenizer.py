@@ -18,6 +18,10 @@ class TokenKind(Enum):
     percent = auto()
     path = auto() # A/B/C
     logical_and = auto()
+    logical_to = auto()
+    logical_from = auto()
+    logical_on = auto()
+    logical_off = auto()
 
     greater = auto()
     less = auto()
@@ -54,8 +58,6 @@ class TokenKind(Enum):
     keyword_endtimer = auto()
     keyword_same_any = auto()
     keyword_isbetween = auto()
-    keyword_on = auto()
-    keyword_off = auto()
 
     command_kill = auto()
     command_sleep = auto()
@@ -83,6 +85,10 @@ class TokenKind(Enum):
     command_nav = auto() 
     command_select_friend = auto()
     command_autopet = auto()
+    command_set_goal = auto()
+    command_set_quest = auto()
+    command_set_zone = auto()
+    command_toggle_combat = auto()
 
     # command expressions
     command_expr_window_visible = auto()
@@ -126,7 +132,11 @@ class TokenKind(Enum):
     command_expr_has_quest = auto()
     command_expr_has_yaw = auto()
     command_expr_window_num = auto()
-    command_expr_has_item = auto()
+    command_expr_item_dropped = auto()
+    command_expr_duel_round = auto()
+    command_expr_quest_changed = auto()
+    command_expr_goal_changed = auto()
+    command_expr_zone_changed = auto()
 
     colon = auto() # :
     comma = auto()
@@ -398,10 +408,14 @@ class Tokenizer:
                                         put_simple(TokenKind.keyword_same_any, full)
                                     case "isbetween" | "between":
                                         put_simple(TokenKind.keyword_isbetween, full)
+                                    case "from":
+                                        put_simple(TokenKind.logical_from, full)
+                                    case "to":
+                                        put_simple(TokenKind.logical_to, full)
                                     case "on":
-                                        put_simple(TokenKind.keyword_on, full)
+                                        put_simple(TokenKind.logical_on, full)
                                     case "off":
-                                        put_simple(TokenKind.keyword_off, full)
+                                        put_simple(TokenKind.logical_off, full)
 
                                     # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":
@@ -456,6 +470,14 @@ class Tokenizer:
                                         put_simple(TokenKind.command_minus_teleport, full)
                                     case "autopet" | "toggleautopet":
                                         put_simple(TokenKind.command_autopet, full)
+                                    case "loggoal":
+                                        put_simple(TokenKind.command_set_goal, full)
+                                    case "logquest":
+                                        put_simple(TokenKind.command_set_quest, full)
+                                    case "logzone":
+                                        put_simple(TokenKind.command_set_zone, full)
+                                    case "togglecombat" | "togglecombatmode":
+                                        put_simple(TokenKind.command_toggle_combat, full)
 
                                     # expression commands
                                     case "contains":
@@ -542,8 +564,16 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_any_player_list, full)
                                     case "windownum":
                                         put_simple(TokenKind.command_expr_window_num, full)
-                                    case "hasitem":
-                                        put_simple(TokenKind.command_expr_has_item, full)
+                                    case "itemdropped":
+                                        put_simple(TokenKind.command_expr_item_dropped, full)
+                                    case "combatround" | "duelround" | "fightround":
+                                        put_simple(TokenKind.command_expr_duel_round, full)
+                                    case "questchanged":
+                                        put_simple(TokenKind.command_expr_quest_changed, full)
+                                    case "goalchanged":
+                                        put_simple(TokenKind.command_expr_goal_changed, full)
+                                    case "zonechanged":
+                                        put_simple(TokenKind.command_expr_zone_changed, full)
                                     case _:
                                         put_simple(TokenKind.identifier, full)
                             i = j

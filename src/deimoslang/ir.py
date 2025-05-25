@@ -130,6 +130,14 @@ class Compiler:
                 return
 
         match com.kind:
+            case CommandKind.toggle_combat:
+                self.emit(InstructionKind.deimos_call, [com.player_selector, com.kind.name, com.data])
+            case CommandKind.set_zone:
+                self.emit(InstructionKind.deimos_call, [com.player_selector, com.kind.name, com.data])
+            case CommandKind.set_goal:
+                self.emit(InstructionKind.deimos_call, [com.player_selector, com.kind.name, com.data])
+            case CommandKind.set_quest:
+                self.emit(InstructionKind.deimos_call, [com.player_selector, com.kind.name, com.data])
             case CommandKind.compound:
                 command_entries = []
                 for sub_command in com.data:
