@@ -63,7 +63,6 @@ class EvalKind(Enum):
     playercount = auto()
     any_player_list = auto()
     windownum = auto()
-    account_level = auto()
 
 class WaitforKind(Enum):
     dialog = auto()

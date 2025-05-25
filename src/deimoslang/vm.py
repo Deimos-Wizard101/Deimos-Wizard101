@@ -282,10 +282,6 @@ class VM:
         except Exception as e:
             logger.error(f"Error getting duel round: {e}")
             return 0
-    
-    async def account_level(self, client: SprintyClient) -> int:
-        account_level = await client.stats.level_scaled()
-        return account_level
 
     async def _eval_command_expression(self, expression: CommandExpression):
         assert expression.command.kind == CommandKind.expr
@@ -884,8 +880,6 @@ class VM:
     async def _eval_expression(self, eval: Eval, client: Client):
         kind = eval.kind
         match kind:
-            case EvalKind.account_level:
-                return await client.stats.reference_level()
             case EvalKind.health:
                 return await client.stats.current_hitpoints()
             case EvalKind.max_health:
