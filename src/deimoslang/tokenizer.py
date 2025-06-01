@@ -58,6 +58,7 @@ class TokenKind(Enum):
     keyword_endtimer = auto()
     keyword_same_any = auto()
     keyword_isbetween = auto()
+    keyword_con = auto()
 
     command_kill = auto()
     command_sleep = auto()
@@ -417,6 +418,8 @@ class Tokenizer:
                                         put_simple(TokenKind.logical_on, full)
                                     case "off":
                                         put_simple(TokenKind.logical_off, full)
+                                    case "con" | "set" | "setvar" | "var":
+                                        put_simple(TokenKind.keyword_con, full)
 
                                     # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":

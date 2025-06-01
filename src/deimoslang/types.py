@@ -168,6 +168,14 @@ class Expression:
     def __init__(self):
         pass
 
+class ConstantExpression(Expression):
+    def __init__(self, name: str, value: Expression):
+        self.name = name
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f"ConstE({self.name}, {self.value})"
+
 class ListExpression(Expression):
     def __init__(self, items: list[Expression]):
         self.items = items
@@ -322,6 +330,14 @@ class Eval(Expression):
 class Stmt:
     def __init__(self) -> None:
         pass
+
+class ConstantDeclStmt(Stmt):
+    def __init__(self, name: str, value: Expression):
+        self.name = name
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f"ConstDeclS({self.name}, {self.value})"
 
 class ParallelCommandStmt(Stmt):
     def __init__(self, commands: list[Command]) -> None:

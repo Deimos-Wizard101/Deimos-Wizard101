@@ -41,6 +41,8 @@ class InstructionKind(Enum):
     set_timer = auto()
     end_timer = auto()
 
+    declare_constant = auto()
+
     compound_deimos_call = auto()
 
     nop = auto()
@@ -272,7 +274,7 @@ class Compiler:
             case IndexAccessExpression():
                 self.prep_expression(expr.expr)
                 self.prep_expression(expr.index)
-            case NumberExpression() | StringExpression() | KeyExpression() | CommandExpression() | XYZExpression() | IdentExpression() | StackLocExpression() | Eval():
+            case ConstantExpression() |NumberExpression() | StringExpression() | KeyExpression() | CommandExpression() | XYZExpression() | IdentExpression() | StackLocExpression() | Eval():
                 pass
             case _:
                 raise CompilerError(f"Unhandled expression type: {expr}")
@@ -342,6 +344,9 @@ class Compiler:
 
     def _compile(self, stmt: Stmt):
         match stmt:
+            case ConstantDeclStmt():
+                self.prep_expression(stmt.value)
+                self.emit(InstructionKind.declare_constant, [stmt.name, stmt.value])
             case ParallelCommandStmt():
                 command_entries = []
                 for command in stmt.commands:
