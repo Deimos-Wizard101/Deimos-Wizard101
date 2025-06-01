@@ -82,6 +82,7 @@ class VM:
             'quest': {},
             'zone': {}
         }
+        self._constants = {} 
 
         # Every until loop condition must be checked for every vm step.
         # Once a condition becomes True, all untils that were entered later must be exited and removed.
@@ -102,6 +103,7 @@ class VM:
             'quest': {},
             'zone': {}
         }
+        self._constants = {}
 
     def stop(self):
         self.running = False
@@ -109,6 +111,11 @@ class VM:
     def kill(self):
         self.stop()
         self.killed = True
+
+    async def define_constant(self, name: str, value):
+        if name in self._constants:
+            raise VMError(f"Constant '{name}' already defined")
+        self._constants[name] = value
 
     def load_from_text(self, code: str):
         compiler = Compiler.from_text(code)
@@ -282,6 +289,31 @@ class VM:
         except Exception as e:
             logger.error(f"Error getting duel round: {e}")
             return 0
+    async def _extract_data_info(self, zone_data):
+        if isinstance(zone_data, str):
+            return zone_data
+        elif hasattr(zone_data, 'string'):
+            return zone_data.string
+        elif hasattr(zone_data, 'ident'):
+            ident = zone_data.ident
+            if ident in self._constants:
+                return self._constants[ident]
+            else:
+                try:
+                    return await self.eval(zone_data)
+                except Exception as e:
+                    logger.error(f"Failed to evaluate identifier {ident}: {e}")
+                    return ident
+        elif isinstance(zone_data, list) and all(isinstance(item, str) for item in zone_data):
+            return "/".join(zone_data)
+            
+        # For any other expression type, try to evaluate it
+        else:
+            try:
+                return await self.eval(zone_data)
+            except Exception as e:
+                logger.error(f"Failed to extract zone name: {e}")
+                return str(zone_data)
 
     async def _eval_command_expression(self, expression: CommandExpression):
         assert expression.command.kind == CommandKind.expr
@@ -300,7 +332,9 @@ class VM:
         match expression.command.data[0]:
             case ExprKind.zone_changed:
                 if len(expression.command.data) > 1:
-                    expected_zone = "/".join(expression.command.data[1])
+                    zone_data = expression.command.data[1]
+                    expected_zone = await self._extract_data_info(zone_data)
+
                     if selector.any_player:
                         self._any_player_client = []
                         found_any = False
@@ -340,7 +374,7 @@ class VM:
                         return True
             case ExprKind.goal_changed:
                 if len(expression.command.data) > 1:
-                    expected_goal = expression.command.data[1]
+                    expected_goal = await self._extract_data_info(expression.command.data[1])
                     
                     if selector.any_player:
                         self._any_player_client = []
@@ -382,7 +416,7 @@ class VM:
                         
             case ExprKind.quest_changed:
                 if len(expression.command.data) > 1:
-                    expected_quest = expression.command.data[1]
+                    expected_quest = await self._extract_data_info(expression.command.data[1])
                     if selector.any_player:
                         self._any_player_client = []
                         found_any = False
@@ -422,7 +456,7 @@ class VM:
                         return True
 
             case ExprKind.duel_round:
-                expected_round = expression.command.data[1]
+                expected_round = await self._extract_data_info(expression.command.data[1])
                 if selector.any_player:
                     self._any_player_client = []
                     found_any = False
@@ -439,7 +473,7 @@ class VM:
                             return False
                     return True
             case ExprKind.items_dropped:
-                item_name = expression.command.data[1]
+                item_name = await self._extract_data_info(expression.command.data[1])
                 assert type(item_name) == str
                 
                 if selector.any_player:
@@ -456,25 +490,32 @@ class VM:
                             return False
                     return True
             case ExprKind.window_visible:
+                path = await self._extract_data_info(expression.command.data[1])
                 if selector.any_player:
                     self._any_player_client = []
                     found_any = False
                     for client in self._clients:
-                        if await is_visible_by_path(client, expression.command.data[1]):
+                        if isinstance(path, IdentExpression):
+                            path = await self.eval(path)
+                        if await is_visible_by_path(client, path):
                             self._any_player_client.append(client)
                             found_any = True
                     return found_any
                 else:
                     for client in clients:
-                        if not await is_visible_by_path(client, expression.command.data[1]):
+                        if isinstance(path, IdentExpression):
+                            path = await self.eval(path)
+                        if not await is_visible_by_path(client, path):
                             return False
                     return True
             case ExprKind.window_disabled:
-                path = expression.command.data[1]
+                path = await self._extract_data_info(expression.command.data[1])
                 if selector.any_player:
                     self._any_player_client = []
                     found_any = False
                     for client in self._clients:
+                        if isinstance(path, IdentExpression):
+                            path = await self.eval(path)
                         root = client.root_window
                         window = await get_window_from_path(root, path)
                         if window != False and await window.is_control_grayed():
@@ -483,6 +524,8 @@ class VM:
                     return found_any
                 else:
                     for client in clients:
+                        if isinstance(path, IdentExpression):
+                            path = await self.eval(path)
                         root = client.root_window
                         window = await get_window_from_path(root, path)
                         if window == False:
@@ -492,7 +535,7 @@ class VM:
                     return True
             case ExprKind.in_range: # NOTE: if client is playing as pet, they are counted as an entity
                 data = [await c.client_object.global_id_full() for c in clients]
-                target = expression.command.data[1]
+                target = await self._extract_data_info(expression.command.data[1])
                 if selector.any_player:
                     self._any_player_client = []
                     found_any = False
@@ -550,7 +593,7 @@ class VM:
                     found_any = False
                     for client in self._clients:
                         zone = await client.zone_name()
-                        expected = "/".join(expression.command.data[1])
+                        expected = await self._extract_data_info(expression.command.data[1])
                         if expected == zone:
                             self._any_player_client.append(client)
                             found_any = True
@@ -558,7 +601,7 @@ class VM:
                 else:
                     for client in clients:
                         zone = await client.zone_name()
-                        expected = "/".join(expression.command.data[1])
+                        expected = await self._extract_data_info(expression.command.data[1])
                         if expected != zone:
                             return False
                     return True
@@ -601,12 +644,18 @@ class VM:
                         return False
                 return True
             case ExprKind.playercount:
-                expected_count = await self.eval(expression.command.data[1])
-                assert type(expected_count) == float
-                expected_count = int(expected_count)
+                expected_count = await self._extract_data_info(expression.command.data[1])
+
+                if isinstance(expected_count, float):
+                    expected_count = int(expected_count)
+                elif isinstance(expected_count, str):
+                    try:
+                        expected_count = int(expected_count)
+                    except ValueError:
+                        raise ValueError(f"Invalid number '{expected_count}'")
                 return expected_count == len(self._clients)
             case ExprKind.tracking_quest:
-                expected_text = expression.command.data[1]
+                expected_text = await self._extract_data_info(expression.command.data[1])
                 assert type(expected_text) == str
                 if selector.any_player:
                     self._any_player_client = []
@@ -624,7 +673,7 @@ class VM:
                             return False
                     return True
             case ExprKind.tracking_goal:
-                expected_text = expression.command.data[1]
+                expected_text = await self._extract_data_info(expression.command.data[1])
                 assert type(expected_text) == str
                 if selector.any_player:
                     self._any_player_client = []
@@ -670,7 +719,7 @@ class VM:
                             return False
                     return True
             case ExprKind.has_quest:
-                expected_text = expression.command.data[1]
+                expected_text = await self._extract_data_info(expression.command.data[1])
                 assert type(expected_text) == str
                 if selector.any_player:
                     self._any_player_client = []
@@ -707,7 +756,10 @@ class VM:
                             return False
                     return True
             case ExprKind.has_xyz:
-                target_pos: XYZ = await self.eval(expression.command.data[1]) # type: ignore
+                target_pos: XYZ = await self._extract_data_info(expression.command.data[1]) # type: ignore
+
+                if not isinstance(target_pos, XYZ):
+                    raise ValueError(f"Invalid XYZ value '{target_pos}'")
                 if selector.any_player:
                     self._any_player_client = []
                     found_any = False
@@ -724,7 +776,10 @@ class VM:
                             return False
                     return True
             case ExprKind.has_yaw:
-                target_yaw: float = await self.eval(expression.command.data[1]) # type: ignore
+                target_yaw: float = await self._extract_data_info(expression.command.data[1]) # type: ignore
+
+                if not isinstance(target_yaw, float):
+                    raise ValueError(f"Invalid yaw value '{target_yaw}'")
                 if selector.any_player:
                     self._any_player_client = []
                     found_any = False
@@ -751,6 +806,10 @@ class VM:
 
     async def eval(self, expression: Expression, client: Client | None = None):
         match expression:
+            case IdentExpression():
+                if expression.ident in self._constants:
+                    return self._constants[expression.ident]
+                raise VMError(f"Unknown identifier: {expression.ident}")
             case IndexAccessExpression():
                 container = await self.eval(expression.expr, client)
                 index = await self.eval(expression.index, client)
@@ -821,6 +880,12 @@ class VM:
             case EquivalentExpression():
                 left = await self.eval(expression.lhs, client)
                 right = await self.eval(expression.rhs, client)
+
+                if isinstance(left, list) and len(left) > 0:
+                    left = left[0]
+                if isinstance(right, list) and len(right) > 0:
+                    right = right[0]
+                    
                 return left == right
             case DivideExpression():
                 left = await self.eval(expression.lhs, client)
@@ -829,7 +894,11 @@ class VM:
             case GreaterExpression():
                 left = await self.eval(expression.lhs, client)
                 right = await self.eval(expression.rhs, client)
-                return (left > right) #type: ignore
+                if isinstance(left, list) and len(left) > 0:
+                    left = left[0] 
+                if isinstance(right, list) and len(right) > 0:
+                    right = right[0] 
+                return (left > right)
             case Eval():
                 return await self._eval_expression(expression, client) #type: ignore
             case SelectorGroup():
@@ -934,6 +1003,7 @@ class VM:
                         try:
                             text = await window.maybe_text()
                             if text:
+                                # If there's a slash, extract both parts as separate numbers
                                 if '/' in text:
                                     parts = text.split('/')
                                     result = []
@@ -943,38 +1013,48 @@ class VM:
                                             result.append(float(numeric_text))
                                         else:
                                             result.append(0.0)
-                                    return result
+
+                                    if len(result) > 0:
+                                        # Return the list for indexed access
+                                        return result
+                                    return 0.0
                                 else:
+                                    # Extract numeric value from the whole text
                                     numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
                                     if numeric_text:
-                                        return float(numeric_text)
+                                        # For single values, return as a single-item list for consistency
+                                        return [float(numeric_text)]
+                                    return [0.0]
                         except (ValueError, MemoryReadError):
                             pass
 
                         # retry with the less reliable offset that is only defined for control elements
                         try:
                             text = await window.read_wide_string_from_offset(616)
-                            if text:
-                                if '/' in text:
-                                    parts = text.split('/')
-                                    result = []
-                                    for part in parts:
-                                        numeric_text = ''.join(c for c in part if c.isdigit() or c == '.' or c == '-')
-                                        if numeric_text:
-                                            result.append(float(numeric_text))
-                                        else:
-                                            result.append(0.0)
-                                    return result
-                                else:
-                                    numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
+                            if '/' in text:
+                                parts = text.split('/')
+                                result = []
+                                for part in parts:
+                                    numeric_text = ''.join(c for c in part if c.isdigit() or c == '.' or c == '-')
                                     if numeric_text:
-                                        return float(numeric_text)
+                                        result.append(float(numeric_text))
+                                    else:
+                                        result.append(0.0)
+                                
+                                if len(result) > 0:
+                                    # Return the list for indexed access
+                                    return result
+                                return 0.0
+                            else:
+                                numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
+                                if numeric_text:
+                                    return [float(numeric_text)]
+                                return [0.0]
                         except (ValueError, MemoryReadError):
                             pass
-                    return 0.0  # Return 0 if no numeric value found or window doesn't exist
-                except Exception:
-                    # If window path doesn't exist or any other error occurs, return 0
-                    return 0.0
+                except (ValueError, MemoryReadError):
+                    pass
+                return [0.0]
             case EvalKind.playercount:
                 return len(self._clients)
             case EvalKind.potioncount:
@@ -1311,6 +1391,11 @@ class VM:
         instruction = self.program[self.current_task.ip]
 
         match instruction.kind:
+            case InstructionKind.declare_constant:
+                name, expr = instruction.data
+                value = await self.eval(expr)
+                await self.define_constant(name, value)
+                self.current_task.ip += 1
             case InstructionKind.set_timer:
                 assert isinstance(instruction.data, str), "Timer name must be a string"
                 timer_name = instruction.data
@@ -1367,7 +1452,7 @@ class VM:
                         self.current_task.ip += 1
                     else:
                         self.current_task.ip += instruction.data[1]
-                except VMError as e:
+                except VMError:
                     self.current_task.ip += 1
             case InstructionKind.call:
                 assert(type(instruction.data) == int)
@@ -1384,34 +1469,14 @@ class VM:
                     stack_size=len(self.current_task.stack)
                 ))
                 self.current_task.ip += 1
-
             case InstructionKind.exit_until:
-                found_until = False
                 for i in range(len(self._until_infos) - 1, -1, -1):
                     info = self._until_infos[i]
-                    until_id = instruction.data[0] if isinstance(instruction.data, list) else instruction.data
-                        
-                    if info.id == until_id:
-                        found_until = True
-                        # Find the beginning of the until loop
-                        enter_until_pos = self.current_task.ip
-                        while enter_until_pos >= 0:
-                            if (self.program[enter_until_pos].kind == InstructionKind.enter_until and 
-                                isinstance(self.program[enter_until_pos].data, list) and 
-                                self.program[enter_until_pos].data[1] == until_id):
-                                break
-                            enter_until_pos -= 1
-                            
-                        if enter_until_pos >= 0:
-                            # Jump to the instruction right after enter_until
-                            self.current_task.ip = enter_until_pos + 1
-                        else:
-                            self.current_task.ip += 1
+                    if info.id == instruction.data:
+                        self._until_infos = self._until_infos[:i]
+                        self.current_task.stack = self.current_task.stack[:info.stack_size]
                         break
-                
-                if not found_until:
-                    self.current_task.ip += 1
-
+                self.current_task.ip += 1
             case InstructionKind.log_single:
                 assert(isinstance(instruction.data, Expression))
                 logger.debug(await self.eval(instruction.data))
