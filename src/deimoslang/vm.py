@@ -82,7 +82,10 @@ class VM:
             'quest': {},
             'zone': {}
         }
-        self._constants = {} 
+        self._constants = {
+            'True': True,
+            'False': False,
+        } 
 
         # Every until loop condition must be checked for every vm step.
         # Once a condition becomes True, all untils that were entered later must be exited and removed.
@@ -330,6 +333,22 @@ class VM:
             return False
         
         match expression.command.data[0]:
+            case ExprKind.constant_check:
+                constant_name = expression.command.data[1]
+                expected_value = expression.command.data[2]
+                
+                if constant_name in self._constants:
+
+                    actual_value = self._constants[constant_name] 
+                    # Handle string representations of booleans
+                    if isinstance(expected_value, bool) and isinstance(actual_value, str):
+                        if actual_value.lower() == "true":
+                            actual_value = True
+                        elif actual_value.lower() == "false":
+                            actual_value = False
+                    
+                    return actual_value == expected_value
+                return False
             case ExprKind.zone_changed:
                 if len(expression.command.data) > 1:
                     zone_data = expression.command.data[1]
@@ -806,6 +825,44 @@ class VM:
 
     async def eval(self, expression: Expression, client: Client | None = None):
         match expression:
+            case ConstantCheckExpression():
+                # Get the constant value
+                constant_name = expression.name
+                expected_value = await self.eval(expression.value)
+                
+                # Check if the constant exists and matches the expected value
+                if constant_name in self._constants:
+                    actual_value = self._constants[constant_name]
+                    # For boolean comparisons, handle string representations
+                    if isinstance(expected_value, bool) and isinstance(actual_value, str):
+                        if actual_value.lower() == "true":
+                            actual_value = True
+                        elif actual_value.lower() == "false":
+                            actual_value = False
+                    
+                    return actual_value == expected_value
+                return False
+            case RangeMinExpression():
+                range_value = await self.eval(expression.range_expr, client)
+                if isinstance(range_value, str):
+                    try:
+                        min_val, _ = map(float, range_value.split('-'))
+                        return min_val
+                    except ValueError:
+                        raise VMError(f"Invalid range format: {range_value}. Expected format like '1-100'")
+                else:
+                    raise VMError(f"Range expression must evaluate to a string, got {range_value}")
+                    
+            case RangeMaxExpression():
+                range_value = await self.eval(expression.range_expr, client)
+                if isinstance(range_value, str):
+                    try:
+                        _, max_val = map(float, range_value.split('-'))
+                        return max_val
+                    except ValueError:
+                        raise VMError(f"Invalid range format: {range_value}. Expected format like '1-100'")
+                else:
+                    raise VMError(f"Range expression must evaluate to a string, got {range_value}")
             case IdentExpression():
                 if expression.ident in self._constants:
                     return self._constants[expression.ident]
