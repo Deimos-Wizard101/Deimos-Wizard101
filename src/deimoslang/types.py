@@ -119,6 +119,7 @@ class ExprKind(Enum):
     goal_changed = auto()
     quest_changed = auto()
     zone_changed = auto()
+    constant_check = auto()
 
 class TimerAction(Enum):
     start = auto()
@@ -274,6 +275,28 @@ class OrExpression(Expression):
 
     def __repr__(self) -> str:
         return f"OrE({', '.join(str(expr) for expr in self.expressions)})"
+    
+class ConstantCheckExpression(Expression):
+    def __init__(self, name: str, value: Expression):
+        self.name = name
+        self.value = value
+
+    def __repr__(self) -> str:
+        return f"ConstCheck({self.name}, {self.value})"
+    
+class RangeMinExpression(Expression):
+    def __init__(self, range_expr: Expression):
+        self.range_expr = range_expr
+
+    def __repr__(self) -> str:
+        return f"RangeMin({self.range_expr})"
+
+class RangeMaxExpression(Expression):
+    def __init__(self, range_expr: Expression):
+        self.range_expr = range_expr
+
+    def __repr__(self) -> str:
+        return f"RangeMax({self.range_expr})"
     
 class IndexAccessExpression(Expression):
     def __init__(self, expr: Expression, index: Expression):

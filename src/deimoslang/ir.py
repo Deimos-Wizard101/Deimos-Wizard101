@@ -253,6 +253,8 @@ class Compiler:
 
     def prep_expression(self, expr: Expression):
         match expr:
+            case ConstantCheckExpression():
+                self.prep_expression(expr.value)
             case AndExpression() | OrExpression():
                 for sub_expr in expr.expressions:
                     self.prep_expression(sub_expr)
@@ -264,13 +266,13 @@ class Compiler:
                     expr.loc = StackLocExpression(self.stack_loc(expr.loc.sym))
                 else:
                     raise CompilerError(f"Malformed ReadVarExpr: {expr}")
-            case SelectorGroup():
-                self.prep_expression(expr.expr)
-            case UnaryExpression():
+            case SelectorGroup() | UnaryExpression():
                 self.prep_expression(expr.expr)
             case ListExpression():
                 for item in expr.items:
                     self.prep_expression(item)
+            case RangeMinExpression() | RangeMaxExpression():
+                self.prep_expression(expr.range_expr)
             case IndexAccessExpression():
                 self.prep_expression(expr.expr)
                 self.prep_expression(expr.index)

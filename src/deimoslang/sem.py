@@ -200,9 +200,7 @@ class Analyzer:
 
     def sem_stmt(self, stmt: Stmt) -> Stmt:
         match stmt:
-            case ConstantDeclStmt():
-                return stmt
-            case TimerStmt():
+            case TimerStmt() | ConstantDeclStmt():
                 return stmt
             case BlockDefStmt():
                 if not isinstance(stmt.name, IdentExpression):

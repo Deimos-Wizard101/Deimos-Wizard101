@@ -108,92 +108,80 @@ class Parser:
         
         return SelectorGroup(player_selector, evaluated)
 
-    def parse_indexed_numeric_comparison(self, evaluated: Expression, player_selector: PlayerSelector) -> Expression:
-        """
-        Parse a numeric comparison that can handle both single values and indexed values (lists)
-        with support for various operators and identifiers.
-        """
+    def parse_indexed_numeric_comparison(self, evaluated, player_selector):
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
-            # Handle list of comparisons
-            self.i += 1  # Consume the square bracket
+            self.i += 1 
             
-            comparisons = []
+            expressions = []
+            index = 0
+            
             while self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.square_close:
                 if self.tokens[self.i].kind == TokenKind.comma:
                     self.i += 1
                     continue
                     
-                # Parse a single comparison within the list
+                indexed_eval = IndexAccessExpression(evaluated, NumberExpression(index))
+                
                 if self.tokens[self.i].kind in [TokenKind.greater, TokenKind.less, TokenKind.equals]:
                     operator = self.tokens[self.i]
                     self.i += 1
-                    
-                    target = self.parse_value([TokenKind.number, TokenKind.identifier])
+                    target = self.parse_expression()
                     
                     if operator.kind == TokenKind.greater:
-                        comparisons.append(self.gen_greater_expression(evaluated, target, player_selector))
+                        expressions.append(self.gen_greater_expression(indexed_eval, target, player_selector))
                     elif operator.kind == TokenKind.less:
-                        comparisons.append(self.gen_greater_expression(target, evaluated, player_selector))
+                        expressions.append(self.gen_greater_expression(target, indexed_eval, player_selector))
                     else:  # equals
-                        comparisons.append(self.gen_equivalent_expression(evaluated, target, player_selector))
+                        expressions.append(self.gen_equivalent_expression(indexed_eval, target, player_selector))
+                        
                 elif self.tokens[self.i].kind == TokenKind.keyword_isbetween:
                     self.i += 1
-                    range_str = self.parse_value([TokenKind.string, TokenKind.identifier])
-                    
-                    if isinstance(range_str, StringExpression):
-                        # Parse range like "1-10"
-                        range_parts = range_str.string.split('-')
-                        if len(range_parts) == 2:
-                            try:
-                                min_val = float(range_parts[0])
-                                max_val = float(range_parts[1])
-                                
-                                # Create a compound expression: value >= min_val && value <= max_val
-                                min_expr = self.gen_greater_expression(evaluated, NumberExpression(min_val), player_selector)
-                                max_expr = self.gen_greater_expression(NumberExpression(max_val), evaluated, player_selector)
-                                comparisons.append(AndExpression([min_expr, max_expr]))
-                            except ValueError:
-                                self.err(self.tokens[self.i-1], f"Invalid range format: {range_str.string}")
-                        else:
-                            self.err(self.tokens[self.i-1], f"Invalid range format: {range_str.string}")
-                    elif isinstance(range_str, IdentExpression):
-                        # Handle identifier case - assume it's a properly formatted range string
-                        comparisons.append(self.gen_range_check_expression(evaluated, range_str, player_selector))
+    
+                    if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier:
+                        range_ident = self.tokens[self.i].literal
+                        self.i += 1
+    
+                        range_expr = IdentExpression(range_ident)
+    
+                        # For a variable reference like BetweenVal, we need to:
+                        # 1. Parse the string at runtime (e.g., "99-101")
+                        # 2. Extract min and max values
+                        # 3. Compare with the indexed value
+                        
+                        # Create a special expression for range checking with a variable
+                        min_expr = self.gen_greater_expression(indexed_eval, 
+                                    RangeMinExpression(range_expr), player_selector)
+                        max_expr = self.gen_greater_expression(
+                                    RangeMaxExpression(range_expr), indexed_eval, player_selector)
+                        
+                        expressions.append(AndExpression([min_expr, max_expr]))
                     else:
-                        self.err(self.tokens[self.i-1], f"Expected string or identifier for range, got {range_str}")
+                        range_str = self.expect_consume(TokenKind.string).value
+                        
+                        try:
+                            min_val, max_val = map(float, range_str.split('-'))
+                            min_expr = self.gen_greater_expression(indexed_eval, NumberExpression(min_val), player_selector)
+                            max_expr = self.gen_greater_expression(NumberExpression(max_val), indexed_eval, player_selector)
+                            expressions.append(AndExpression([min_expr, max_expr]))
+                        except ValueError:
+                            self.err(self.tokens[self.i-1], f"Invalid range format: {range_str}. Expected format like '1-100'")
                 else:
-                    # Parse a value directly (implicit equals)
-                    target = self.parse_value([TokenKind.number, TokenKind.identifier])
-                    comparisons.append(self.gen_equivalent_expression(evaluated, target, player_selector))
+                    expressions.append(self.gen_equivalent_expression(indexed_eval, self.parse_expression(), player_selector))
+                    
+                index += 1
                 
-                if self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.square_close:
-                    self.expect_consume(TokenKind.comma)
+                # Check for comma after each comparison
+                if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.comma:
+                    self.i += 1
             
             self.expect_consume(TokenKind.square_close)
             
-            # If we have multiple comparisons, combine them with OR
-            if len(comparisons) == 1:
-                return comparisons[0]
-            else:
-                return SelectorGroup(player_selector, OrExpression(comparisons))
-        else:
-            # Handle single comparison (standard case)
-            if self.i < len(self.tokens) and self.tokens[self.i].kind in [TokenKind.greater, TokenKind.less, TokenKind.equals]:
-                operator = self.tokens[self.i]
-                self.i += 1
-                
-                target = self.parse_value([TokenKind.number, TokenKind.identifier])
-                
-                if operator.kind == TokenKind.greater:
-                    return self.gen_greater_expression(evaluated, target, player_selector)
-                elif operator.kind == TokenKind.less:
-                    return self.gen_greater_expression(target, evaluated, player_selector)
-                else:  # equals
-                    return self.gen_equivalent_expression(evaluated, target, player_selector)
-            else:
-                # Default to equality comparison if no operator is provided
-                target = self.parse_value([TokenKind.number, TokenKind.identifier])
-                return self.gen_equivalent_expression(evaluated, target, player_selector)
+            # For multiple expressions, we need ALL of them to be true (AND)
+            if len(expressions) == 1:
+                return expressions[0]
+            return AndExpression(expressions)
+        
+        return self.parse_numeric_comparison(IndexAccessExpression(evaluated, NumberExpression(0)), player_selector)
     
     def gen_range_check_expression(self, value: Expression, range_ident: IdentExpression, player_selector: PlayerSelector) -> Expression:
         return SelectorGroup(player_selector, 
@@ -242,12 +230,28 @@ class Parser:
             self.err(self.tokens[self.i-1], f"Unexpected token kind: {token_kind}")
             return Eval(EvalKind.health)
 
-    def parse_atom(self) -> NumberExpression | StringExpression | ListExpression:
+    def parse_atom(self) -> NumberExpression | StringExpression | ListExpression | IdentExpression:
+        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.boolean_true:
+            self.i += 1
+            return ConstantExpression("true", StringExpression("true"))
+        
+        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.boolean_false:
+            self.i += 1
+            return ConstantExpression("false", StringExpression("false"))
+
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
             return self.parse_list()
         
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.path:
             return self.parse_zone_path_expression()
+
+        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.keyword_xyz:
+            return self.parse_xyz()
+
+        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier:
+            tok = self.tokens[self.i]
+            self.i += 1
+            return IdentExpression(tok.literal)
         
         tok = self.expect_consume_any([TokenKind.number, TokenKind.string, TokenKind.percent])
         match tok.kind:
@@ -376,6 +380,28 @@ class Parser:
         player_selector  = self.parse_player_selector()
         result.player_selector = player_selector
 
+        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier:
+            ident = self.tokens[self.i].literal
+            self.i += 1
+            
+            if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.equals:
+                self.i += 1
+                
+                # Check for boolean literals first
+                if self.i < len(self.tokens):
+                    if self.tokens[self.i].kind == TokenKind.boolean_true:
+                        self.i += 1
+                        return ConstantCheckExpression(ident, ConstantExpression("true", StringExpression("true")))
+                    elif self.tokens[self.i].kind == TokenKind.boolean_false:
+                        self.i += 1
+                        return ConstantCheckExpression(ident, ConstantExpression("false", StringExpression("false")))
+                
+                # Otherwise parse as normal expression
+                value = self.parse_expression()
+                return ConstantCheckExpression(ident, value)
+            else:
+                # Revert if this isn't a constant check
+                self.i -= 1
         match self.tokens[self.i].kind:
             case TokenKind.command_expr_account_level:
                 return self.parse_numeric_stat_expression(TokenKind.command_expr_account_level, player_selector)

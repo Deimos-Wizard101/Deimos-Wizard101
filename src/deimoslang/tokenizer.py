@@ -22,6 +22,8 @@ class TokenKind(Enum):
     logical_from = auto()
     logical_on = auto()
     logical_off = auto()
+    boolean_true = auto()
+    boolean_false = auto()
 
     greater = auto()
     less = auto()
@@ -420,6 +422,10 @@ class Tokenizer:
                                         put_simple(TokenKind.logical_off, full)
                                     case "con" | "set" | "setvar" | "var":
                                         put_simple(TokenKind.keyword_con, full)
+                                    case "True":
+                                        put_simple(TokenKind.boolean_true, full)
+                                    case "False":
+                                        put_simple(TokenKind.boolean_false, full)
 
                                     # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":
