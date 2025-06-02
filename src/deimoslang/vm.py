@@ -18,7 +18,7 @@ from .tokenizer import *
 from .parser import *
 from .ir import *
 
-from src.drop_logger import get_chat, filter_drops
+from src.drop_logger import get_chat, filter_drops, find_new_stuff
 from src.auto_pet import dancedance
 from src.dance_game_hook import attempt_activate_dance_hook
 from src.utils import is_visible_by_path, is_free, get_window_from_path, refill_potions, refill_potions_if_needed \
@@ -106,7 +106,10 @@ class VM:
             'quest': {},
             'zone': {}
         }
-        self._constants = {}
+        self._constants = {
+            'True': True,
+            'False': False,
+        }
 
     def stop(self):
         self.running = False
@@ -256,27 +259,23 @@ class VM:
             
         drops = filter_drops(chat_text.split('\n'))
 
-        if not hasattr(client, '_tracked_drops'):
-            client._tracked_drops = []
+        if not hasattr(client, '_last_chat_state'):
+            client._last_chat_state = ''
         
-        for drop in drops:
-            drop_id = f"{client.title}:{drop}"
-
-            if item_name.lower() in drop.lower():
-                is_new_drop = True
-                for tracked_drop in client._tracked_drops:
-                    if tracked_drop == drop_id:
-                        is_new_drop = False
-                        break
+        new_chat_content = find_new_stuff(client._last_chat_state, '\n'.join(drops))
+        client._last_chat_state = '\n'.join(drops)
+        
+        # If there are no new drops, return False
+        if not new_chat_content:
+            return False
+        
+        # Check if any new drops match the item_name
+        new_drops = new_chat_content.split('\n')
+        for drop in new_drops:
+            if drop and item_name.lower() in drop.lower():
+                logger.debug(f"Found new dropped item matching '{item_name}': {drop}")
+                return True
                         
-                if is_new_drop:
-                    client._tracked_drops.append(drop_id)
-                    logger.debug(f"Found new dropped item matching '{item_name}': {drop}")
-                    return True
-        
-        if hasattr(client, '_tracked_drops') and len(client._tracked_drops) > 100:
-            client._tracked_drops = client._tracked_drops[-100:]
-                    
         return False
     
     async def _check_duel_round(self, client: SprintyClient) -> int:
