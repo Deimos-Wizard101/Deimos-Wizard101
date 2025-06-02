@@ -215,16 +215,16 @@ class Parser:
                 return Eval(EvalKind.gold)
         elif token_kind == TokenKind.command_expr_account_level:
             return Eval(EvalKind.account_level)
-        elif token_kind == TokenKind.command_expr_potioncount:
+        elif token_kind in [TokenKind.command_expr_potion_count, TokenKind.command_expr_potion_countbelow, TokenKind.command_expr_potion_countabove]:
             if is_percent:
                 return DivideExpression(Eval(EvalKind.potioncount), Eval(EvalKind.max_potioncount))
             else:
                 return Eval(EvalKind.potioncount)
         elif token_kind == TokenKind.command_expr_playercount:
             return Eval(EvalKind.playercount)
-        elif token_kind == TokenKind.command_expr_windowtext:
+        elif token_kind == TokenKind.command_expr_window_text:
             return Eval(EvalKind.windowtext, self.parse_value(['window_path']))
-        elif token_kind == TokenKind.command_expr_windownum:
+        elif token_kind == TokenKind.command_expr_window_num:
             return Eval(EvalKind.windownum, self.parse_value(['window_path']))
         else:
             self.err(self.tokens[self.i-1], f"Unexpected token kind: {token_kind}")
@@ -366,11 +366,11 @@ class Parser:
                 
                 if token_kind in [TokenKind.command_expr_health_above, TokenKind.command_expr_mana_above, 
                                   TokenKind.command_expr_energy_above, TokenKind.command_expr_bagcount_above, 
-                                  TokenKind.command_expr_gold_above]:
+                                  TokenKind.command_expr_gold_above, TokenKind.command_expr_potion_countabove]:
                     return self.gen_greater_expression(evaluated, target, player_selector)
                 elif token_kind in [TokenKind.command_expr_health_below, TokenKind.command_expr_mana_below, 
                                     TokenKind.command_expr_energy_below, TokenKind.command_expr_bagcount_below, 
-                                    TokenKind.command_expr_gold_below]:
+                                    TokenKind.command_expr_gold_below, TokenKind.command_expr_potion_countbelow]:
                     return self.gen_greater_expression(target, evaluated, player_selector)
                 else:
                     return self.gen_equivalent_expression(evaluated, target, player_selector)
