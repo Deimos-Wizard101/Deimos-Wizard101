@@ -215,7 +215,7 @@ class Parser:
                 return Eval(EvalKind.gold)
         elif token_kind == TokenKind.command_expr_account_level:
             return Eval(EvalKind.account_level)
-        elif token_kind == TokenKind.command_expr_potion_count:
+        elif token_kind == TokenKind.command_expr_potioncount:
             if is_percent:
                 return DivideExpression(Eval(EvalKind.potioncount), Eval(EvalKind.max_potioncount))
             else:
