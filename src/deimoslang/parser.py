@@ -187,7 +187,7 @@ class Parser:
         return SelectorGroup(player_selector, 
                             ContainsStringExpression(range_ident, value))
     
-    def get_stat_eval_expression(self, token_kind, is_percent):
+    def get_stat_eval_expression(self, token_kind: TokenKind, is_percent: bool) -> Expression:
         if token_kind in [TokenKind.command_expr_health, TokenKind.command_expr_health_above, TokenKind.command_expr_health_below]:
             if is_percent:
                 return DivideExpression(Eval(EvalKind.health), Eval(EvalKind.max_health))
@@ -226,6 +226,8 @@ class Parser:
             return Eval(EvalKind.windowtext, self.parse_value(['window_path']))
         elif token_kind == TokenKind.command_expr_window_num:
             return Eval(EvalKind.windownum, self.parse_value(['window_path']))
+        elif token_kind == TokenKind.command_expr_duel_round:
+            return Eval(EvalKind.duel_round)
         else:
             self.err(self.tokens[self.i-1], f"Unexpected token kind: {token_kind}")
             return Eval(EvalKind.health)

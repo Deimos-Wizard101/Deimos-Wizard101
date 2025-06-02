@@ -1005,6 +1005,8 @@ class VM:
     async def _eval_expression(self, eval: Eval, client: Client):
         kind = eval.kind
         match kind:
+            case EvalKind.duel_round:
+                return await client.duel.round_num()
             case EvalKind.account_level:
                 return await client.stats.reference_level()
             case EvalKind.health:
