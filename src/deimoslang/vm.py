@@ -118,9 +118,11 @@ class VM:
         self.stop()
         self.killed = True
 
-    async def define_constant(self, name: str, value):
-        if name in self._constants:
-            raise VMError(f"Constant '{name}' already defined")
+    
+    async def define_constant(self, name, value):
+        # Special handling for Keycode constants
+        if isinstance(value, str) and hasattr(Keycode, value):
+            value = getattr(Keycode, value)
         self._constants[name] = value
 
     def load_from_text(self, code: str):
@@ -291,35 +293,42 @@ class VM:
         except Exception as e:
             logger.error(f"Error getting duel round: {e}")
             return 0
-    async def _extract_data_info(self, zone_data):
-        if isinstance(zone_data, str):
-            return zone_data
-        elif hasattr(zone_data, 'string'):
-            return zone_data.string
-        elif hasattr(zone_data, 'ident'):
-            ident = zone_data.ident
+    async def _extract_data_info(self, data):
+        if data is None:
+            return None
+        
+        if isinstance(data, str):
+            return data
+        elif hasattr(data, 'string'):
+            return data.string
+        elif hasattr(data, 'ident'):
+            ident = data.ident
             if ident in self._constants:
                 return self._constants[ident]
             else:
                 try:
-                    return await self.eval(zone_data)
+                    return await self.eval(data)
                 except Exception as e:
                     logger.error(f"Failed to evaluate identifier {ident}: {e}")
                     return ident
-        elif isinstance(zone_data, list) and all(isinstance(item, str) for item in zone_data):
-            return "/".join(zone_data)
+        elif isinstance(data, list) and all(isinstance(item, str) for item in data):
+            return "/".join(data)
             
         # For any other expression type, try to evaluate it
         else:
             try:
-                return await self.eval(zone_data)
+                return await self.eval(data)
             except Exception as e:
                 logger.error(f"Failed to extract zone name: {e}")
-                return str(zone_data)
+                return str(data)
 
     async def _eval_command_expression(self, expression: CommandExpression):
         assert expression.command.kind == CommandKind.expr
         assert type(expression.command.data) is list
+
+        if not expression.command.data:
+            return False
+
         assert type(expression.command.data[0]) is ExprKind
 
 
@@ -352,126 +361,207 @@ class VM:
                 if len(expression.command.data) > 1:
                     zone_data = expression.command.data[1]
                     expected_zone = await self._extract_data_info(zone_data)
+                    logger.debug(f"Expected zone change to '{expected_zone}'")
 
                     if selector.any_player:
                         self._any_player_client = []
                         found_any = False
                         for client in self._clients:
                             current_zone = await client.zone_name()
-                            if current_zone == expected_zone and current_zone != self.logged_data['zone'].get(client.title, None):
+                            last_zone = self.logged_data['zone'].get(client.title, None)
+                            logger.debug(f"Current zone: {current_zone}, Last zone: {last_zone}")
+                            
+                            # If this is the first check or zone has changed to the expected zone
+                            if current_zone == expected_zone and (last_zone is None or current_zone != last_zone):
                                 self._any_player_client.append(client)
                                 self.logged_data['zone'][client.title] = current_zone
                                 found_any = True
                         return found_any
                     else:
+                        all_match = True
                         for client in clients:
                             current_zone = await client.zone_name()
-                            if current_zone != expected_zone or current_zone == self.logged_data['zone'].get(client.title, None):
-                                return False
+                            last_zone = self.logged_data['zone'].get(client.title, None)
+                            
+                            # If zone doesn't match expected or hasn't changed
+                            if current_zone != expected_zone or (last_zone is not None and current_zone == last_zone):
+                                all_match = False
+                                break
+                            
                             self.logged_data['zone'][client.title] = current_zone
-                        return True
+                        return all_match
                 else:
+                    # No specific zone provided, just check if zone changed
+                    logger.debug(f"No specific zone provided, just check if zone changed")
                     if selector.any_player:
                         self._any_player_client = []
                         found_any = False
                         for client in self._clients:
                             current_zone = await client.zone_name()
                             last_zone = self.logged_data['zone'].get(client.title, None)
-                            if current_zone != last_zone and current_zone is not None:
+                            
+                            # If this is the first check or zone has changed
+                            if last_zone is None:
+                                # First time checking, log the zone but don't trigger
+                                self.logged_data['zone'][client.title] = current_zone
+                            elif current_zone != last_zone:
                                 self._any_player_client.append(client)
                                 self.logged_data['zone'][client.title] = current_zone
                                 found_any = True
                         return found_any
                     else:
+                        all_changed = True
                         for client in clients:
                             current_zone = await client.zone_name()
                             last_zone = self.logged_data['zone'].get(client.title, None)
-                            if current_zone == last_zone or current_zone is None:
-                                return False
-                            self.logged_data['zone'][client.title] = current_zone
-                        return True
+                            logger.debug(f"Current zone: {current_zone}, Last zone: {last_zone}")
+                            
+                            if last_zone is None:
+                                # First time checking, log the zone but don't consider it changed
+                                self.logged_data['zone'][client.title] = current_zone
+                                all_changed = False
+                            elif current_zone == last_zone:
+                                all_changed = False
+                            else:
+                                self.logged_data['zone'][client.title] = current_zone
+                        return all_changed
             case ExprKind.goal_changed:
                 if len(expression.command.data) > 1:
-                    expected_goal = await self._extract_data_info(expression.command.data[1])
+                    goal_data = expression.command.data[1]
+                    expected_goal = await self._extract_data_info(goal_data)
+                    
+                    if expected_goal is None:
+                        logger.error("Failed to extract goal name from expression")
+                        return False
                     
                     if selector.any_player:
                         self._any_player_client = []
                         found_any = False
                         for client in self._clients:
                             current_goal = await self._fetch_tracked_goal_text(client)
-                            if current_goal == expected_goal and current_goal != self.logged_data['goal'].get(client.title, None):
+                            last_goal = self.logged_data['goal'].get(client.title, None)
+                            
+                            # If this is the first check or goal has changed to the expected goal
+                            if current_goal == expected_goal and (last_goal is None or current_goal != last_goal):
                                 self._any_player_client.append(client)
                                 self.logged_data['goal'][client.title] = current_goal
                                 found_any = True
                         return found_any
                     else:
+                        all_match = True
                         for client in clients:
                             current_goal = await self._fetch_tracked_goal_text(client)
-                            if current_goal != expected_goal or current_goal == self.logged_data['goal'].get(client.title, None):
-                                return False
+                            last_goal = self.logged_data['goal'].get(client.title, None)
+                            
+                            # If goal doesn't match expected or hasn't changed
+                            if current_goal != expected_goal or (last_goal is not None and current_goal == last_goal):
+                                all_match = False
+                                break
+                            
                             self.logged_data['goal'][client.title] = current_goal
-                        return True
+                        return all_match
                 else:
+                    # No specific goal provided, just check if goal changed
                     if selector.any_player:
                         self._any_player_client = []
                         found_any = False
                         for client in self._clients:
                             current_goal = await self._fetch_tracked_goal_text(client)
                             last_goal = self.logged_data['goal'].get(client.title, None)
-                            if current_goal != last_goal and current_goal is not None:
+                            
+                            # If this is the first check or goal has changed
+                            if last_goal is None:
+                                # First time checking, log the goal but don't trigger
+                                self.logged_data['goal'][client.title] = current_goal
+                            elif current_goal != last_goal:
                                 self._any_player_client.append(client)
                                 self.logged_data['goal'][client.title] = current_goal
                                 found_any = True
                         return found_any
                     else:
+                        all_changed = True
                         for client in clients:
                             current_goal = await self._fetch_tracked_goal_text(client)
                             last_goal = self.logged_data['goal'].get(client.title, None)
-                            if current_goal == last_goal or current_goal is None:
-                                return False
-                            self.logged_data['goal'][client.title] = current_goal
-                        return True
-                        
+                            
+                            if last_goal is None:
+                                # First time checking, log the goal but don't consider it changed
+                                self.logged_data['goal'][client.title] = current_goal
+                                all_changed = False
+                            elif current_goal == last_goal:
+                                all_changed = False
+                            else:
+                                self.logged_data['goal'][client.title] = current_goal
+                        return all_changed
+
             case ExprKind.quest_changed:
                 if len(expression.command.data) > 1:
-                    expected_quest = await self._extract_data_info(expression.command.data[1])
+                    quest_data = expression.command.data[1]
+                    expected_quest = await self._extract_data_info(quest_data)
+                    
+                    if expected_quest is None:
+                        logger.error("Failed to extract quest name from expression")
+                        return False
+                    
                     if selector.any_player:
                         self._any_player_client = []
                         found_any = False
                         for client in self._clients:
                             current_quest = await self._fetch_tracked_quest_text(client)
-                            if current_quest == expected_quest and current_quest != self.logged_data['quest'].get(client.title, None):
+                            last_quest = self.logged_data['quest'].get(client.title, None)
+                            
+                            # If this is the first check or quest has changed to the expected quest
+                            if current_quest == expected_quest and (last_quest is None or current_quest != last_quest):
                                 self._any_player_client.append(client)
                                 self.logged_data['quest'][client.title] = current_quest
                                 found_any = True
                         return found_any
                     else:
+                        all_match = True
                         for client in clients:
                             current_quest = await self._fetch_tracked_quest_text(client)
-                            if current_quest != expected_quest or current_quest == self.logged_data['quest'].get(client.title, None):
-                                return False
+                            last_quest = self.logged_data['quest'].get(client.title, None)
+                            
+                            # If quest doesn't match expected or hasn't changed
+                            if current_quest != expected_quest or (last_quest is not None and current_quest == last_quest):
+                                all_match = False
+                                break
+                            
                             self.logged_data['quest'][client.title] = current_quest
-                        return True
+                        return all_match
                 else:
+                    # No specific quest provided, just check if quest changed
                     if selector.any_player:
                         self._any_player_client = []
                         found_any = False
                         for client in self._clients:
                             current_quest = await self._fetch_tracked_quest_text(client)
                             last_quest = self.logged_data['quest'].get(client.title, None)
-                            if current_quest != last_quest and current_quest is not None:
+                            
+                            # If this is the first check or quest has changed
+                            if last_quest is None:
+                                # First time checking, log the quest but don't trigger
+                                self.logged_data['quest'][client.title] = current_quest
+                            elif current_quest != last_quest:
                                 self._any_player_client.append(client)
                                 self.logged_data['quest'][client.title] = current_quest
                                 found_any = True
                         return found_any
                     else:
+                        all_changed = True
                         for client in clients:
                             current_quest = await self._fetch_tracked_quest_text(client)
                             last_quest = self.logged_data['quest'].get(client.title, None)
-                            if current_quest == last_quest or current_quest is None:
-                                return False
-                            self.logged_data['quest'][client.title] = current_quest
-                        return True
+                            
+                            if last_quest is None:
+                                # First time checking, log the quest but don't consider it changed
+                                self.logged_data['quest'][client.title] = current_quest
+                                all_changed = False
+                            elif current_quest == last_quest:
+                                all_changed = False
+                            else:
+                                self.logged_data['quest'][client.title] = current_quest
+                        return all_changed
 
             case ExprKind.duel_round:
                 expected_round = await self._extract_data_info(expression.command.data[1])
@@ -1006,7 +1096,8 @@ class VM:
         kind = eval.kind
         match kind:
             case EvalKind.duel_round:
-                return await client.duel.round_num()
+                if await client.in_battle():
+                    return await client.duel.round_num()
             case EvalKind.account_level:
                 return await client.stats.reference_level()
             case EvalKind.health:
@@ -1197,26 +1288,26 @@ class VM:
                     match args[0]:
                         case TeleportKind.position:
                             for client in clients:
-                                pos: XYZ = await self.eval(args[1], client) # type: ignore
+                                pos: XYZ = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1] # type: ignore
                                 tg.create_task(client.teleport(pos))
                         case TeleportKind.plusteleport:
                             for client in clients:
-                                pluspos: XYZ = await self.eval(args[1], client) # type: ignore
+                                pluspos: XYZ = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1] # type: ignore
                                 clientpos = await client.body.position()
                                 newpos = XYZ(clientpos.x + pluspos.x, clientpos.y + pluspos.y, clientpos.z + pluspos.z)
                                 tg.create_task(client.teleport(newpos))
                         case TeleportKind.minusteleport:
                             for client in clients:
-                                minuspos: XYZ = await self.eval(args[1], client) # type: ignore
+                                minuspos: XYZ = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1] # type: ignore
                                 clientpos = await client.body.position()
                                 newpos = XYZ(clientpos.x - minuspos.x, clientpos.y - minuspos.y, clientpos.z - minuspos.z)
                                 tg.create_task(client.teleport(newpos))
                         case TeleportKind.entity_literal:
-                            name = args[-1]
+                            name = args[-1] if isinstance(args[-1], Expression) else args[-1]
                             use_navmap = False
                             if len(args) > 2 and args[-2] == TeleportKind.nav:
                                 use_navmap = True
-                                name = args[-1]
+                                name = args[-1] if isinstance(args[-1], Expression) else args[-1]
                             for client in clients:
                                 async def tp_to_entity(client):
                                     entity = await client.get_base_entity_by_name(name)
@@ -1228,14 +1319,14 @@ class VM:
                                             await client.teleport(pos)
                                 tg.create_task(tp_to_entity(client))
                         case TeleportKind.entity_vague:
-                            vague = args[-1]
+                            vague = args[-1] if isinstance(args[-1], Expression) else args[-1]
                             use_navmap = False
                             if len(args) > 2 and args[-2] == TeleportKind.nav:
                                 use_navmap = True
-                                vague = args[-1]
+                                vague = args[-1] if isinstance(args[-1], Expression) else args[-1]
                             for client in clients:
                                 async def tp_to_vague_entity(client):
-                                    entity = await client.find_closest_by_vague_name(vague)
+                                    entity = await client.find_closest_by_vague_name(vague) 
                                     if entity:
                                         pos = await entity.location()
                                         if use_navmap:
@@ -1259,14 +1350,14 @@ class VM:
                             for client in clients:
                                 tg.create_task(proxy(client))
                         case TeleportKind.friend_name:
-                            name = args[-1]
+                            name = args[-1] if isinstance(args[-1], Expression) else args[-1]
                             async def proxy(client: SprintyClient): # type: ignore
                                 async with client.mouse_handler:
                                     await teleport_to_friend_from_list(client, name=name)
                             for client in clients:
                                 tg.create_task(proxy(client))
                         case TeleportKind.client_num:
-                            num = args[-1]
+                            num = args[-1] if isinstance(args[-1], Expression) else args[-1]
                             target_client = self.player_by_num(num)
                             target_pos = await target_client.body.position()
                             for client in clients:
@@ -1278,7 +1369,7 @@ class VM:
                 assert type(args) == list
                 async with asyncio.TaskGroup() as tg:
                     for client in clients:
-                        pos: XYZ = await self.eval(args[0], client) # type: ignore
+                        pos: XYZ = await self.eval(args[0], client) if isinstance(args[0], Expression) else args[0] # type: ignore
                         tg.create_task(client.goto(pos.x, pos.y))
             case "waitfor":
                 args = instruction.data[2]
@@ -1320,7 +1411,7 @@ class VM:
                                             return starting_zone != (await client.zone_name())
                                         tg.create_task(waitfor_coro(proxy, False))
                         case WaitforKind.window:
-                            window_path = args[1]
+                            window_path = args[1] if isinstance(args[-1], Expression) else args[-1]
                             async with asyncio.TaskGroup() as tg:
                                 for client in clients:
                                     async def proxy():
@@ -1341,8 +1432,8 @@ class VM:
                 
                 for client in clients:
                     if len(args) > 0:
-                        health_num: float = await self.eval(args[0], client) # type: ignore
-                        mana_num: float = await self.eval(args[1], client) # type: ignore
+                        health_num: float = await self.eval(args[0], client) if isinstance(args[0], Expression) else args[0] # type: ignore
+                        mana_num: float = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1] # type: ignore
                         
                         async def _use_potion_if_needed(client, health_threshold, mana_threshold):
                             async with client.mouse_handler:
@@ -1380,11 +1471,11 @@ class VM:
                                 async def proxy(client: SprintyClient, x: float, y: float):
                                     async with client.mouse_handler:
                                         await client.mouse_handler.click(int(x), int(y))
-                                x: float = args[1] # type: ignore
-                                y: float = args[2] # type: ignore
+                                x: float = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1] # type: ignore
+                                y: float = await self.eval(args[2], client) if isinstance(args[2], Expression) else args[2] # type: ignore
                                 tg.create_task(proxy(client, x, y))
                             case ClickKind.window:
-                                path = args[1]
+                                path = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1]
                                 async def proxy(client: SprintyClient, path: list):
                                     await click_window_by_path(client, path)
                                 tg.create_task(proxy(client, path))
@@ -1395,10 +1486,11 @@ class VM:
                 async with asyncio.TaskGroup() as tg:
                     for client in clients:
                         # For tozone, we don't need to evaluate anything, just pass the zone path
-                        tg.create_task(toZone([client], "/".join(args[0])))
+                        zone_path = await self.eval(args[0], client) if isinstance(args[0], Expression) else args[0] # type: ignore
+                        tg.create_task(toZone([client], "/".join(zone_path) if isinstance(zone_path, list) else zone_path))
             case "select_friend":
                 args = instruction.data[2]
-                friend_name = args[0]
+                friend_name = args[0] if isinstance(args[0], Expression) else args[0] # type: ignore
                 
                 async with asyncio.TaskGroup() as tg:
                     for client in clients:
@@ -1482,7 +1574,10 @@ class VM:
             case InstructionKind.sleep:
                 assert instruction.data != None
                 time = await self.eval(instruction.data)
-                assert type(time) is float
+
+                if isinstance(time, (int, str)):
+                    time = float(time)
+                
                 await asyncio.sleep(time)
                 self.current_task.ip += 1
             case InstructionKind.jump:
@@ -1537,7 +1632,19 @@ class VM:
                 self.current_task.ip += 1
             case InstructionKind.log_single:
                 assert(isinstance(instruction.data, Expression))
-                logger.debug(await self.eval(instruction.data))
+                try:
+                    value = await self.eval(instruction.data)
+                except VMError:
+                    if isinstance(instruction.data, IdentExpression):
+                        value = f"{instruction.data.ident}"
+                    else:
+                        raise
+                
+                if isinstance(instruction.data, IdentExpression) and instruction.data.ident in self._constants:
+                    logger.debug(f"{instruction.data.ident} = {value}")
+                else:
+                    logger.debug(value)
+                
                 self.current_task.ip += 1
 
             case InstructionKind.log_multi:

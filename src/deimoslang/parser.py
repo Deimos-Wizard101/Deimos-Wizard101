@@ -465,9 +465,9 @@ class Parser:
                     result.data = [ExprKind.items_dropped, items]
                 else:
                     item = self.parse_value([TokenKind.string, TokenKind.identifier]) # type: ignore
-                    if isinstance(text, StringExpression):
+                    if isinstance(item, StringExpression):
                         result.data = [ExprKind.items_dropped, item.string.lower()]
-                    elif isinstance(text, IdentExpression):
+                    elif isinstance(item, IdentExpression):
                         result.data = [ExprKind.items_dropped, item]
                     else:
                         result.data = [ExprKind.items_dropped, item]
@@ -901,7 +901,12 @@ class Parser:
                             window_path = self.parse_window_path()
                             result.data = [LogKind.multi, StrFormatExpression("windowtext: %s", Eval(EvalKind.windowtext, window_path))]
                         else:
-                            print_literal()
+                            if self.i + 1 < len(self.tokens) and self.tokens[self.i + 1].kind == TokenKind.END_LINE:
+                                ident = self.tokens[self.i].literal
+                                self.i += 1
+                                result.data = [LogKind.single, IdentExpression(ident)]
+                            else:
+                                print_literal()
                     case TokenKind.command_expr_bagcount:
                         self.i += 1
                         result.data = [LogKind.multi, StrFormatExpression("bagcount: %d/%d", Eval(EvalKind.bagcount),Eval(EvalKind.max_bagcount))]
@@ -945,17 +950,26 @@ class Parser:
                 elif num_tok := self.consume_optional(TokenKind.player_num):
                     result.data = [TeleportKind.client_num, num_tok.value]
                 else:
-                    result.data = [TeleportKind.position, self.parse_xyz()]
+                    if self.tokens[self.i].kind == TokenKind.string:
+                        result.data = [TeleportKind.position, self.parse_xyz()]
+                    else:
+                        result.data = [TeleportKind.position, self.parse_expression()]
                 self.end_line()
             case TokenKind.command_plus_teleport:
                 result.kind = CommandKind.teleport
                 self.i += 1
-                result.data = [TeleportKind.plusteleport, self.parse_xyz()]
+                if self.tokens[self.i].kind == TokenKind.string:
+                    result.data = [TeleportKind.plusteleport, self.parse_xyz()]
+                else:
+                    result.data = [TeleportKind.plusteleport, self.parse_expression()]
                 self.end_line()
             case TokenKind.command_minus_teleport:
                 result.kind = CommandKind.teleport
                 self.i += 1
-                result.data = [TeleportKind.minusteleport, self.parse_xyz()]
+                if self.tokens[self.i].kind == TokenKind.string:
+                    result.data = [TeleportKind.minusteleport, self.parse_xyz()]
+                else:
+                    result.data = [TeleportKind.minusteleport, self.parse_expression()]
                 self.end_line()
             case TokenKind.command_sleep:
                 result.kind = CommandKind.sleep
@@ -1000,21 +1014,45 @@ class Parser:
             case TokenKind.command_goto:
                 result.kind = CommandKind.goto
                 self.i += 1
-                result.data = [self.parse_xyz()]
+                if self.tokens[self.i].kind == TokenKind.string:
+                    result.data = [self.parse_xyz()]
+                else:
+                    result.data = [self.parse_expression()]
                 self.end_line()
             case TokenKind.command_clickwindow:
                 result.kind = CommandKind.click
                 self.i += 1
-                result.data = [ClickKind.window, self.parse_window_path()]
+                if self.tokens[self.i].kind == TokenKind.string:
+                    result.data = [ClickKind.window, self.parse_window_path()]
+                else:
+                    result.data = [ClickKind.window, self.parse_expression()]
                 self.end_line()
             case TokenKind.command_usepotion:
                 result.kind = CommandKind.usepotion
                 self.i += 1
-                health_arg = self.consume_optional(TokenKind.number)
-                if health_arg != None:
+
+                health_arg = None
+                if self.tokens[self.i].kind == TokenKind.number:
+                    health_arg = self.consume_optional(TokenKind.number)
+                    health_expr = NumberExpression(health_arg.value)
+                elif self.tokens[self.i].kind == TokenKind.identifier:
+                    health_ident = self.consume_optional(TokenKind.identifier)
+                    health_expr = IdentExpression(health_ident.literal)
+                else:
+                    health_arg = None
+                
+                if health_arg is not None:
                     self.skip_comma()
-                    mana_arg = self.expect_consume(TokenKind.number)
-                    result.data = [NumberExpression(health_arg.value), NumberExpression(mana_arg.value)]
+
+                    if self.tokens[self.i].kind == TokenKind.number:
+                        mana_arg = self.expect_consume(TokenKind.number)
+                        mana_expr = NumberExpression(mana_arg.value)
+                    elif self.tokens[self.i].kind == TokenKind.identifier:
+                        mana_ident = self.expect_consume(TokenKind.identifier)
+                        mana_expr = IdentExpression(mana_ident.literal)
+                    
+                    result.data = [health_expr, mana_expr]
+                
                 self.end_line()
             case TokenKind.command_buypotions:
                 result.kind = CommandKind.buypotions
@@ -1029,10 +1067,26 @@ class Parser:
             case TokenKind.command_click:
                 result.kind = CommandKind.click
                 self.i += 1
-                x = self.expect_consume(TokenKind.number)
-                self.skip_comma()
-                y = self.expect_consume(TokenKind.number)
-                result.data = [ClickKind.position, x.value, y.value]
+
+                x_expr = None
+                if self.tokens[self.i].kind == TokenKind.number:
+                    x = self.expect_consume(TokenKind.number)
+                    x_expr = NumberExpression(x.value)
+                elif self.tokens[self.i].kind == TokenKind.identifier:
+                    x = self.expect_consume(TokenKind.identifier)
+                    x_expr = IdentExpression(x.literal)  
+
+                if x_expr is not None:                  
+                    self.skip_comma()
+
+                    if self.tokens[self.i].kind == TokenKind.number:
+                        y = self.expect_consume(TokenKind.number)
+                        y_expr = NumberExpression(y.value)
+                    elif self.tokens[self.i].kind == TokenKind.identifier:
+                        y = self.expect_consume(TokenKind.identifier)
+                        y_expr = IdentExpression(y.literal)
+
+                    result.data = [ClickKind.position, x_expr, y_expr]
                 self.end_line()
             case TokenKind.command_friendtp:
                 result.kind = CommandKind.teleport
@@ -1040,6 +1094,8 @@ class Parser:
                 x = self.expect_consume_any([TokenKind.keyword_icon, TokenKind.identifier])
                 if x.kind == TokenKind.keyword_icon:
                     result.data = [TeleportKind.friend_icon]
+                elif self.tokens[self.i].kind == TokenKind.END_LINE:
+                    result.data = [TeleportKind.friend_name, IdentExpression(x.literal)]
                 else:
                     name_parts = [x.literal]
                     while self.tokens[self.i].kind != TokenKind.END_LINE:
@@ -1062,6 +1118,11 @@ class Parser:
                     result.data = [TeleportKind.entity_literal, arg.value]
                     if nav_mode:
                         result.data.insert(1, TeleportKind.nav)
+                elif self.tokens[self.i].kind == TokenKind.identifier:
+                    ident = self.expect_consume(TokenKind.identifier)
+                    result.data = [TeleportKind.entity_literal, IdentExpression(ident.literal)]
+                    if nav_mode:
+                        result.data.insert(1, TeleportKind.nav)
                 else:
                     result.data = [TeleportKind.entity_vague, self.consume_any_ident().ident]
                     if nav_mode:
@@ -1070,26 +1131,48 @@ class Parser:
             case TokenKind.command_tozone:
                 result.kind = CommandKind.tozone
                 self.i += 1
-                result.data = [self.parse_zone_path()]
+                if self.tokens[self.i].kind == TokenKind.path:
+                    result.data = [self.parse_zone_path()]
+                elif self.tokens[self.i].kind == TokenKind.identifier:
+                    ident = self.expect_consume(TokenKind.identifier)
+                    result.data = [IdentExpression(ident.literal)]
+                else:
+                    result.data = [self.parse_expression()]
                 self.end_line()
             case TokenKind.command_load_playstyle:
                 result.kind = CommandKind.load_playstyle
                 self.i += 1
-                result.data = [self.expect_consume(TokenKind.string).value]
+                if self.tokens[self.i].kind == TokenKind.string:
+                    result.data = [self.expect_consume(TokenKind.string).value]
+                elif self.tokens[self.i].kind == TokenKind.identifier:
+                    ident = self.expect_consume(TokenKind.identifier)
+                    result.data = [IdentExpression(ident.literal)]
+                else:
+                    result.data = [self.parse_expression()]
                 self.end_line()
             case TokenKind.command_set_yaw:
                 result.kind = CommandKind.set_yaw
                 self.i += 1
-                result.data = [self.expect_consume(TokenKind.number).value]
+                if self.tokens[self.i].kind == TokenKind.number:
+                    result.data = [self.expect_consume(TokenKind.number).value]
+                elif self.tokens[self.i].kind == TokenKind.identifier:
+                    ident = self.expect_consume(TokenKind.identifier)
+                    result.data = [IdentExpression(ident.literal)]
+                else:
+                    result.data = [self.parse_expression()]
                 self.end_line()
             case TokenKind.command_select_friend:
                 result.kind = CommandKind.select_friend
                 self.i += 1
-                name_parts = []
-                while self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.END_LINE:
-                    name_parts.append(self.tokens[self.i].literal)
-                    self.i += 1
-                result.data = [" ".join(name_parts)]
+                if self.tokens[self.i].kind == TokenKind.identifier and self.i + 1 < len(self.tokens) and self.tokens[self.i + 1].kind == TokenKind.END_LINE:
+                    ident = self.expect_consume(TokenKind.identifier)
+                    result.data = [IdentExpression(ident.literal)]
+                else:
+                    name_parts = []
+                    while self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.END_LINE:
+                        name_parts.append(self.tokens[self.i].literal)
+                        self.i += 1
+                    result.data = [" ".join(name_parts)]
                 self.end_line()
             case _:
                 self.err(self.tokens[self.i], "Unhandled command token")
