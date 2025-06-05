@@ -61,6 +61,7 @@ class TokenKind(Enum):
     keyword_same_any = auto()
     keyword_isbetween = auto()
     keyword_con = auto()
+    keyword_constant_reference = auto()
 
     command_kill = auto()
     command_sleep = auto()
@@ -426,6 +427,8 @@ class Tokenizer:
                                         put_simple(TokenKind.boolean_true, full)
                                     case "False":
                                         put_simple(TokenKind.boolean_false, full)
+                                    case "$":
+                                        put_simple(TokenKind.keyword_constant_reference, full)
 
                                     # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":

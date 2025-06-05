@@ -121,6 +121,7 @@ class ExprKind(Enum):
     quest_changed = auto()
     zone_changed = auto()
     constant_check = auto()
+    constant_reference = auto()
 
 class TimerAction(Enum):
     start = auto()
@@ -276,7 +277,14 @@ class OrExpression(Expression):
 
     def __repr__(self) -> str:
         return f"OrE({', '.join(str(expr) for expr in self.expressions)})"
-    
+
+class ConstantReferenceExpression(Expression):
+    def __init__(self, name: str):
+        self.name = name
+        
+    def __repr__(self) -> str:
+        return f"ConstRef(${self.name})"
+
 class ConstantCheckExpression(Expression):
     def __init__(self, name: str, value: Expression):
         self.name = name

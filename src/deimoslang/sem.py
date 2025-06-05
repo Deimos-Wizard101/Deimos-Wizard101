@@ -197,10 +197,21 @@ class Analyzer:
         _mix_stmt(stmt.body, stmt.mixins)
         stmt.mixins = set()
         return stmt
+    
+    def lookup_constant(self, name: str) -> Expression | None:
+        for stmt in self._stmts:
+            if isinstance(stmt, ConstantDeclStmt) and stmt.name == name:
+                return stmt.value
+                
+        # Not found
+        return None
 
     def sem_stmt(self, stmt: Stmt) -> Stmt:
         match stmt:
-            case TimerStmt() | ConstantDeclStmt():
+            case TimerStmt(): 
+                return stmt
+            case ConstantDeclStmt():
+                stmt.value = self.sem_expr(stmt.value)
                 return stmt
             case BlockDefStmt():
                 if not isinstance(stmt.name, IdentExpression):

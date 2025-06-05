@@ -293,34 +293,60 @@ class VM:
         except Exception as e:
             logger.error(f"Error getting duel round: {e}")
             return 0
-    async def _extract_data_info(self, data):
-        if data is None:
-            return None
-        
-        if isinstance(data, str):
-            return data
-        elif hasattr(data, 'string'):
-            return data.string
-        elif hasattr(data, 'ident'):
-            ident = data.ident
-            if ident in self._constants:
+    
+    
+    
+    
+    async def _extract_data_info(self, zone_data):
+        if isinstance(zone_data, str):
+            # Check if this is a constant reference (starts with $)
+            if zone_data.startswith('$'):
+                const_name = zone_data[1:]
+                if const_name in self._constants:
+                    return self._constants[const_name]
+                else:
+                    logger.warning(f"Constant '{const_name}' not found")
+                    return zone_data
+            return zone_data
+        elif hasattr(zone_data, 'string'):
+            # Check if string expression is a constant reference
+            if zone_data.string.startswith('$'):
+                const_name = zone_data.string[1:]
+                if const_name in self._constants:
+                    return self._constants[const_name]
+                else:
+                    logger.warning(f"Constant '{const_name}' not found")
+                    return zone_data.string
+            return zone_data.string
+        elif hasattr(zone_data, 'ident'):
+            ident = zone_data.ident
+            # First check if this is a constant reference
+            if ident.startswith('$'):
+                const_name = ident[1:]
+                if const_name in self._constants:
+                    return self._constants[const_name]
+                else:
+                    logger.warning(f"Constant '{const_name}' not found")
+                    return ident
+            # Then check if the identifier itself is a constant
+            elif ident in self._constants:
                 return self._constants[ident]
             else:
                 try:
-                    return await self.eval(data)
+                    return await self.eval(zone_data)
                 except Exception as e:
                     logger.error(f"Failed to evaluate identifier {ident}: {e}")
                     return ident
-        elif isinstance(data, list) and all(isinstance(item, str) for item in data):
-            return "/".join(data)
+        elif isinstance(zone_data, list) and all(isinstance(item, str) for item in zone_data):
+            return "/".join(zone_data)
             
         # For any other expression type, try to evaluate it
         else:
             try:
-                return await self.eval(data)
+                return await self.eval(zone_data)
             except Exception as e:
                 logger.error(f"Failed to extract zone name: {e}")
-                return str(data)
+                return str(zone_data)
 
     async def _eval_command_expression(self, expression: CommandExpression):
         assert expression.command.kind == CommandKind.expr
@@ -914,15 +940,24 @@ class VM:
 
     async def eval(self, expression: Expression, client: Client | None = None):
         match expression:
+            case IdentExpression():
+                return expression.ident
+            case ConstantReferenceExpression():
+                if expression.name in self._constants:
+                    return self._constants[expression.name]
+                raise VMError(f"Unknown constant: ${expression.name}")
             case ConstantCheckExpression():
-                # Get the constant value
                 constant_name = expression.name
+
+                if expression.value is None:
+                    if constant_name in self._constants:
+                        return self._constants[constant_name]
+                    raise VMError(f"Unknown constant: {constant_name}")
+
                 expected_value = await self.eval(expression.value)
-                
-                # Check if the constant exists and matches the expected value
+
                 if constant_name in self._constants:
                     actual_value = self._constants[constant_name]
-                    # For boolean comparisons, handle string representations
                     if isinstance(expected_value, bool) and isinstance(actual_value, str):
                         if actual_value.lower() == "true":
                             actual_value = True
@@ -952,10 +987,6 @@ class VM:
                         raise VMError(f"Invalid range format: {range_value}. Expected format like '1-100'")
                 else:
                     raise VMError(f"Range expression must evaluate to a string, got {range_value}")
-            case IdentExpression():
-                if expression.ident in self._constants:
-                    return self._constants[expression.ident]
-                raise VMError(f"Unknown identifier: {expression.ident}")
             case IndexAccessExpression():
                 container = await self.eval(expression.expr, client)
                 index = await self.eval(expression.index, client)
@@ -1232,6 +1263,20 @@ class VM:
         if not clients:
             return
 
+        
+        async def eval_arg(arg, client):
+            if isinstance(arg, Expression):
+                return await self.eval(arg, client)
+            # Handle constant references that start with $
+            elif isinstance(arg, str) and arg.startswith('$'):
+                constant_name = arg[1:]  # Remove the $ prefix
+                if constant_name in self._constants:
+                    return self._constants[constant_name]
+                else:
+                    logger.error(f"Undefined constant: {arg}")
+                    return arg  # Return the original string if constant not found
+            return arg
+
         # TODO: is eval always fast enough to run in order during a TaskGroup
         match instruction.data[1]:     
             case "set_zone":
@@ -1288,26 +1333,28 @@ class VM:
                     match args[0]:
                         case TeleportKind.position:
                             for client in clients:
-                                pos: XYZ = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1] # type: ignore
+                                pos = await eval_arg(args[1], client)
                                 tg.create_task(client.teleport(pos))
                         case TeleportKind.plusteleport:
                             for client in clients:
-                                pluspos: XYZ = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1] # type: ignore
+                                pluspos = await eval_arg(args[1], client)
                                 clientpos = await client.body.position()
                                 newpos = XYZ(clientpos.x + pluspos.x, clientpos.y + pluspos.y, clientpos.z + pluspos.z)
                                 tg.create_task(client.teleport(newpos))
                         case TeleportKind.minusteleport:
                             for client in clients:
-                                minuspos: XYZ = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1] # type: ignore
+                                minuspos = await eval_arg(args[1], client)
                                 clientpos = await client.body.position()
                                 newpos = XYZ(clientpos.x - minuspos.x, clientpos.y - minuspos.y, clientpos.z - minuspos.z)
                                 tg.create_task(client.teleport(newpos))
                         case TeleportKind.entity_literal:
-                            name = args[-1] if isinstance(args[-1], Expression) else args[-1]
                             use_navmap = False
                             if len(args) > 2 and args[-2] == TeleportKind.nav:
                                 use_navmap = True
-                                name = args[-1] if isinstance(args[-1], Expression) else args[-1]
+                                name = await eval_arg(args[-1], clients[0])
+                            else:
+                                name = await eval_arg(args[-1], clients[0])
+                            
                             for client in clients:
                                 async def tp_to_entity(client):
                                     entity = await client.get_base_entity_by_name(name)
@@ -1319,14 +1366,16 @@ class VM:
                                             await client.teleport(pos)
                                 tg.create_task(tp_to_entity(client))
                         case TeleportKind.entity_vague:
-                            vague = args[-1] if isinstance(args[-1], Expression) else args[-1]
                             use_navmap = False
                             if len(args) > 2 and args[-2] == TeleportKind.nav:
                                 use_navmap = True
-                                vague = args[-1] if isinstance(args[-1], Expression) else args[-1]
+                                vague = await eval_arg(args[-1], clients[0])
+                            else:
+                                vague = await eval_arg(args[-1], clients[0])
+                            
                             for client in clients:
                                 async def tp_to_vague_entity(client):
-                                    entity = await client.find_closest_by_vague_name(vague) 
+                                    entity = await client.find_closest_by_vague_name(vague)
                                     if entity:
                                         pos = await entity.location()
                                         if use_navmap:
@@ -1350,14 +1399,19 @@ class VM:
                             for client in clients:
                                 tg.create_task(proxy(client))
                         case TeleportKind.friend_name:
-                            name = args[-1] if isinstance(args[-1], Expression) else args[-1]
+                            name = await eval_arg(args[-1], clients[0])
+                            if isinstance(name, str) and name.startswith('$'):
+                                constant_name = name[1:]
+                                if constant_name in self._constants:
+                                    name = self._constants[constant_name]
+                            
                             async def proxy(client: SprintyClient): # type: ignore
                                 async with client.mouse_handler:
                                     await teleport_to_friend_from_list(client, name=name)
                             for client in clients:
                                 tg.create_task(proxy(client))
                         case TeleportKind.client_num:
-                            num = args[-1] if isinstance(args[-1], Expression) else args[-1]
+                            num = await eval_arg(args[-1], clients[0])
                             target_client = self.player_by_num(num)
                             target_pos = await target_client.body.position()
                             for client in clients:
@@ -1369,7 +1423,7 @@ class VM:
                 assert type(args) == list
                 async with asyncio.TaskGroup() as tg:
                     for client in clients:
-                        pos: XYZ = await self.eval(args[0], client) if isinstance(args[0], Expression) else args[0] # type: ignore
+                        pos = await eval_arg(args[0], client)
                         tg.create_task(client.goto(pos.x, pos.y))
             case "waitfor":
                 args = instruction.data[2]
@@ -1423,8 +1477,8 @@ class VM:
                 args = instruction.data[2]
                 async with asyncio.TaskGroup() as tg:
                     for client in clients:
-                        key: Keycode = await self.eval(args[0], client) # type: ignore
-                        time: float = 0.1 if args[1] is None else (await self.eval(args[1], client)) # type: ignore
+                        key = await eval_arg(args[0], client)
+                        time = 0.1 if args[1] is None else await eval_arg(args[1], client)
                         tg.create_task(client.send_key(key, time))
             case "usepotion":
                 args = instruction.data[2]
@@ -1432,8 +1486,8 @@ class VM:
                 
                 for client in clients:
                     if len(args) > 0:
-                        health_num: float = await self.eval(args[0], client) if isinstance(args[0], Expression) else args[0] # type: ignore
-                        mana_num: float = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1] # type: ignore
+                        health_num = await eval_arg(args[0], client)
+                        mana_num = await eval_arg(args[1], client)
                         
                         async def _use_potion_if_needed(client, health_threshold, mana_threshold):
                             async with client.mouse_handler:
@@ -1451,7 +1505,7 @@ class VM:
                     await asyncio.gather(*potion_tasks)
             case "buypotions":
                 args = instruction.data[2]
-                ifneeded = args[0]
+                ifneeded = await eval_arg(args[0], clients[0]) if clients else False
                 async with asyncio.TaskGroup() as tg:
                     for client in clients:
                         if ifneeded:
@@ -1471,11 +1525,11 @@ class VM:
                                 async def proxy(client: SprintyClient, x: float, y: float):
                                     async with client.mouse_handler:
                                         await client.mouse_handler.click(int(x), int(y))
-                                x: float = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1] # type: ignore
-                                y: float = await self.eval(args[2], client) if isinstance(args[2], Expression) else args[2] # type: ignore
+                                x = await eval_arg(args[1], client)
+                                y = await eval_arg(args[2], client)
                                 tg.create_task(proxy(client, x, y))
                             case ClickKind.window:
-                                path = await self.eval(args[1], client) if isinstance(args[1], Expression) else args[1]
+                                path = await eval_arg(args[1], client)
                                 async def proxy(client: SprintyClient, path: list):
                                     await click_window_by_path(client, path)
                                 tg.create_task(proxy(client, path))
@@ -1485,12 +1539,11 @@ class VM:
                 args = instruction.data[2]
                 async with asyncio.TaskGroup() as tg:
                     for client in clients:
-                        # For tozone, we don't need to evaluate anything, just pass the zone path
-                        zone_path = await self.eval(args[0], client) if isinstance(args[0], Expression) else args[0] # type: ignore
+                        zone_path = await eval_arg(args[0], client)
                         tg.create_task(toZone([client], "/".join(zone_path) if isinstance(zone_path, list) else zone_path))
             case "select_friend":
                 args = instruction.data[2]
-                friend_name = args[0] if isinstance(args[0], Expression) else args[0] # type: ignore
+                friend_name = await eval_arg(args[0], clients[0]) if clients else args[0]
                 
                 async with asyncio.TaskGroup() as tg:
                     for client in clients:
@@ -1633,17 +1686,30 @@ class VM:
             case InstructionKind.log_single:
                 assert(isinstance(instruction.data, Expression))
                 try:
-                    value = await self.eval(instruction.data)
+                    if isinstance(instruction.data, StringExpression) and instruction.data.string.startswith('$'):
+                        const_name = instruction.data.string[1:]
+                        if const_name in self._constants:
+                            value = self._constants[const_name]
+                            logger.debug(f"{const_name} = {value}")
+                        else:
+                            logger.debug(f"Constant '{const_name}' not found")
+                    elif isinstance(instruction.data, IdentExpression):
+                        # Check if this identifier is a constant
+                        if instruction.data.ident in self._constants:
+                            value = self._constants[instruction.data.ident]
+                            logger.debug(f"{instruction.data.ident} = {value}")
+                        else:
+                            value = await self.eval(instruction.data)
+                            logger.debug(value)
+                    else:
+                        value = await self.eval(instruction.data)
+                        logger.debug(value)
                 except VMError:
                     if isinstance(instruction.data, IdentExpression):
                         value = f"{instruction.data.ident}"
+                        logger.debug(value)
                     else:
                         raise
-                
-                if isinstance(instruction.data, IdentExpression) and instruction.data.ident in self._constants:
-                    logger.debug(f"{instruction.data.ident} = {value}")
-                else:
-                    logger.debug(value)
                 
                 self.current_task.ip += 1
 

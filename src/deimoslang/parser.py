@@ -233,6 +233,11 @@ class Parser:
             return Eval(EvalKind.health)
 
     def parse_atom(self) -> NumberExpression | StringExpression | ListExpression | IdentExpression:
+        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier and self.tokens[self.i].literal.startswith('$'):
+            constant_name = self.tokens[self.i].literal[1:]
+            self.i += 1
+            return ConstantReferenceExpression(constant_name)
+        
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.boolean_true:
             self.i += 1
             return ConstantExpression("true", StringExpression("true"))
@@ -904,7 +909,12 @@ class Parser:
                             if self.i + 1 < len(self.tokens) and self.tokens[self.i + 1].kind == TokenKind.END_LINE:
                                 ident = self.tokens[self.i].literal
                                 self.i += 1
-                                result.data = [LogKind.single, IdentExpression(ident)]
+
+                                if ident.startswith('$'):
+                                    const_name = ident[1:]  # Remove the $ prefix
+                                    result.data = [LogKind.single, IdentExpression(const_name)]
+                                else:
+                                    print_literal()
                             else:
                                 print_literal()
                     case TokenKind.command_expr_bagcount:
@@ -1115,16 +1125,18 @@ class Parser:
                 
                 arg = self.consume_optional(TokenKind.string)
                 if arg is not None:
-                    result.data = [TeleportKind.entity_literal, arg.value]
+                    result.data = [TeleportKind.entity_vague, arg.value]
                     if nav_mode:
                         result.data.insert(1, TeleportKind.nav)
                 elif self.tokens[self.i].kind == TokenKind.identifier:
                     ident = self.expect_consume(TokenKind.identifier)
-                    result.data = [TeleportKind.entity_literal, IdentExpression(ident.literal)]
+                    result.data = [TeleportKind.entity_vague, ident.literal]
                     if nav_mode:
                         result.data.insert(1, TeleportKind.nav)
                 else:
-                    result.data = [TeleportKind.entity_vague, self.consume_any_ident().ident]
+                    token = self.tokens[self.i]
+                    self.i += 1
+                    result.data = [TeleportKind.entity_vague, token.literal]
                     if nav_mode:
                         result.data.insert(1, TeleportKind.nav)
                 self.end_line()
@@ -1166,7 +1178,7 @@ class Parser:
                 self.i += 1
                 if self.tokens[self.i].kind == TokenKind.identifier and self.i + 1 < len(self.tokens) and self.tokens[self.i + 1].kind == TokenKind.END_LINE:
                     ident = self.expect_consume(TokenKind.identifier)
-                    result.data = [IdentExpression(ident.literal)]
+                    result.data = [ident.literal]  
                 else:
                     name_parts = []
                     while self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.END_LINE:
@@ -1283,11 +1295,14 @@ class Parser:
             case _:
                 return CommandStmt(self.parse_command())
 
+    
     def parse(self) -> list[Stmt]:
         result = []
         while self.i < len(self.tokens):
             stmt = self.parse_stmt()
-            result.append(stmt)
+            if stmt:
+                result.append(stmt)
+        
         return result
 def add_indent(string, indent):
     for _ in range(indent):
