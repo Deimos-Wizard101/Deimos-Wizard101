@@ -93,6 +93,7 @@ class TokenKind(Enum):
     command_set_quest = auto()
     command_set_zone = auto()
     command_toggle_combat = auto()
+    command_restart_bot = auto()
 
     # command expressions
     command_expr_window_visible = auto()
@@ -429,6 +430,8 @@ class Tokenizer:
                                         put_simple(TokenKind.boolean_false, full)
                                     case "$":
                                         put_simple(TokenKind.keyword_constant_reference, full)
+                                    case "restartbot":
+                                        put_simple(TokenKind.command_restart_bot, full)
 
                                     # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":

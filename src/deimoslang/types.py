@@ -32,6 +32,7 @@ class CommandKind(Enum):
     set_quest = auto()
     set_zone = auto()
     toggle_combat = auto()
+    restart_bot = auto()
 
 class TeleportKind(Enum):
     position = auto()

@@ -15,6 +15,7 @@ class CompilerError(Exception):
 class InstructionKind(Enum):
     kill = auto()
     sleep = auto()
+    restart_bot = auto()
 
     log_single = auto()
     log_multi = auto()
@@ -132,6 +133,8 @@ class Compiler:
                 return
 
         match com.kind:
+            case CommandKind.restart_bot:
+                self.emit(InstructionKind.restart_bot)
             case CommandKind.toggle_combat:
                 self.emit(InstructionKind.deimos_call, [com.player_selector, com.kind.name, com.data])
             case CommandKind.set_zone:

@@ -176,12 +176,12 @@ class Analyzer:
                 case WhileStmt():
                     _mix_stmt(stmt.body, mixins)
                 case IfStmt():
-                    _mix_stmt(stmt.branch_true)
-                    _mix_stmt(stmt.branch_false)
+                    _mix_stmt(stmt.branch_true, mixins)
+                    _mix_stmt(stmt.branch_false, mixins)
                 case LoopStmt():
-                    _mix_stmt(stmt.body)
+                    _mix_stmt(stmt.body, mixins)
                 case UntilRegion():
-                    _mix_stmt(stmt.body)
+                    _mix_stmt(stmt.body, mixins)
 
         mixed_syms: dict[str, Symbol] = {}
         for m in stmt.mixins:
