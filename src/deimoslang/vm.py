@@ -704,7 +704,6 @@ class VM:
                             return False
                     return True
             case ExprKind.same_place:
-                await asyncio.sleep(1)
                 data = [await c.client_object.global_id_full() for c in clients]
                 target = len(data)
                 for client in clients:
@@ -1465,7 +1464,7 @@ class VM:
                                             return starting_zone != (await client.zone_name())
                                         tg.create_task(waitfor_coro(proxy, False))
                         case WaitforKind.window:
-                            window_path = args[1] if isinstance(args[-1], Expression) else args[-1]
+                            window_path = await eval_arg(args[1], clients[0] if clients else None)
                             async with asyncio.TaskGroup() as tg:
                                 for client in clients:
                                     async def proxy():
@@ -1594,6 +1593,10 @@ class VM:
         instruction = self.program[self.current_task.ip]
 
         match instruction.kind:
+            case InstructionKind.restart_bot:
+                self.reset()
+                self.current_task.ip = 0
+                logger.debug("Bot Restarted")
             case InstructionKind.declare_constant:
                 name, expr = instruction.data
                 value = await self.eval(expr)
@@ -1685,34 +1688,18 @@ class VM:
                 self.current_task.ip += 1
             case InstructionKind.log_single:
                 assert(isinstance(instruction.data, Expression))
-                try:
-                    if isinstance(instruction.data, StringExpression) and instruction.data.string.startswith('$'):
-                        const_name = instruction.data.string[1:]
-                        if const_name in self._constants:
-                            value = self._constants[const_name]
-                            logger.debug(f"{const_name} = {value}")
-                        else:
-                            logger.debug(f"Constant '{const_name}' not found")
-                    elif isinstance(instruction.data, IdentExpression):
-                        # Check if this identifier is a constant
-                        if instruction.data.ident in self._constants:
-                            value = self._constants[instruction.data.ident]
-                            logger.debug(f"{instruction.data.ident} = {value}")
-                        else:
-                            value = await self.eval(instruction.data)
-                            logger.debug(value)
+
+                if isinstance(instruction.data, IdentExpression):
+                    ident = instruction.data.ident
+                    if ident in self._constants:
+                        logger.debug(f"{ident} = {self._constants[ident]}")
                     else:
-                        value = await self.eval(instruction.data)
-                        logger.debug(value)
-                except VMError:
-                    if isinstance(instruction.data, IdentExpression):
-                        value = f"{instruction.data.ident}"
-                        logger.debug(value)
-                    else:
-                        raise
+                        logger.debug(ident)
+                else:
+                    value = await self.eval(instruction.data)
+                    logger.debug(value)
                 
                 self.current_task.ip += 1
-
             case InstructionKind.log_multi:
                 assert type(instruction.data) == list
                 clients = self._select_players(instruction.data[0])
