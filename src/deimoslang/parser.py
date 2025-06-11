@@ -1234,6 +1234,26 @@ class Parser:
 
     def parse_stmt(self) -> Stmt:
         match self.tokens[self.i].kind:
+            case TokenKind.keyword_counter:
+                self.i += 1
+                counter_name = self.consume_any_ident()
+                self.end_line()
+                return CounterStmt(counter_name.ident, CounterAction.create)
+            case TokenKind.keyword_addone_counter:
+                self.i += 1
+                counter_name = self.consume_any_ident()
+                self.end_line()
+                return CounterStmt(counter_name.ident, CounterAction.increment)
+            case TokenKind.keyword_minusone_counter:
+                self.i += 1
+                counter_name = self.consume_any_ident()
+                self.end_line()
+                return CounterStmt(counter_name.ident, CounterAction.decrement)
+            case TokenKind.keyword_reset_counter:
+                self.i += 1
+                counter_name = self.consume_any_ident()
+                self.end_line()
+                return CounterStmt(counter_name.ident, CounterAction.reset)
             case TokenKind.keyword_con:
                 self.i += 1
                 var_name = self.expect_consume(TokenKind.identifier).literal

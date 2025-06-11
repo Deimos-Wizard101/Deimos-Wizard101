@@ -66,6 +66,7 @@ class EvalKind(Enum):
     windownum = auto()
     account_level = auto()
     duel_round = auto()
+    reference_counter = auto()
 
 class WaitforKind(Enum):
     dialog = auto()
@@ -127,6 +128,12 @@ class ExprKind(Enum):
 class TimerAction(Enum):
     start = auto()
     end = auto()
+
+class CounterAction(Enum):
+    create = auto()
+    increment = auto()
+    decrement = auto()
+    reset = auto()
 
 # TODO: Replace asserts
 
@@ -394,6 +401,23 @@ class TimerStmt(Stmt):
     def __str__(self):
         action_str = "settimer" if self.action == TimerAction.start else "endtimer"
         return f"{action_str} {self.timer_name};"
+    
+class CounterStmt(Stmt):
+    def __init__(self, counter_name: str, action: CounterAction = CounterAction.create):
+        self.counter_name = counter_name
+        self.action = action
+
+    def __repr__(self) -> str:
+        action_str = ""
+        if self.action == CounterAction.create:
+            action_str = TokenKind.keyword_counter
+        elif self.action == CounterAction.increment:
+            action_str = TokenKind.keyword_addone_counter
+        elif self.action == CounterAction.decrement:
+            action_str = TokenKind.keyword_minusone_counter
+        else:  # reset
+            action_str = TokenKind.keyword_reset_counter
+        return f"{action_str} {self.counter_name}"
 
 class CommandStmt(Stmt):
     def __init__(self, command: Command):

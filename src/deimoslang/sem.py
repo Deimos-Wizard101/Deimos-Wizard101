@@ -208,7 +208,7 @@ class Analyzer:
 
     def sem_stmt(self, stmt: Stmt) -> Stmt:
         match stmt:
-            case TimerStmt(): 
+            case TimerStmt() | CounterStmt():
                 return stmt
             case ConstantDeclStmt():
                 stmt.value = self.sem_expr(stmt.value)
