@@ -77,6 +77,7 @@ class VM:
         self.current_task = self._scheduler.get_current_task()
         self._any_player_client = [] # Using this to store the client(s) that satisfied the condition of any player
         self._timers = {}
+        self._counters = {}
         self.logged_data = {
             'goal': {},
             'quest': {},
@@ -100,6 +101,7 @@ class VM:
         self.current_task = self._scheduler.get_current_task()
         self._until_infos = []
         self._timers = {}
+        self._counters = {}
         self._any_player_client = []
         self.logged_data = {
             'goal': {},
@@ -294,9 +296,6 @@ class VM:
             logger.error(f"Error getting duel round: {e}")
             return 0
     
-    
-    
-    
     async def _extract_data_info(self, zone_data):
         if isinstance(zone_data, str):
             # Check if this is a constant reference (starts with $)
@@ -372,7 +371,6 @@ class VM:
                 expected_value = expression.command.data[2]
                 
                 if constant_name in self._constants:
-
                     actual_value = self._constants[constant_name] 
                     # Handle string representations of booleans
                     if isinstance(expected_value, bool) and isinstance(actual_value, str):
@@ -1593,6 +1591,27 @@ class VM:
         instruction = self.program[self.current_task.ip]
 
         match instruction.kind:
+            case InstructionKind.counter:
+                assert isinstance(instruction.data, str), "Counter name must be a string."
+                counter_name = instruction.data
+                self._counters[counter_name] = 0
+                logger.debug(f"Counter '{counter_name}' created.")
+                self.current_task.ip += 1
+            case InstructionKind.addone_counter:
+                counter_name = instruction.data
+                if counter_name in self._counters:
+                    self._counters[counter_name] += 1
+                self.current_task.ip += 1
+            case InstructionKind.minusone_counter:
+                counter_name = instruction.data
+                if counter_name in self._counters:
+                    self._counters[counter_name] -= 1
+                self.current_task.ip += 1
+            case InstructionKind.reset_counter:
+                counter_name = instruction.data
+                if counter_name in self._counters:
+                    self._counters[counter_name] = 0
+                self.current_task.ip += 1
             case InstructionKind.restart_bot:
                 self.reset()
                 self.current_task.ip = 0
@@ -1693,6 +1712,8 @@ class VM:
                     ident = instruction.data.ident
                     if ident in self._constants:
                         logger.debug(f"{ident} = {self._constants[ident]}")
+                    elif ident in self._counters:
+                        logger.debug(f"Counter '{ident}' = {self._counters[ident]}")
                     else:
                         logger.debug(ident)
                 else:
