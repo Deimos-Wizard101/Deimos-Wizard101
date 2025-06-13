@@ -105,13 +105,11 @@ class VM:
             'True': True,
             'False': False,
         }
-        """
         self.logged_data = {
             'goal': {},
             'quest': {},
             'zone': {}
         }
-        """
 
 
     def stop(self):
@@ -1546,8 +1544,13 @@ class VM:
     async def _process_untils(self):
         for i in range(len(self._until_infos) - 1, -1, -1):
             info = self._until_infos[i]
-            if await self.eval(info.expr):
-                #self._ip = info.exit_point
+            try:
+                if await self.eval(info.expr):
+                    self.current_task.ip = info.exit_point
+                    return
+            except VMError:
+                # If evaluation fails (e.g., due to non-existent player), treat as true
+                # This will cause the VM to skip the until block
                 self.current_task.ip = info.exit_point
                 return
 
@@ -1624,7 +1627,7 @@ class VM:
                         self.current_task.ip += instruction.data[1]
                     else:
                         self.current_task.ip += 1
-                except VMError as e:
+                except VMError:
                     if instruction.data[1] > 1:  # This is likely a while loop
                         self.current_task.ip += instruction.data[1]  # Skip the entire scope
                     else:
@@ -1639,7 +1642,7 @@ class VM:
                     else:
                         self.current_task.ip += instruction.data[1]
                 except VMError:
-                    self.current_task.ip += 1
+                    self.current_task.ip += 1  # Move to the next instruction (skip the loop body)
             case InstructionKind.call:
                 assert(type(instruction.data) == int)
                 self.current_task.stack.append(self.current_task.ip + 1)
