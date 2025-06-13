@@ -1055,8 +1055,7 @@ class Parser:
             case TokenKind.command_waitfor_window:
                 result.kind = CommandKind.waitfor
                 self.i += 1
-                window_path = self.parse_window_path()
-                result.data = [WaitforKind.window, window_path, self.parse_completion_optional()]
+                result.data = [WaitforKind.window, self.parse_window_path(), self.parse_completion_optional()]
                 self.end_line()
             case TokenKind.command_waitfor_free:
                 result.kind = CommandKind.waitfor
