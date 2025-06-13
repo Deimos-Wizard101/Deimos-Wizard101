@@ -1240,15 +1240,21 @@ class VM:
         
         async def eval_arg(arg, client):
             if isinstance(arg, Expression):
+                if isinstance(arg, IdentExpression):
+                    constant_name = arg.ident
+                    if constant_name in self._constants:
+                        return self._constants[constant_name]
+                    else:
+                        #logger.error(f"Undefined constant referenced by IdentExpression: ${constant_name}")
+                        return constant_name  
                 return await self.eval(arg, client)
-            # Handle constant references that start with $
             elif isinstance(arg, str) and arg.startswith('$'):
                 constant_name = arg[1:]  # Remove the $ prefix
                 if constant_name in self._constants:
                     return self._constants[constant_name]
                 else:
                     logger.error(f"Undefined constant: {arg}")
-                    return arg  # Return the original string if constant not found
+                    return arg 
             return arg
 
         # TODO: is eval always fast enough to run in order during a TaskGroup

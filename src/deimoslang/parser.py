@@ -857,7 +857,15 @@ class Parser:
         self.expect_consume(TokenKind.square_close)
         return ListExpression(items)
 
-    def parse_window_path(self) -> list[str]:
+    def parse_window_path(self) -> list[str] | Expression:
+        # Check if this is a variable reference with $ prefix
+        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier and self.tokens[self.i].literal.startswith('$'):
+            ident = self.tokens[self.i].literal
+            self.i += 1
+            const_name = ident[1:]  # Remove the $ prefix
+            return IdentExpression(const_name)
+        
+        # Original list parsing logic
         list_expr = self.parse_list()
         result = []
         for x in list_expr.items:  # Access the items attribute of ListExpression
@@ -1047,7 +1055,8 @@ class Parser:
             case TokenKind.command_waitfor_window:
                 result.kind = CommandKind.waitfor
                 self.i += 1
-                result.data = [WaitforKind.window, self.parse_window_path(), self.parse_completion_optional()]
+                window_path = self.parse_window_path()
+                result.data = [WaitforKind.window, window_path, self.parse_completion_optional()]
                 self.end_line()
             case TokenKind.command_waitfor_free:
                 result.kind = CommandKind.waitfor
