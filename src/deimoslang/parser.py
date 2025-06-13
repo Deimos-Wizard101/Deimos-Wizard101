@@ -109,6 +109,9 @@ class Parser:
         return SelectorGroup(player_selector, evaluated)
 
     def parse_indexed_numeric_comparison(self, evaluated, player_selector):
+        # Important for the windownum case when checking paths that contains "36/100" (seperated numbers)
+        # This also works for single numbers
+        # TODO: Maybe refactor this and parse_numeric_comparison to condense code?
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
             self.i += 1 
             
@@ -239,12 +242,14 @@ class Parser:
             return ConstantReferenceExpression(constant_name)
         
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.boolean_true:
+            token = self.tokens[self.i]
             self.i += 1
-            return ConstantExpression("true", StringExpression("true"))
+            return ConstantExpression(token.literal, StringExpression("true"))
         
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.boolean_false:
+            token = self.tokens[self.i]
             self.i += 1
-            return ConstantExpression("false", StringExpression("false"))
+            return ConstantExpression(token.literal, StringExpression("false"))
 
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
             return self.parse_list()
@@ -421,11 +426,13 @@ class Parser:
                 # Check for boolean literals first
                 if self.i < len(self.tokens):
                     if self.tokens[self.i].kind == TokenKind.boolean_true:
+                        token = self.tokens[self.i]
                         self.i += 1
-                        return ConstantCheckExpression(ident, ConstantExpression("true", StringExpression("true")))
+                        return ConstantCheckExpression(ident, ConstantExpression(token.literal, StringExpression("true")))
                     elif self.tokens[self.i].kind == TokenKind.boolean_false:
+                        token = self.tokens[self.i]
                         self.i += 1
-                        return ConstantCheckExpression(ident, ConstantExpression("false", StringExpression("false")))
+                        return ConstantCheckExpression(ident, ConstantExpression(token.literal, StringExpression("false")))
                 
                 # Otherwise parse as normal expression
                 value = self.parse_expression()
@@ -449,6 +456,8 @@ class Parser:
                         result.data = [ExprKind.zone_changed, text]
                     else:
                         result.data = [ExprKind.zone_changed, text]
+                else:
+                    result.data = [ExprKind.zone_changed]
             case TokenKind.command_expr_goal_changed:
                 result.kind = CommandKind.expr
                 self.i += 1
@@ -462,6 +471,8 @@ class Parser:
                         result.data = [ExprKind.goal_changed, text]
                     else:
                         result.data = [ExprKind.goal_changed, text]
+                else:
+                    result.data = [ExprKind.goal_changed]
             case TokenKind.command_expr_quest_changed:
                 result.kind = CommandKind.expr
                 self.i += 1
@@ -475,6 +486,8 @@ class Parser:
                         result.data = [ExprKind.quest_changed, text]
                     else:
                         result.data = [ExprKind.quest_changed, text]
+                else:
+                    result.data = [ExprKind.quest_changed]
             case TokenKind.command_expr_duel_round:
                 return self.parse_numeric_stat_expression(TokenKind.command_expr_duel_round, player_selector)
             case TokenKind.command_expr_item_dropped:
@@ -1150,7 +1163,7 @@ class Parser:
                 
                 arg = self.consume_optional(TokenKind.string)
                 if arg is not None:
-                    result.data = [TeleportKind.entity_vague, arg.value]
+                    result.data = [TeleportKind.entity_literal, arg.value]
                     if nav_mode:
                         result.data.insert(1, TeleportKind.nav)
                 elif self.tokens[self.i].kind == TokenKind.identifier:
@@ -1234,26 +1247,6 @@ class Parser:
 
     def parse_stmt(self) -> Stmt:
         match self.tokens[self.i].kind:
-            case TokenKind.keyword_counter:
-                self.i += 1
-                counter_name = self.consume_any_ident()
-                self.end_line()
-                return CounterStmt(counter_name.ident, CounterAction.create)
-            case TokenKind.keyword_addone_counter:
-                self.i += 1
-                counter_name = self.consume_any_ident()
-                self.end_line()
-                return CounterStmt(counter_name.ident, CounterAction.increment)
-            case TokenKind.keyword_minusone_counter:
-                self.i += 1
-                counter_name = self.consume_any_ident()
-                self.end_line()
-                return CounterStmt(counter_name.ident, CounterAction.decrement)
-            case TokenKind.keyword_reset_counter:
-                self.i += 1
-                counter_name = self.consume_any_ident()
-                self.end_line()
-                return CounterStmt(counter_name.ident, CounterAction.reset)
             case TokenKind.keyword_con:
                 self.i += 1
                 var_name = self.expect_consume(TokenKind.identifier).literal

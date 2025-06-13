@@ -41,10 +41,6 @@ class InstructionKind(Enum):
 
     set_timer = auto()
     end_timer = auto()
-    counter = auto()
-    addone_counter = auto()
-    minusone_counter = auto()
-    reset_counter = auto()
 
     declare_constant = auto()
 
@@ -351,20 +347,8 @@ class Compiler:
             self.emit(InstructionKind.exit_until, self._outermost_until)
         self.emit(InstructionKind.ret)
 
-    def compile_counter_stmt(self, stmt: CounterStmt):
-        if stmt.action == CounterAction.create:
-            self.emit(InstructionKind.counter, stmt.counter_name)
-        elif stmt.action == CounterAction.increment:
-            self.emit(InstructionKind.addone_counter, stmt.counter_name)
-        elif stmt.action == CounterAction.decrement:
-            self.emit(InstructionKind.minusone_counter, stmt.counter_name)
-        else:  # CounterAction.reset
-            self.emit(InstructionKind.reset_counter, stmt.counter_name)
-
     def _compile(self, stmt: Stmt):
         match stmt:
-            case CounterStmt():
-                self.compile_counter_stmt(stmt)
             case ConstantDeclStmt():
                 self.prep_expression(stmt.value)
                 self.emit(InstructionKind.declare_constant, [stmt.name, stmt.value])
