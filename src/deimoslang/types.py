@@ -33,6 +33,7 @@ class CommandKind(Enum):
     set_zone = auto()
     toggle_combat = auto()
     restart_bot = auto()
+    cursor = auto()
 
 class TeleportKind(Enum):
     position = auto()
@@ -73,6 +74,10 @@ class WaitforKind(Enum):
     battle = auto()
     zonechange = auto()
     free = auto()
+    window = auto()
+
+class CursorKind(Enum):
+    position = auto()
     window = auto()
 
 class ClickKind(Enum):

@@ -1075,6 +1075,14 @@ class Parser:
                 else:
                     result.data = [self.parse_expression()]
                 self.end_line()
+            case TokenKind.command_move_cursor_window:
+                result.kind = CommandKind.cursor
+                self.i += 1
+                if self.tokens[self.i].kind == TokenKind.string:
+                    result.data = [CursorKind.window, self.parse_window_path()]
+                else:
+                    result.data = [CursorKind.window, self.parse_expression()]
+                self.end_line()
             case TokenKind.command_clickwindow:
                 result.kind = CommandKind.click
                 self.i += 1
@@ -1119,6 +1127,29 @@ class Parser:
             case TokenKind.command_relog:
                 result.kind = CommandKind.relog
                 self.i += 1
+                self.end_line()
+            case TokenKind.command_move_cursor:
+                result.kind = CommandKind.cursor
+                self.i += 1
+                x_expr = None
+                if self.tokens[self.i].kind == TokenKind.number:
+                    x = self.expect_consume(TokenKind.number)
+                    x_expr = NumberExpression(x.value)
+                elif self.tokens[self.i].kind == TokenKind.identifier:
+                    x = self.expect_consume(TokenKind.identifier)
+                    x_expr = IdentExpression(x.literal)  
+
+                if x_expr is not None:                  
+                    self.skip_comma()
+
+                    if self.tokens[self.i].kind == TokenKind.number:
+                        y = self.expect_consume(TokenKind.number)
+                        y_expr = NumberExpression(y.value)
+                    elif self.tokens[self.i].kind == TokenKind.identifier:
+                        y = self.expect_consume(TokenKind.identifier)
+                        y_expr = IdentExpression(y.literal)
+
+                    result.data = [CursorKind.position, x_expr, y_expr]
                 self.end_line()
             case TokenKind.command_click:
                 result.kind = CommandKind.click
