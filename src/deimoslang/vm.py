@@ -1496,6 +1496,26 @@ class VM:
                 async with asyncio.TaskGroup() as tg:
                     for client in clients:
                         tg.create_task(logout_and_in(client))
+            case "cursor":
+                args = instruction.data[2]
+                async with asyncio.TaskGroup() as tg:
+                    for client in clients:
+                        match args[0]:
+                            case CursorKind.position:
+                                async def proxy(client: SprintyClient, x: float, y: float):
+                                    async with client.mouse_handler:
+                                            await client.mouse_handler.set_mouse_position(int(x), int(y))
+                                x = await eval_arg(args[1], client)
+                                y = await eval_arg(args[2], client)
+                                tg.create_task(proxy(client, x, y))
+                            case CursorKind.window:
+                                path = await eval_arg(args[1], client)
+                                async def proxy(client: SprintyClient, path: list):
+                                    window = await get_window_from_path(client.root_window, path)
+                                    if window:
+                                        async with client.mouse_handler:
+                                            await client.mouse_handler.set_mouse_position_to_window(window)
+                                tg.create_task(proxy(client, path))
             case "click":
                 args = instruction.data[2]
                 async with asyncio.TaskGroup() as tg:
