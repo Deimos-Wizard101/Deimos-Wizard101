@@ -1508,6 +1508,7 @@ class VM:
                                 x = await eval_arg(args[1], client)
                                 y = await eval_arg(args[2], client)
                                 tg.create_task(proxy(client, x, y))
+                                await asyncio.sleep(.2)
                             case CursorKind.window:
                                 path = await eval_arg(args[1], client)
                                 async def proxy(client: SprintyClient, path: list):
@@ -1516,6 +1517,7 @@ class VM:
                                         async with client.mouse_handler:
                                             await client.mouse_handler.set_mouse_position_to_window(window)
                                 tg.create_task(proxy(client, path))
+                                await asyncio.sleep(.2)
             case "click":
                 args = instruction.data[2]
                 async with asyncio.TaskGroup() as tg:
