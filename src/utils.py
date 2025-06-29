@@ -437,7 +437,7 @@ async def navigate_to_potions(client: Client):
      # make sure client is not loading
     while await client.is_loading():
         await asyncio.sleep(0.1)
-    #Teleports to Hilda if not already in range
+      #Teleports to Hilda if not already in range
     while not await client.is_in_npc_range():
         await client.teleport(hilda)
         await asyncio.sleep(2)
@@ -543,6 +543,7 @@ async def is_potion_needed(client: Client, minimum_mana: int = 16):
         return False
 
 
+
 async def auto_potions_force_buy(client: Client, mark: bool = False, minimum_mana: int = 16):
     # If we have any missing potions, get potions
     if await client.stats.potion_charge() < await client.stats.potion_max():
@@ -558,7 +559,7 @@ async def auto_potions_force_buy(client: Client, mark: bool = False, minimum_man
         await navigate_to_ravenwood(client)
         # Navigate to commons
         await navigate_to_commons_from_ravenwood(client)
-        # Navigate to hilda brewer
+        # Navigate to potions
         await navigate_to_potions(client)
         # Buy potions
         await buy_potions(client, recall=recall)
@@ -1248,17 +1249,36 @@ def read_webpage(url) -> Union[List, None]:
         return line_list
 
 
+
+
 def assign_pet_level(destinationLevel):
-    pet_world_tracks = ['btnTrack0', 'btnTrack1', 'btnTrack2', 'btnTrack3', 'btnTrack4']
-    pet_world_list = ['WizardCity', 'Krokotopia', 'Marleybone', 'Mooshu', 'Dragonspyre']
-
-    pet_world_index = pet_world_list.index(destinationLevel)
-    selected_track = pet_world_tracks[pet_world_index]
-
-    if selected_track is not None:
-        for index, track in enumerate(wizard_city_dance_game_path):
-            if (track in pet_world_tracks):
-                wizard_city_dance_game_path[index] = selected_track
+    # Check if destinationLevel is None or empty
+    if destinationLevel is None or destinationLevel == "":
+        return
+        
+    # Normalize input by removing case sensitivity and ensuring proper format
+    if isinstance(destinationLevel, str):
+        # Convert to title case and strip whitespace
+        normalized_level = destinationLevel.strip().title()
+        
+        # Handle special case for "WizardCity" -> "Wizard City"
+        if normalized_level == "Wizardcity":
+            normalized_level = "Wizard City"
+            
+        pet_world_list = ["Wizard City", "Krokotopia", "Marleybone", "Mooshu", "Dragonspyre", "Celestia", "Zafaria", "Avalon", "Azteca", "Khrysalis", "Polaris", "Mirage", "Empyrea", "Karamelle", "Lemuria", "Novus"]
+        
+        try:
+            pet_world_index = pet_world_list.index(normalized_level)
+            for index, path in enumerate(wizard_city_dance_game_path):
+                if index == pet_world_index:
+                    wizard_city_dance_game_path[-1] = path
+        except ValueError:
+            # Handle the case where destinationLevel is not in the list
+            # Instead of logging an error, just silently return
+            pass
+    else:
+        # If not a string, just return
+        return
 
 
 def required_params(signature: inspect.Signature) -> int:
