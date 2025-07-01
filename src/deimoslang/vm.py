@@ -611,6 +611,7 @@ class VM:
             case ExprKind.items_dropped:
                 item_name = await self._extract_data_info(expression.command.data[1])
                 assert type(item_name) == str
+                item_name = item_name.lower()
                 
                 if selector.any_player:
                     self._any_player_client = []
@@ -728,7 +729,9 @@ class VM:
                     found_any = False
                     for client in self._clients:
                         zone = await client.zone_name()
+                        zone = zone.lower() if zone is not None else None
                         expected = await self._extract_data_info(expression.command.data[1])
+                        expected = expected.lower()
                         if expected == zone:
                             self._any_player_client.append(client)
                             found_any = True
@@ -736,7 +739,9 @@ class VM:
                 else:
                     for client in clients:
                         zone = await client.zone_name()
+                        zone = zone.lower() if zone is not None else None
                         expected = await self._extract_data_info(expression.command.data[1])
+                        expected = expected.lower()
                         if expected != zone:
                             return False
                     return True
@@ -792,11 +797,15 @@ class VM:
             case ExprKind.tracking_quest:
                 expected_text = await self._extract_data_info(expression.command.data[1])
                 assert type(expected_text) == str
+                expected_text = expected_text.lower()
+                
                 if selector.any_player:
                     self._any_player_client = []
                     found_any = False
                     for client in self._clients:
                         name = await self._fetch_tracked_quest_text(client)
+                        if name is not None:
+                            name = name.lower()
                         if name == expected_text:
                             self._any_player_client.append(client)
                             found_any = True
@@ -804,17 +813,24 @@ class VM:
                 else:
                     for client in clients:
                         name = await self._fetch_tracked_quest_text(client)
+                        if name is not None:
+                            name = name.lower()
                         if name != expected_text:
                             return False
                     return True
+                    
             case ExprKind.tracking_goal:
                 expected_text = await self._extract_data_info(expression.command.data[1])
                 assert type(expected_text) == str
+                expected_text = expected_text.lower()
+                
                 if selector.any_player:
                     self._any_player_client = []
                     found_any = False
                     for client in self._clients:
                         text = await self._fetch_tracked_goal_text(client)
+                        if text is not None:
+                            text = text.lower()
                         if text == expected_text:
                             self._any_player_client.append(client)
                             found_any = True
@@ -822,6 +838,8 @@ class VM:
                 else:
                     for client in clients:
                         text = await self._fetch_tracked_goal_text(client)
+                        if text is not None:
+                            text = text.lower()
                         if text != expected_text:
                             return False
                     return True

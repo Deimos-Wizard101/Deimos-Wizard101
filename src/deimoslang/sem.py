@@ -147,7 +147,7 @@ class Analyzer:
             case ConstantReferenceExpression():
                 constant_value = self.lookup_constant(expr.name)
                 if constant_value is None:
-                    raise SemError(f"Unable to find constant: ${expr.name}")
+                    return expr
                 return constant_value
                 
             case IdentExpression():
@@ -155,7 +155,7 @@ class Analyzer:
                     const_name = expr.ident[1:]
                     constant_value = self.lookup_constant(const_name)
                     if constant_value is None:
-                        raise SemError(f"Unable to find constant: ${const_name}")
+                        return expr
                     return constant_value
                 return expr
                 
