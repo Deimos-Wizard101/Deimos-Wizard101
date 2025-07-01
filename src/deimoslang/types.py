@@ -491,6 +491,14 @@ class TimesStmt(Stmt):
 
     def __repr__(self) -> str:
         return f"TimesS {self.num} {{ {self.body} }}"
+    
+class TimesExprStmt(Stmt):
+    def __init__(self, count_expr: Expression, body: StmtList):
+        self.count_expr = count_expr
+        self.body = body
+
+    def __repr__(self) -> str:
+        return f"TimesExprS({self.count_expr}) {{ {self.body} }}"
 
 class BlockDefStmt(Stmt):
     def __init__(self, name: Expression, body: StmtList) -> None:

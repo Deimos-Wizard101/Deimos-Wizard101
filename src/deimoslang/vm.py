@@ -135,9 +135,7 @@ class VM:
     def player_by_num(self, num: int) -> SprintyClient:
         i = num - 1
         if i >= len(self._clients):
-            return None
-            #tail = "client is open" if len(self._clients) == 1 else "clients are open"
-            #raise VMError(f"Attempted to get client {num}, but only {len(self._clients)} {tail}")
+            raise VMError()
         return self._clients[i]
 
     async def select_friend_from_list(self, client: SprintyClient, name: str):
@@ -191,11 +189,13 @@ class VM:
             await _click_on_friend(client, friends_list_window, friend_index)
             
             return True
+    
     def _select_players(self, selector: PlayerSelector) -> list[SprintyClient]:
+        """Select players based on the given selector."""
         if selector.mass:
             return self._clients
         elif selector.any_player:
-            return []
+            return self._any_player_client if self._any_player_client else []
         elif selector.same_any:
             return self._any_player_client
         else:
@@ -204,14 +204,32 @@ class VM:
                 for i in range(len(self._clients)):
                     if i + 1 in selector.player_nums:
                         continue
-                    result.append(self.player_by_num(i + 1))
+                    client = self.player_by_num(i + 1)
+                    if client:
+                        result.append(client)
             else:
                 for num in selector.player_nums:
                     client = self.player_by_num(num)
                     if client:  # Only add the client if it exists
                         result.append(client)
-            return result
             
+            return result 
+            
+    def _extract_numbers_from_text(self, text):
+        if '/' in text:
+            parts = text.split('/')
+            result = []
+            for part in parts:
+                numeric_text = ''.join(c for c in part if c.isdigit() or c == '.' or c == '-')
+                if numeric_text:
+                    result.append(float(numeric_text))
+                else:
+                    result.append(0.0)
+            
+            return result if result else [0.0]
+        else:
+            numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
+            return [float(numeric_text)] if numeric_text else [0.0]
     async def _fetch_tracked_quest(self, client: SprintyClient) -> QuestData:
         tracked_id = await client.quest_id()
         qm = await client.quest_manager()
@@ -924,6 +942,13 @@ class VM:
     async def eval(self, expression: Expression, client: Client | None = None):
         match expression:
             case IdentExpression():
+                if expression.ident.startswith('$'):
+                    const_name = expression.ident[1:]  # Remove the $ prefix
+                    if const_name in self._constants:
+                        value = self._constants[const_name]
+                        return value
+                    else:
+                        raise VMError(f"Unknown constant: ${const_name}")
                 return expression.ident
             case ConstantReferenceExpression():
                 if expression.name in self._constants:
@@ -1188,6 +1213,20 @@ class VM:
 
     async def _eval_expression(self, eval: Eval, client: Client):
         kind = eval.kind
+        
+        # Helper function to resolve IdentExpression or string constants
+        async def resolve_value(value, client):
+            if isinstance(value, IdentExpression):
+                constant_name = value.ident
+                if constant_name in self._constants:
+                    return self._constants[constant_name]
+                return constant_name
+            elif isinstance(value, Expression):
+                return await self.eval(value, client)
+            elif isinstance(value, str) and value in self._constants:
+                return self._constants[value]
+            return value
+        
         match kind:
             case EvalKind.duel_round:
                 if await client.in_battle():
@@ -1215,88 +1254,63 @@ class VM:
             case EvalKind.max_gold:
                 return await client.stats.base_gold_pouch()
             case EvalKind.windowtext:
-                path = eval.args[0]
-                assert(type(path) == list)
+                path_expr = eval.args[0]
+                path = await resolve_value(path_expr, client)
+                
                 try:
                     window = await get_window_from_path(client.root_window, path)
                     if window:
+                        # Try to get text using maybe_text() first
                         try:
                             text = await window.maybe_text()
                             if text:
+                                # Check if the text is numeric
+                                is_numeric = text.isdigit() or (text.replace('.', '', 1).isdigit() and text.count('.') <= 1)
+                                if is_numeric:
+                                    return text
                                 return text.lower()
                         except (ValueError, MemoryReadError):
                             pass
-
+                
                         # retry with the less reliable offset that is only defined for control elements
                         try:
                             text = await window.read_wide_string_from_offset(616)
-                            return text.lower()
+                            if text:
+                                # Check if the text is numeric
+                                is_numeric = text.isdigit() or (text.replace('.', '', 1).isdigit() and text.count('.') <= 1)
+                                if is_numeric:
+                                    return text
+                                return text.lower()
                         except (ValueError, MemoryReadError):
                             pass
-                    return "" # If window path doesn't exist or any other error occurs, return empty string
+                    return ""
                 except Exception:
-                    # If window path doesn't exist or any other error occurs, return empty string
                     return ""
             case EvalKind.windownum:
-                path = eval.args[0]
-                assert(type(path) == list)
+                path_expr = eval.args[0]
+                path = await resolve_value(path_expr, client)
+                
                 try:
                     window = await get_window_from_path(client.root_window, path)
                     if window:
+                        # Try to get text using maybe_text() first
                         try:
                             text = await window.maybe_text()
                             if text:
-                                # If there's a slash, extract both parts as separate numbers
-                                if '/' in text:
-                                    parts = text.split('/')
-                                    result = []
-                                    for part in parts:
-                                        numeric_text = ''.join(c for c in part if c.isdigit() or c == '.' or c == '-')
-                                        if numeric_text:
-                                            result.append(float(numeric_text))
-                                        else:
-                                            result.append(0.0)
-
-                                    if len(result) > 0:
-                                        # Return the list for indexed access
-                                        return result
-                                    return 0.0
-                                else:
-                                    # Extract numeric value from the whole text
-                                    numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
-                                    if numeric_text:
-                                        # For single values, return as a single-item list for consistency
-                                        return [float(numeric_text)]
-                                    return [0.0]
+                                return self._extract_numbers_from_text(text)
                         except (ValueError, MemoryReadError):
                             pass
-
-                        # retry with the less reliable offset that is only defined for control elements
+                        
+                        # Fallback to the offset method
                         try:
                             text = await window.read_wide_string_from_offset(616)
-                            if '/' in text:
-                                parts = text.split('/')
-                                result = []
-                                for part in parts:
-                                    numeric_text = ''.join(c for c in part if c.isdigit() or c == '.' or c == '-')
-                                    if numeric_text:
-                                        result.append(float(numeric_text))
-                                    else:
-                                        result.append(0.0)
-                                
-                                if len(result) > 0:
-                                    # Return the list for indexed access
-                                    return result
-                                return 0.0
-                            else:
-                                numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
-                                if numeric_text:
-                                    return [float(numeric_text)]
-                                return [0.0]
+                            if text:
+                                return self._extract_numbers_from_text(text)
                         except (ValueError, MemoryReadError):
                             pass
                 except (ValueError, MemoryReadError):
                     pass
+                
                 return [0.0]
             case EvalKind.playercount:
                 return len(self._clients)
@@ -1754,6 +1768,7 @@ class VM:
                 
                 await asyncio.sleep(time)
                 self.current_task.ip += 1
+            
             case InstructionKind.jump:
                 assert type(instruction.data) == int
                 self.current_task.ip += instruction.data
@@ -1766,11 +1781,7 @@ class VM:
                     else:
                         self.current_task.ip += 1
                 except VMError:
-                    if instruction.data[1] > 1:  # This is likely a while loop
-                        self.current_task.ip += instruction.data[1]  # Skip the entire scope
-                    else:
-                        self.current_task.ip += 1  # Just move to the next instruction
-
+                    self.current_task.ip += 1
             case InstructionKind.jump_ifn:
                 assert type(instruction.data) == list
                 try:
@@ -1780,7 +1791,7 @@ class VM:
                     else:
                         self.current_task.ip += instruction.data[1]
                 except VMError:
-                    self.current_task.ip += 1  # Move to the next instruction (skip the loop body)
+                    self.current_task.ip += instruction.data[1]
             case InstructionKind.call:
                 assert(type(instruction.data) == int)
                 self.current_task.stack.append(self.current_task.ip + 1)

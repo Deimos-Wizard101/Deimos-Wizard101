@@ -664,8 +664,6 @@ class Parser:
                     else:
                         self.err(self.tokens[self.i-1], f"Expected string or identifier, got {target_expr}")
                         string_value = ""  # Default value in case of error
-                        
-                    assert(type(window_path) == list)
                     
                     if contains:
                         return SelectorGroup(player_selector, ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(string_value)))
@@ -1346,11 +1344,24 @@ class Parser:
                 return CounterStmt(counter_name.ident, CounterAction.reset)
             case TokenKind.keyword_con:
                 self.i += 1
-                var_name = self.expect_consume(TokenKind.identifier).literal
-                self.expect_consume(TokenKind.equals)
-                expr = self.parse_expression()
-                self.end_line()
-                return ConstantDeclStmt(var_name, expr)
+                # Check if the next token is an identifier or a variable reference
+                if self.tokens[self.i].kind == TokenKind.identifier:
+                    var_name = self.expect_consume(TokenKind.identifier).literal
+                    self.expect_consume(TokenKind.equals)
+                    expr = self.parse_expression()
+                    self.end_line()
+                    return ConstantDeclStmt(var_name, expr)
+                else:
+                    # Handle variable reference case
+                    expr = self.parse_expression()
+                    self.expect_consume(TokenKind.equals)
+                    value_expr = self.parse_expression()
+                    self.end_line()
+                    # If the expression is an identifier, use it directly
+                    if isinstance(expr, IdentExpression):
+                        return ConstantDeclStmt(expr.ident, value_expr)
+                    else:
+                        self.err(self.tokens[self.i-1], "Expected identifier or variable reference")
             case TokenKind.keyword_settimer:
                 self.i += 1
                 timer_name = self.consume_any_ident()
@@ -1387,9 +1398,16 @@ class Parser:
                 return UntilStmt(expr, body)
             case TokenKind.keyword_times:
                 self.i += 1
-                count = int(self.expect_consume(TokenKind.number).value)
-                body = self.parse_block()
-                return TimesStmt(count, body)
+                # Support both literal numbers and variables/expressions
+                if self.tokens[self.i].kind == TokenKind.number:
+                    count = int(self.expect_consume(TokenKind.number).value)
+                    body = self.parse_block()
+                    return TimesStmt(count, body)
+                else:
+                    # Parse as expression for variable support
+                    count_expr = self.parse_expression()
+                    body = self.parse_block()
+                    return TimesExprStmt(count_expr, body)
             case TokenKind.keyword_if:
                 self.i += 1
                 expr = self.parse_expression()
@@ -1412,7 +1430,7 @@ class Parser:
                 if len(elif_body_stack) > 0:
                     elif_body_stack[-1].branch_false = else_body
                     else_body = StmtList([elif_body_stack[0]])
-
+    
                 return IfStmt(expr, true_body, else_body)
             case TokenKind.keyword_break:
                 self.i += 1

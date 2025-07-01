@@ -159,6 +159,16 @@ class Analyzer:
                     return constant_value
                 return expr
                 
+            case GreaterExpression():
+                expr.lhs = self.sem_expr(expr.lhs)
+                expr.rhs = self.sem_expr(expr.rhs)
+                return expr
+                
+            case SubExpression():
+                expr.lhs = self.sem_expr(expr.lhs)
+                expr.rhs = self.sem_expr(expr.rhs)
+                return expr
+                
             case BinaryExpression():
                 expr.left = self.sem_expr(expr.left)
                 expr.right = self.sem_expr(expr.right)
@@ -362,6 +372,29 @@ class Analyzer:
 
                 res = StmtList(prologue + [self.sem_stmt(WhileStmt(cond, stmt.body))] + epilogue)
                 self.mark_var_dead(var_sym)
+                return res
+            case TimesExprStmt():
+                count_expr = self.sem_expr(stmt.count_expr)
+                var_sym = self.def_var()
+                
+                prologue = [
+                    DefVarStmt(var_sym),
+                    WriteVarStmt(var_sym, count_expr),
+                ]
+                
+                epilogue = [
+                    KillVarStmt(var_sym),
+                ]
+                
+                cond = GreaterExpression(ReadVarExpr(SymExpression(var_sym)), NumberExpression(0))
+                stmt.body.stmts.append(
+                    WriteVarStmt(var_sym, SubExpression(ReadVarExpr(SymExpression(var_sym)), NumberExpression(1)))
+                )
+                
+                res = StmtList(prologue + [self.sem_stmt(WhileStmt(cond, stmt.body))] + epilogue)
+                
+                self.mark_var_dead(var_sym)
+                
                 return res
             case ReturnStmt():
                 if self._block_nesting_level <= 0:
