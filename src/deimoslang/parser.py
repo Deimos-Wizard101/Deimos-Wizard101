@@ -293,17 +293,21 @@ class Parser:
     def parse_value(self, expected_types=None) -> Expression:
         if expected_types is None:
             expected_types = [TokenKind.number, TokenKind.string, TokenKind.percent, TokenKind.identifier]
-
+    
         if TokenKind.identifier in expected_types or 'window_path' in expected_types:
             if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier:
                 ident = self.tokens[self.i].literal
-                self.i += 1
-                return IdentExpression(ident)
+                if ident.startswith('$'):
+                    self.i += 1
+                    constant_name = ident[1:]  # Remove the $ prefix
+                    return ConstantReferenceExpression(constant_name)
+                elif TokenKind.identifier in expected_types:
+                    self.i += 1
+                    return StringExpression(ident.lower())  # Convert to lowercase
         
         if 'window_path' in expected_types and self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
             return self.parse_list()
 
-        # Special handling for zone paths - accept both path tokens and identifiers
         if TokenKind.path in expected_types:
             if self.i < len(self.tokens):
                 if self.tokens[self.i].kind == TokenKind.path:
@@ -312,11 +316,11 @@ class Parser:
                     # For zone names as identifiers
                     ident = self.tokens[self.i].literal
                     self.i += 1
-                    return StringExpression(ident)
-
+                    return StringExpression(ident.lower())  # Convert to lowercase
+    
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.keyword_xyz:
             return self.parse_xyz()
-
+    
         valid_types = [t for t in expected_types if t in [TokenKind.number, TokenKind.string, TokenKind.percent]]
         if not valid_types:
             self.err(self.tokens[self.i], f"Expected one of {expected_types} but none are basic token types")
@@ -328,7 +332,7 @@ class Parser:
             case TokenKind.percent:
                 return NumberExpression(tok.value)
             case TokenKind.string:
-                return StringExpression(tok.value)
+                return StringExpression(tok.value.lower())  # Convert to lowercase
             case _:
                 self.err(tok, f"Invalid value kind: {tok.kind} in {tok}")
 
@@ -413,14 +417,19 @@ class Parser:
 
     def parse_command_expression(self) -> Expression:
         result = Command()
-        player_selector  = self.parse_player_selector()
+        player_selector = self.parse_player_selector()
         result.player_selector = player_selector
-
+    
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier:
             ident = self.tokens[self.i].literal
             self.i += 1
             
-            if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.equals:
+            # Check for 'is' keyword for boolean comparisons
+            if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.keyword_is:
+                self.i += 1
+                value = self.parse_expression()
+                return ConstantCheckExpression(ident, value)
+            elif self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.equals:
                 self.i += 1
                 
                 # Check for boolean literals first
@@ -639,10 +648,15 @@ class Parser:
                         return SelectorGroup(player_selector, OrExpression(or_expressions))
                 else:
                     target_expr = self.parse_value([TokenKind.string, TokenKind.identifier])
-            
+                    
                     if isinstance(target_expr, StringExpression):
                         string_value = target_expr.string.lower()
                     elif isinstance(target_expr, IdentExpression):
+                        if contains:
+                            return SelectorGroup(player_selector, ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), target_expr))
+                        else:
+                            return SelectorGroup(player_selector, EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), target_expr))
+                    elif isinstance(target_expr, ConstantReferenceExpression): 
                         if contains:
                             return SelectorGroup(player_selector, ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), target_expr))
                         else:
@@ -857,6 +871,14 @@ class Parser:
         return StringExpression(path_str)
 
     def parse_list(self) -> ListExpression:
+        # Check if this is a variable reference with $ prefix
+        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier and self.tokens[self.i].literal.startswith('$'):
+            ident = self.tokens[self.i].literal
+            self.i += 1
+            const_name = ident[1:]  # Remove the $ prefix
+            return ListExpression([IdentExpression(const_name)])
+        
+        # Original list parsing logic
         self.expect_consume(TokenKind.square_open)
         
         items = []
@@ -1302,6 +1324,26 @@ class Parser:
 
     def parse_stmt(self) -> Stmt:
         match self.tokens[self.i].kind:
+            case TokenKind.keyword_counter:
+                self.i += 1
+                counter_name = self.consume_any_ident()
+                self.end_line()
+                return CounterStmt(counter_name.ident, CounterAction.create)
+            case TokenKind.keyword_addone_counter:
+                self.i += 1
+                counter_name = self.consume_any_ident()
+                self.end_line()
+                return CounterStmt(counter_name.ident, CounterAction.increment)
+            case TokenKind.keyword_minusone_counter:
+                self.i += 1
+                counter_name = self.consume_any_ident()
+                self.end_line()
+                return CounterStmt(counter_name.ident, CounterAction.decrement)
+            case TokenKind.keyword_reset_counter:
+                self.i += 1
+                counter_name = self.consume_any_ident()
+                self.end_line()
+                return CounterStmt(counter_name.ident, CounterAction.reset)
             case TokenKind.keyword_con:
                 self.i += 1
                 var_name = self.expect_consume(TokenKind.identifier).literal

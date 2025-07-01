@@ -76,6 +76,7 @@ class VM:
         self.current_task = self._scheduler.get_current_task()
         self._any_player_client = [] # Using this to store the client(s) that satisfied the condition of any player
         self._timers = {}
+        self._counters = {}
         self.logged_data = {
             'goal': {},
             'quest': {},
@@ -99,6 +100,7 @@ class VM:
         self.current_task = self._scheduler.get_current_task()
         self._until_infos = []
         self._timers = {}
+        self._counters = {}
         self._any_player_client = []
         self._constants = {
             'True': True,
@@ -360,16 +362,24 @@ class VM:
                 constant_name = expression.command.data[1]
                 expected_value = expression.command.data[2]
                 
-                if constant_name in self._constants:
-                    actual_value = self._constants[constant_name] 
-                    # Handle string representations of booleans
-                    if isinstance(expected_value, bool) and isinstance(actual_value, str):
-                        if actual_value.lower() == "true":
-                            actual_value = True
-                        elif actual_value.lower() == "false":
-                            actual_value = False
+                # Only process if constant_name starts with $
+                if constant_name.startswith('$'):
+                    # Remove the $ prefix to get the actual constant name
+                    actual_constant_name = constant_name[1:]
                     
-                    return actual_value == expected_value
+                    if actual_constant_name in self._constants:
+                        actual_value = self._constants[actual_constant_name]
+
+                        if isinstance(actual_value, bool):
+                            actual_value_str = str(actual_value)
+                        else:
+                            actual_value_str = str(actual_value)
+
+                        if isinstance(expected_value, str) and expected_value.lower() in ["true", "false"]:
+                            return actual_value_str.lower() == expected_value.lower()
+                        
+                        # Otherwise, do direct comparison
+                        return actual_value == expected_value
                 return False
             
             case ExprKind.zone_changed:
@@ -917,28 +927,41 @@ class VM:
                 return expression.ident
             case ConstantReferenceExpression():
                 if expression.name in self._constants:
-                    return self._constants[expression.name]
+                    value = self._constants[expression.name]
+                    return value.lower() if isinstance(value, str) else value
                 raise VMError(f"Unknown constant: ${expression.name}")
+                
             case ConstantCheckExpression():
                 constant_name = expression.name
-
+                
+                if not constant_name.startswith('$'):
+                    return False
+                    
+                actual_constant_name = constant_name[1:]
+                
                 if expression.value is None:
-                    if constant_name in self._constants:
-                        return self._constants[constant_name]
+                    if actual_constant_name in self._constants:
+                        return self._constants[actual_constant_name]
                     raise VMError(f"Unknown constant: {constant_name}")
 
-                expected_value = await self.eval(expression.value)
-
-                if constant_name in self._constants:
-                    actual_value = self._constants[constant_name]
-                    if isinstance(expected_value, bool) and isinstance(actual_value, str):
-                        if actual_value.lower() == "true":
-                            actual_value = True
-                        elif actual_value.lower() == "false":
-                            actual_value = False
+                if actual_constant_name not in self._constants:
+                    return False
                     
-                    return actual_value == expected_value
-                return False
+                expected_value = await self.eval(expression.value)
+                actual_value = self._constants[actual_constant_name]
+                
+                # Handle boolean string conversion
+                if isinstance(expected_value, bool) and isinstance(actual_value, str):
+                    if actual_value.lower() == "true":
+                        actual_value = True
+                    elif actual_value.lower() == "false":
+                        actual_value = False
+                
+                # Case insensitive comparison for strings
+                if isinstance(expected_value, str) and isinstance(actual_value, str):
+                    return actual_value.lower() == expected_value.lower()
+                
+                return actual_value == expected_value
             case RangeMinExpression():
                 range_value = await self.eval(expression.range_expr, client)
                 if isinstance(range_value, str):
@@ -975,14 +998,44 @@ class VM:
                     # If not a list or index is not a number, return 0
                     return 0.0
             case AndExpression():
+                if not expression.expressions:
+                    return True
+                    
                 for expr in expression.expressions:
-                    if not await self.eval(expr, client):
+                    try:
+                        result = await self.eval(expr, client)
+                        if isinstance(result, str):
+                            if result.lower() == "true":
+                                result = True
+                            elif result.lower() == "false":
+                                result = False
+                                
+                        if not result:
+                            return False
+                    except VMError as e:
+                        logger.warning(f"Error evaluating expression in AND: {e}")
                         return False
+                        
                 return True
+                
             case OrExpression():
+                if not expression.expressions:
+                    return False
+                    
                 for expr in expression.expressions:
-                    if await self.eval(expr, client):
-                        return True
+                    try:
+                        result = await self.eval(expr, client)
+                        if isinstance(result, str):
+                            if result.lower() == "true":
+                                result = True
+                            elif result.lower() == "false":
+                                result = False
+                                
+                        if result:
+                            return True
+                    except VMError as e:
+                        logger.warning(f"Error evaluating expression in OR: {e}")
+                        
                 return False
             case CommandExpression():
                 return await self._eval_command_expression(expression)
@@ -1035,6 +1088,11 @@ class VM:
                     left = left[0]
                 if isinstance(right, list) and len(right) > 0:
                     right = right[0]
+
+                if isinstance(left, str):
+                    left = left.lower()
+                if isinstance(right, str):
+                    right = right.lower()
                     
                 return left == right
             case DivideExpression():
@@ -1108,8 +1166,20 @@ class VM:
                 lhs = await self.eval(expression.lhs, client)
                 rhs = await self.eval(expression.rhs, client)
                 
+                if isinstance(lhs, str):
+                    lhs = lhs.lower()
+                
                 if isinstance(rhs, list):
-                    return any(item in lhs for item in rhs)
+                    normalized_rhs = []
+                    for item in rhs:
+                        if isinstance(item, str):
+                            normalized_rhs.append(item.lower())
+                        else:
+                            normalized_rhs.append(item)
+                    return any(item in lhs for item in normalized_rhs)
+                
+                if isinstance(rhs, str):
+                    rhs = rhs.lower()
                 
                 # Original behavior for single string
                 return (rhs in lhs) #type: ignore
@@ -1620,6 +1690,27 @@ class VM:
         instruction = self.program[self.current_task.ip]
 
         match instruction.kind:
+            case InstructionKind.counter:
+                assert isinstance(instruction.data, str), "Counter name must be a string."
+                counter_name = instruction.data
+                self._counters[counter_name] = 0
+                logger.debug(f"Counter '{counter_name}' created.")
+                self.current_task.ip += 1
+            case InstructionKind.addone_counter:
+                counter_name = instruction.data
+                if counter_name in self._counters:
+                    self._counters[counter_name] += 1
+                self.current_task.ip += 1
+            case InstructionKind.minusone_counter:
+                counter_name = instruction.data
+                if counter_name in self._counters:
+                    self._counters[counter_name] -= 1
+                self.current_task.ip += 1
+            case InstructionKind.reset_counter:
+                counter_name = instruction.data
+                if counter_name in self._counters:
+                    self._counters[counter_name] = 0
+                self.current_task.ip += 1
             case InstructionKind.restart_bot:
                 self.reset()
                 self.current_task.ip = 0
@@ -1720,6 +1811,8 @@ class VM:
                     ident = instruction.data.ident
                     if ident in self._constants:
                         logger.debug(f"{ident} = {self._constants[ident]}")
+                    elif ident in self._counters:
+                        logger.debug(f"Counter '{ident}' = {self._counters[ident]}")
                     else:
                         logger.debug(ident)
                 else:

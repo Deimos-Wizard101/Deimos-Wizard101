@@ -35,6 +35,7 @@ class TokenKind(Enum):
     keyword_while = auto()
     keyword_until = auto()
     keyword_times = auto()
+    keyword_is = auto()
     keyword_if = auto()
     keyword_elif = auto()
     keyword_else = auto()
@@ -420,6 +421,8 @@ class Tokenizer:
                                         put_simple(TokenKind.keyword_same_any, full)
                                     case "isbetween" | "between":
                                         put_simple(TokenKind.keyword_isbetween, full)
+                                    case "is":
+                                        put_simple(TokenKind.keyword_is, full)
                                     case "from":
                                         put_simple(TokenKind.logical_from, full)
                                     case "to":

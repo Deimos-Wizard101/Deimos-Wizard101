@@ -143,7 +143,37 @@ class Analyzer:
         return StmtList(res)
 
     def sem_expr(self, expr: Expression) -> Expression:
-        return expr # TODO
+        match expr:
+            case ConstantReferenceExpression():
+                constant_value = self.lookup_constant(expr.name)
+                if constant_value is None:
+                    raise SemError(f"Unable to find constant: ${expr.name}")
+                return constant_value
+                
+            case IdentExpression():
+                if expr.ident.startswith('$'):
+                    const_name = expr.ident[1:]
+                    constant_value = self.lookup_constant(const_name)
+                    if constant_value is None:
+                        raise SemError(f"Unable to find constant: ${const_name}")
+                    return constant_value
+                return expr
+                
+            case BinaryExpression():
+                expr.left = self.sem_expr(expr.left)
+                expr.right = self.sem_expr(expr.right)
+                return expr
+                
+            case UnaryExpression():
+                expr.expr = self.sem_expr(expr.expr)
+                return expr
+                
+            case ListExpression():
+                expr.elements = [self.sem_expr(e) for e in expr.items]
+                return expr
+                
+            case _:
+                return expr
 
     def mix_block(self, stmt: BlockDefStmt, source_sym: Symbol) -> BlockDefStmt:
         def _mix_stmt(stmt: Stmt, mixins: set[str]):
@@ -208,7 +238,7 @@ class Analyzer:
 
     def sem_stmt(self, stmt: Stmt) -> Stmt:
         match stmt:
-            case TimerStmt():
+            case TimerStmt() | CounterStmt():
                 return stmt
             case ConstantDeclStmt():
                 stmt.value = self.sem_expr(stmt.value)
