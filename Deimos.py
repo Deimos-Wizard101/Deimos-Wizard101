@@ -574,13 +574,10 @@ async def main():
 	listener.start()
 
 	async def minimap_hotkey():
-		logger.debug(f"Minimap hotkey ({minimap_key}) pressed!")
 		try:
 			await toggle_minimap(walker.clients, debug=True)
 		except Exception as e:
 			logger.error(f"Error in minimap_hotkey: {e}")
-			import traceback
-			logger.error(traceback.format_exc())
 
 	async def x_press_hotkey():
 		await mass_key_press(foreground_client, background_clients, x_press_key, Keycode.X, duration=0.1, debug=True)
@@ -644,10 +641,9 @@ async def main():
 		# raise deimosgui.ToolClosedException
 
 	async def toggle_minimap(clients, debug: bool = False):
-		global minimap_status, minimap_instance, minimap_task
+		global minimap_status, minimap_instance, minimap_task, gui_send_queue
 		
 		if minimap_status:
-			# Turn off minimap
 			try:
 				if minimap_instance:
 					await minimap_instance.stop()
@@ -658,12 +654,12 @@ async def main():
 					minimap_task = None
 					
 				minimap_status = False
-				if debug:
-					logger.debug(f'{minimap_key} key pressed, disabling minimap.')
+				logger.debug(f'{minimap_key} key pressed, disabling minimap.')
+				
+				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('MinimapStatus', 'Disabled')))
 			except Exception:
 				pass
 		else:
-			# Turn on minimap
 			try:
 				if not minimap_instance:
 					minimap_instance = MiniMap(clients)
@@ -672,10 +668,13 @@ async def main():
 					minimap_task = asyncio.create_task(minimap_instance.start())
 					
 				minimap_status = True
-				if debug:
-					logger.debug(f'{minimap_key} key pressed, enabling minimap.')
+				logger.debug(f'{minimap_key} key pressed, enabling minimap.')
+				
+				# Update GUI status
+				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('MinimapStatus', 'Enabled')))
 			except Exception:
 				minimap_status = False
+				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('MinimapStatus', 'Disabled')))
 		
 		return minimap_status
 
@@ -1435,6 +1434,8 @@ async def main():
 								logger.info("This GUI option requires hooks to be active, skipping.")
 								continue
 							match com.data:
+								case GUIKeys.toggle_minimap:
+									await toggle_minimap(walker.clients)
 								case GUIKeys.toggle_speedhack:
 									await toggle_speed_hotkey()
 								case GUIKeys.toggle_combat:
