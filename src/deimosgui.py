@@ -704,7 +704,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             # Toggles
             case GUIKeys.toggle_speedhack | GUIKeys.toggle_combat | GUIKeys.toggle_dialogue | GUIKeys.toggle_sigil | \
                 GUIKeys.toggle_questing | GUIKeys.toggle_auto_pet | GUIKeys.toggle_auto_potion | GUIKeys.toggle_freecam | \
-                GUIKeys.toggle_camera_collision | GUIKeys.toggle_show_expanded_logs:
+                GUIKeys.toggle_camera_collision | GUIKeys.toggle_show_expanded_logs | GUIKeys.toggle_minimap:
                 send_queue.put(GUICommand(GUICommandType.ToggleOption, event))
 
             # Copying
