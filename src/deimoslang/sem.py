@@ -144,27 +144,19 @@ class Analyzer:
 
     def sem_expr(self, expr: Expression) -> Expression:
         match expr:
-            case ConstantReferenceExpression():
-                constant_value = self.lookup_constant(expr.name)
-                if constant_value is None:
-                    return expr
-                return constant_value
-                
-            case IdentExpression():
-                if expr.ident.startswith('$'):
-                    const_name = expr.ident[1:]
-                    constant_value = self.lookup_constant(const_name)
-                    if constant_value is None:
-                        return expr
-                    return constant_value
+            case ConstantReferenceExpression() | IdentExpression():
                 return expr
-                
             case GreaterExpression():
                 expr.lhs = self.sem_expr(expr.lhs)
                 expr.rhs = self.sem_expr(expr.rhs)
                 return expr
                 
             case SubExpression():
+                expr.lhs = self.sem_expr(expr.lhs)
+                expr.rhs = self.sem_expr(expr.rhs)
+                return expr
+                
+            case EquivalentExpression():
                 expr.lhs = self.sem_expr(expr.lhs)
                 expr.rhs = self.sem_expr(expr.rhs)
                 return expr
@@ -239,12 +231,12 @@ class Analyzer:
         return stmt
     
     def lookup_constant(self, name: str) -> Expression | None:
+        last_value = None
         for stmt in self._stmts:
             if isinstance(stmt, ConstantDeclStmt) and stmt.name == name:
-                return stmt.value
+                last_value = stmt.value
                 
-        # Not found
-        return None
+        return last_value
 
     def sem_stmt(self, stmt: Stmt) -> Stmt:
         match stmt:
@@ -374,16 +366,27 @@ class Analyzer:
                 self.mark_var_dead(var_sym)
                 return res
             case TimesExprStmt():
-                count_expr = self.sem_expr(stmt.count_expr)
+                if isinstance(stmt.count_expr, ConstantReferenceExpression) or (
+                    isinstance(stmt.count_expr, IdentExpression) and stmt.count_expr.ident.startswith('$')
+                ):
+                    count_expr = stmt.count_expr  # Keep as is for runtime evaluation
+                else:
+                    count_expr = self.sem_expr(stmt.count_expr)
+                
                 var_sym = self.def_var()
+
+                temp_var_sym = self.def_var()
                 
                 prologue = [
+                    DefVarStmt(temp_var_sym),
                     DefVarStmt(var_sym),
-                    WriteVarStmt(var_sym, count_expr),
+                    WriteVarStmt(temp_var_sym, count_expr),
+                    WriteVarStmt(var_sym, ReadVarExpr(SymExpression(temp_var_sym))),
                 ]
                 
                 epilogue = [
                     KillVarStmt(var_sym),
+                    KillVarStmt(temp_var_sym),
                 ]
                 
                 cond = GreaterExpression(ReadVarExpr(SymExpression(var_sym)), NumberExpression(0))
@@ -394,8 +397,32 @@ class Analyzer:
                 res = StmtList(prologue + [self.sem_stmt(WhileStmt(cond, stmt.body))] + epilogue)
                 
                 self.mark_var_dead(var_sym)
+                self.mark_var_dead(temp_var_sym)
                 
                 return res
+            case ForEachStmt():
+                stmt.expr = self.sem_expr(stmt.expr)
+                
+                self.open_loop()
+                
+                if hasattr(stmt, 'var') and stmt.var:
+                    var_sym = self.def_var()
+                    stmt.var_sym = var_sym
+                
+                stmt.body = self.sem_stmt(stmt.body)
+                
+                self.close_loop()
+                
+                if hasattr(stmt, 'var_sym') and stmt.var_sym:
+                    epilogue = [KillVarStmt(stmt.var_sym)]
+                    self.mark_var_dead(stmt.var_sym)
+                    
+                    if isinstance(stmt.body, StmtList):
+                        stmt.body.stmts.extend(epilogue)
+                    else:
+                        stmt.body = StmtList([stmt.body] + epilogue)
+                
+                return stmt
             case ReturnStmt():
                 if self._block_nesting_level <= 0:
                     raise SemError(f"Return used outside of block scope")

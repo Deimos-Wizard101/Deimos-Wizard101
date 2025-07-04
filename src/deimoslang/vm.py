@@ -27,6 +27,8 @@ from src.config_combat import delegate_combat_configs, default_config
 
 from loguru import logger
 
+import traceback
+
 class Task:
     def __init__(self, stack=None, ip=0):
         self.stack = stack or []
@@ -125,6 +127,8 @@ class VM:
         # Special handling for Keycode constants
         if isinstance(value, str) and hasattr(Keycode, value):
             value = getattr(Keycode, value)
+        if name in self._constants:
+            self._constants.pop(name)
         self._constants[name] = value
 
     def load_from_text(self, code: str):
@@ -198,6 +202,10 @@ class VM:
             return self._any_player_client if self._any_player_client else []
         elif selector.same_any:
             return self._any_player_client
+        elif selector.wildcard and not selector.player_nums and hasattr(self.current_task, 'current_foreach_client'):
+            return [self.current_task.current_foreach_client]
+        elif selector.wildcard:
+            return self._clients
         else:
             result: list[SprintyClient] = []
             if selector.inverted:
@@ -213,7 +221,7 @@ class VM:
                     if client:  # Only add the client if it exists
                         result.append(client)
             
-            return result 
+            return result
             
     def _extract_numbers_from_text(self, text):
         if '/' in text:
@@ -230,6 +238,7 @@ class VM:
         else:
             numeric_text = ''.join(c for c in text if c.isdigit() or c == '.' or c == '-')
             return [float(numeric_text)] if numeric_text else [0.0]
+        
     async def _fetch_tracked_quest(self, client: SprintyClient) -> QuestData:
         tracked_id = await client.quest_id()
         qm = await client.quest_manager()
@@ -376,30 +385,6 @@ class VM:
             return False
         
         match expression.command.data[0]:
-            case ExprKind.constant_check:
-                constant_name = expression.command.data[1]
-                expected_value = expression.command.data[2]
-                
-                # Only process if constant_name starts with $
-                if constant_name.startswith('$'):
-                    # Remove the $ prefix to get the actual constant name
-                    actual_constant_name = constant_name[1:]
-                    
-                    if actual_constant_name in self._constants:
-                        actual_value = self._constants[actual_constant_name]
-
-                        if isinstance(actual_value, bool):
-                            actual_value_str = str(actual_value)
-                        else:
-                            actual_value_str = str(actual_value)
-
-                        if isinstance(expected_value, str) and expected_value.lower() in ["true", "false"]:
-                            return actual_value_str.lower() == expected_value.lower()
-                        
-                        # Otherwise, do direct comparison
-                        return actual_value == expected_value
-                return False
-            
             case ExprKind.zone_changed:
                 expected_zone = None
                 if len(expression.command.data) > 1:
@@ -457,8 +442,16 @@ class VM:
                                 all_valid = False
                             else:
                                 self.logged_data['zone'][client.title] = current_zone.lower()
+                    
+                    # Always update data for all clients if the condition is true
+                    if all_valid:
+                        for client in clients:
+                            current_zone = await client.zone_name()
+                            if current_zone is not None:
+                                self.logged_data['zone'][client.title] = current_zone.lower()
                                 
                     return all_valid
+                    
             case ExprKind.goal_changed:
                 expected_goal = None
                 if len(expression.command.data) > 1:
@@ -515,6 +508,13 @@ class VM:
                                 all_valid = False
                             else:
                                 self.logged_data['goal'][client.title] = current_goal
+                    
+                    # Always update data for all clients if the condition is true
+                    if all_valid:
+                        for client in clients:
+                            current_goal = await self._fetch_tracked_goal_text(client)
+                            if current_goal is not None:
+                                self.logged_data['goal'][client.title] = current_goal.lower()
                                 
                     return all_valid
 
@@ -556,6 +556,14 @@ class VM:
                                 break
                             
                             self.logged_data['quest'][client.title] = current_quest
+                        
+                        # Always update data for all clients if the condition is true
+                        if all_match:
+                            for client in clients:
+                                current_quest = await self._fetch_tracked_quest_text(client)
+                                if current_quest is not None:
+                                    self.logged_data['quest'][client.title] = current_quest.lower()
+                                    
                         return all_match
                 else:
                     if selector.any_player:
@@ -576,6 +584,8 @@ class VM:
                         return found_any
                     else:
                         all_changed = True
+                        updated_clients = []
+                        
                         for client in clients:
                             current_quest = await self._fetch_tracked_quest_text(client)
                             if current_quest is not None:
@@ -589,6 +599,16 @@ class VM:
                                 all_changed = False
                             else:
                                 self.logged_data['quest'][client.title] = current_quest
+                                updated_clients.append(client)
+                        
+                        # Always update data for all clients if the condition is true
+                        if all_changed:
+                            for client in clients:
+                                if client not in updated_clients:
+                                    current_quest = await self._fetch_tracked_quest_text(client)
+                                    if current_quest is not None:
+                                        self.logged_data['quest'][client.title] = current_quest.lower()
+                                        
                         return all_changed
 
             case ExprKind.duel_round:
@@ -1043,42 +1063,48 @@ class VM:
             case AndExpression():
                 if not expression.expressions:
                     return True
-                    
+                
                 for expr in expression.expressions:
                     try:
                         result = await self.eval(expr, client)
+                        
+                        # Handle string boolean values
                         if isinstance(result, str):
                             if result.lower() == "true":
                                 result = True
                             elif result.lower() == "false":
                                 result = False
+                            else:
+                                result = bool(result)
                                 
                         if not result:
                             return False
-                    except VMError as e:
-                        logger.warning(f"Error evaluating expression in AND: {e}")
+                    except VMError:
                         return False
-                        
-                return True
                 
+                return True
             case OrExpression():
                 if not expression.expressions:
                     return False
-                    
+                
                 for expr in expression.expressions:
                     try:
                         result = await self.eval(expr, client)
+                        
+                        # Handle string boolean values
                         if isinstance(result, str):
                             if result.lower() == "true":
                                 result = True
                             elif result.lower() == "false":
                                 result = False
+                            else:
+                                result = bool(result)
                                 
                         if result:
                             return True
-                    except VMError as e:
-                        logger.warning(f"Error evaluating expression in OR: {e}")
-                        
+                    except VMError:
+                        continue  
+                
                 return False
             case CommandExpression():
                 return await self._eval_command_expression(expression)
@@ -1183,7 +1209,6 @@ class VM:
                 assert(isinstance(lhs, (int, float)))
                 assert(isinstance(rhs, (int, float)))
                 return lhs - rhs
-            
             case ListExpression():
                 result = []
                 
@@ -1365,17 +1390,31 @@ class VM:
                     constant_name = arg.ident
                     if constant_name in self._constants:
                         return self._constants[constant_name]
-                    else:
-                        #logger.error(f"Undefined constant referenced by IdentExpression: ${constant_name}")
-                        return constant_name  
+                    elif constant_name.startswith('$') and constant_name[1:] in self._constants:
+                        return self._constants[constant_name[1:]]
+                    elif constant_name.startswith('$'):
+                        stripped_name = constant_name.lstrip('$')
+                        if stripped_name in self._constants:
+                            return self._constants[stripped_name]
+                    return constant_name
                 return await self.eval(arg, client)
             elif isinstance(arg, str) and arg.startswith('$'):
-                constant_name = arg[1:]  # Remove the $ prefix
+                constant_name = arg[1:]
                 if constant_name in self._constants:
                     return self._constants[constant_name]
+                elif constant_name.startswith('$') and constant_name[1:] in self._constants:
+                    return self._constants[constant_name[1:]]
                 else:
-                    logger.error(f"Undefined constant: {arg}")
-                    return arg 
+                    try:
+                        if constant_name.replace('.', '', 1).isdigit():
+                            return float(constant_name)
+                        else:
+                            stripped_name = constant_name.lstrip('$')
+                            if stripped_name in self._constants:
+                                return self._constants[stripped_name]
+                            return 0
+                    except (ValueError, TypeError):
+                        return 0
             return arg
 
         # TODO: is eval always fast enough to run in order during a TaskGroup
@@ -1690,6 +1729,102 @@ class VM:
         # Execute all commands in parallel
         await asyncio.gather(*tasks)
 
+    async def _handle_foreach_start(self, instruction):
+        expr_data = instruction.data
+        expr = expr_data[0] if isinstance(expr_data, list) and len(expr_data) > 0 else expr_data
+        
+        if not hasattr(self.current_task, 'foreach_clients') or self.current_task.foreach_ip != self.current_task.ip:
+            matching_clients = []
+            
+            for client in self._clients:
+                try:
+                    result = await self.eval(expr, client)
+                    if isinstance(result, str):
+                        result = result.lower() == "true" if result.lower() in ("true", "false") else bool(result)
+                    
+                    if result:
+                        matching_clients.append(client)
+                except Exception:
+                    pass
+            
+            self.current_task.foreach_clients = matching_clients
+            self.current_task.foreach_index = 0
+            self.current_task.foreach_ip = self.current_task.ip
+        
+        if (hasattr(self.current_task, 'foreach_clients') and 
+            self.current_task.foreach_clients and 
+            self.current_task.foreach_index < len(self.current_task.foreach_clients)):
+            
+            current_client = self.current_task.foreach_clients[self.current_task.foreach_index]
+            self.current_task.current_foreach_client = current_client
+            
+            self._any_player_client = [current_client]
+            
+            self.current_task.ip += 1
+        else:
+            end_ip = self._find_matching_foreach_end(self.current_task.ip)
+            
+            self.current_task.ip = end_ip
+            
+            if hasattr(self.current_task, 'foreach_clients'):
+                delattr(self.current_task, 'foreach_clients')
+                delattr(self.current_task, 'foreach_index')
+                delattr(self.current_task, 'foreach_ip')
+                if hasattr(self.current_task, 'current_foreach_client'):
+                    delattr(self.current_task, 'current_foreach_client')
+                
+                self._any_player_client = []
+    
+    def _find_matching_bracket(self, start_ip, forward=True, start_kind=InstructionKind.foreach_start, end_kind=InstructionKind.foreach_end):
+        nesting = 1
+        ip = start_ip + (1 if forward else -1)
+        
+        if not forward:
+            start_kind, end_kind = end_kind, start_kind
+            
+        while nesting > 0 and (0 <= ip < len(self.program)):
+            if self.program[ip].kind == start_kind:
+                nesting += 1
+            elif self.program[ip].kind == end_kind:
+                nesting -= 1
+            
+            if nesting == 0:
+                break
+                
+            ip += (1 if forward else -1)
+        
+        return ip
+    
+    def _find_matching_foreach_end(self, start_ip):
+        return self._find_matching_bracket(start_ip, forward=True)
+    
+    def _find_matching_foreach_start(self, end_ip):
+        return self._find_matching_bracket(end_ip, forward=False)
+    
+    async def _handle_foreach_end(self):
+        self.current_task.foreach_index += 1
+        
+        if self.current_task.foreach_index < len(self.current_task.foreach_clients):
+            next_client = self.current_task.foreach_clients[self.current_task.foreach_index]
+            self.current_task.current_foreach_client = next_client
+            
+            self._any_player_client = [next_client]
+            
+            start_ip = self._find_matching_foreach_start(self.current_task.ip)
+            
+            self.current_task.ip = start_ip
+        else:
+            self.current_task.ip += 1
+            
+            if hasattr(self.current_task, 'foreach_clients'):
+                delattr(self.current_task, 'foreach_clients')
+                delattr(self.current_task, 'foreach_index')
+                delattr(self.current_task, 'foreach_ip')
+                if hasattr(self.current_task, 'current_foreach_client'):
+                    delattr(self.current_task, 'current_foreach_client')
+                
+                self._any_player_client = []
+
     async def _process_untils(self):
         for i in range(len(self._until_infos) - 1, -1, -1):
             info = self._until_infos[i]
@@ -1709,7 +1844,7 @@ class VM:
         elif self.current_task.waitfor.done():
             self.current_task.waitfor = None
             self.current_task.ip += 1
-
+    
     async def step(self):
         if not self.running:
             return
@@ -1722,6 +1857,10 @@ class VM:
         instruction = self.program[self.current_task.ip]
 
         match instruction.kind:
+            case InstructionKind.foreach_start:
+                await self._handle_foreach_start(instruction)
+            case InstructionKind.foreach_end:
+                await self._handle_foreach_end()
             case InstructionKind.counter:
                 assert isinstance(instruction.data, str), "Counter name must be a string."
                 counter_name = instruction.data
@@ -1732,16 +1871,19 @@ class VM:
                 counter_name = instruction.data
                 if counter_name in self._counters:
                     self._counters[counter_name] += 1
+                    logger.debug(f"Counter '{counter_name}' = {self._counters[counter_name]}")
                 self.current_task.ip += 1
             case InstructionKind.minusone_counter:
                 counter_name = instruction.data
                 if counter_name in self._counters:
                     self._counters[counter_name] -= 1
+                    logger.debug(f"Counter '{counter_name}' = {self._counters[counter_name]}")
                 self.current_task.ip += 1
             case InstructionKind.reset_counter:
                 counter_name = instruction.data
                 if counter_name in self._counters:
                     self._counters[counter_name] = 0
+                    logger.debug(f"Counter '{counter_name}' reset to 0")
                 self.current_task.ip += 1
             case InstructionKind.restart_bot:
                 self.reset()
@@ -1857,7 +1999,36 @@ class VM:
                     string = await self.eval(expr, client)
                     logger.debug(f"{client.title} - {string}")
                 self.current_task.ip += 1
+            case InstructionKind.log_assign_eval | InstructionKind.log_assign_eval_multi:
+                assert type(instruction.data) == list
+                eval_expr, var_name = instruction.data
 
+                if hasattr(eval_expr, 'selector') and eval_expr.selector is not None:
+                    clients = self._select_players(eval_expr.selector)
+                elif hasattr(eval_expr, 'player_selector') and eval_expr.player_selector is not None:
+                    clients = self._select_players(eval_expr.player_selector)
+                else:
+                    default_selector = PlayerSelector()
+                    default_selector.mass = True
+                    default_selector.validate()
+                    clients = self._select_players(default_selector)
+                
+                if clients:
+                    if instruction.kind == InstructionKind.log_assign_eval and len(clients) == 1:
+                        value = await self.eval(eval_expr, clients[0])
+                        await self.define_constant(var_name, value)
+                    else:
+                        client_values = {}
+                        for client in clients:
+                            try:
+                                value = await self.eval(eval_expr, client)
+                                client_values[client.title] = value
+                            except Exception:
+                                pass
+                        
+                        await self.define_constant(var_name, client_values)
+                
+                self.current_task.ip += 1
             case InstructionKind.label | InstructionKind.nop:
                 self.current_task.ip += 1
 

@@ -34,6 +34,7 @@ class CommandKind(Enum):
     toggle_combat = auto()
     restart_bot = auto()
     cursor = auto()
+    setprint = auto()
 
 class TeleportKind(Enum):
     position = auto()
@@ -87,6 +88,10 @@ class ClickKind(Enum):
 class LogKind(Enum):
     multi = auto()
     single = auto()
+    assign = auto()
+    assign_eval = auto()
+    assign_ident = auto()
+    assign_eval_multi = auto()
 
 class ExprKind(Enum):
     window_visible = auto()
@@ -365,16 +370,21 @@ class ReadVarExpr(Expression):
         return f"ReadVarE {self.loc}"
 
 class Eval(Expression):
-    def __init__(self, eval_kind: EvalKind, args=[]):
+    def __init__(self, eval_kind: EvalKind, args=[], player_selector=None):
         self.kind = eval_kind
         self.args = args
+        self.player_selector = player_selector
 
     def __repr__(self) -> str:
-        return f"Eval({self.kind})"
+        selector_str = f", selector={self.player_selector}" if self.player_selector else ""
+        return f"Eval({self.kind}{selector_str})"
+
 
 class Stmt:
-    def __init__(self) -> None:
-        pass
+    def __init__(self):
+        self.source_position = None  
+        self.source_line = None     
+        self.source_token = None     
 
 class ConstantDeclStmt(Stmt):
     def __init__(self, name: str, value: Expression):
@@ -430,6 +440,14 @@ class CommandStmt(Stmt):
 
     def __repr__(self) -> str:
         return f"ComS({self.command})"
+    
+class ForEachStmt(Stmt):
+    def __init__(self, expr: Expression, body: StmtList):
+        self.expr = expr
+        self.body = body
+
+    def __repr__(self) -> str:
+        return f"ForEachS {self.expr} {{ {self.body} }}"
 
 class IfStmt(Stmt):
     def __init__(self, expr: Expression, branch_true: StmtList, branch_false: StmtList):

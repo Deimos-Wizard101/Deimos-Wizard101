@@ -277,7 +277,7 @@ class Parser:
                 self.err(tok, f"Invalid atom kind: {tok.kind} in {tok}")
 
     def parse_unary_expression(self) -> UnaryExpression | Expression:
-        kinds = [TokenKind.minus]
+        kinds = [TokenKind.minus, TokenKind.keyword_not]
         if self.tokens[self.i].kind in kinds:
             operator = self.expect_consume_any(kinds)
             return UnaryExpression(operator, self.parse_unary_expression())
@@ -420,19 +420,18 @@ class Parser:
         player_selector = self.parse_player_selector()
         result.player_selector = player_selector
     
+        
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier:
             ident = self.tokens[self.i].literal
             self.i += 1
             
-            # Check for 'is' keyword for boolean comparisons
             if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.keyword_is:
                 self.i += 1
-                value = self.parse_expression()
+                value = self.parse_command_expression()
                 return ConstantCheckExpression(ident, value)
             elif self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.equals:
                 self.i += 1
                 
-                # Check for boolean literals first
                 if self.i < len(self.tokens):
                     if self.tokens[self.i].kind == TokenKind.boolean_true:
                         token = self.tokens[self.i]
@@ -443,11 +442,9 @@ class Parser:
                         self.i += 1
                         return ConstantCheckExpression(ident, ConstantExpression(token.literal, StringExpression("false")))
                 
-                # Otherwise parse as normal expression
-                value = self.parse_expression()
+                value = self.parse_command_expression()
                 return ConstantCheckExpression(ident, value)
             else:
-                # Revert if this isn't a constant check
                 self.i -= 1
         match self.tokens[self.i].kind:
             case TokenKind.command_expr_account_level:
@@ -734,31 +731,59 @@ class Parser:
         kinds = [TokenKind.keyword_not]
         if self.tokens[self.i].kind in kinds:
             operator = self.expect_consume_any(kinds)
-            return UnaryExpression(operator, self.parse_command_expression())
+            return UnaryExpression(operator, self.parse_comparison_expression())
         else:
-            return self.parse_command_expression()
-
+            return self.parse_comparison_expression()
+    
+    def parse_expression(self) -> Expression:
+        return self.parse_logical_expression()
+    
     def parse_logical_expression(self) -> Expression:
         expr = self.parse_negation_expression()
-
+        
         while self.i < len(self.tokens) and self.tokens[self.i].kind in [TokenKind.keyword_and, TokenKind.keyword_or]:
-            operator = self.tokens[self.i]
+            op = self.tokens[self.i]
             self.i += 1
-            # Parse the right-hand side expression
+
             right = self.parse_negation_expression()
             
-            if operator.kind == TokenKind.keyword_and:
-                expr = AndExpression([expr, right])
-            else:  # TokenKind.keyword_or
-                expr = OrExpression([expr, right])
+            if op.kind == TokenKind.keyword_and:
+                if isinstance(expr, AndExpression):
+                    expr.expressions.append(right)
+                else:
+                    expr = AndExpression([expr, right])
+            else:
+                if isinstance(expr, OrExpression):
+                    expr.expressions.append(right)
+                else:
+                    expr = OrExpression([expr, right])
         
         return expr
-
-    def parse_expression(self) -> Expression:
-        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_and:
-            self.err(self.tokens[self.i], "Expected an expression before &&")
+    
+    
+    def parse_comparison_expression(self) -> Expression:
+        """Parse comparison expressions (>, <, ==, !=)"""
+        left = self.parse_command_expression()
+        
+        if self.i < len(self.tokens) and self.tokens[self.i].kind in [
+            TokenKind.greater, TokenKind.less, TokenKind.equals, TokenKind.not_equals
+        ]:
+            operator = self.tokens[self.i]
+            self.i += 1
+            right = self.parse_command_expression()
             
-        return self.parse_logical_expression()
+            if operator.kind == TokenKind.greater:
+                return GreaterExpression(left, right) 
+            elif operator.kind == TokenKind.less:
+                return GreaterExpression(right, left) 
+            elif operator.kind == TokenKind.equals:
+                return EquivalentExpression(left, right)
+            elif operator.kind == TokenKind.not_equals:
+                equiv_expr = EquivalentExpression(left, right)
+                not_token = Token(TokenKind.keyword_not, "not", operator.line_info)
+                return UnaryExpression(not_token, equiv_expr)
+        
+        return left
 
     def parse_player_selector(self) -> PlayerSelector:
         result = PlayerSelector()
@@ -971,11 +996,36 @@ class Parser:
                 self.end_line()
             case TokenKind.command_log:
                 self.i += 1
+                
+                # Check if this is a variable assignment
+                is_assignment = False
+                var_name = None
+                
+                # Look ahead to check for assignment pattern
+                if (self.i < len(self.tokens) and 
+                    self.tokens[self.i].kind == TokenKind.identifier and 
+                    self.i + 1 < len(self.tokens) and 
+                    self.tokens[self.i + 1].kind == TokenKind.equals):
+                    
+                    var_name = self.tokens[self.i].literal
+                    self.i += 2  # Skip the identifier and equals token
+                    is_assignment = True
+                
+                # Store the original player selector
+                original_player_selector = result.player_selector
+                
+                # Parse player selector for the print command if present
+                if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.player_num:
+                    print_player_selector = self.parse_player_selector()
+                else:
+                    print_player_selector = None
+                
                 kind = self.tokens[self.i].kind
                 result.kind = CommandKind.log
+                
                 def print_literal():
                     final_str = ""
-                    while self.tokens[self.i].kind != TokenKind.END_LINE:
+                    while self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.END_LINE:
                         tok = self.tokens[self.i]
                         match tok.kind:
                             case TokenKind.string:
@@ -983,54 +1033,131 @@ class Parser:
                             case _:
                                 final_str += f"{tok.literal} "
                         self.i += 1
-                    result.data = [LogKind.single, StringExpression(final_str)]
+                    
+                    if is_assignment:
+                        result.data = [LogKind.assign, StringExpression(final_str), var_name]
+                    else:
+                        result.data = [LogKind.single, StringExpression(final_str)]
+                
                 match kind:
                     case TokenKind.identifier:
                         if self.tokens[self.i].literal == "window":
                             self.i += 1
                             window_path = self.parse_window_path()
-                            result.data = [LogKind.multi, StrFormatExpression("windowtext: %s", Eval(EvalKind.windowtext, window_path))]
+                            if is_assignment:
+                                result.data = [LogKind.assign_eval, Eval(EvalKind.windowtext, window_path), var_name]
+                            else:
+                                result.data = [LogKind.multi, StrFormatExpression("windowtext: %s", Eval(EvalKind.windowtext, window_path))]
                         else:
                             # Check if it's a variable reference with $ prefix
                             if self.tokens[self.i].literal.startswith('$'):
                                 ident = self.tokens[self.i].literal
                                 self.i += 1
                                 const_name = ident[1:]  # Remove the $ prefix
-                                result.data = [LogKind.single, IdentExpression(const_name)]
+                                if is_assignment:
+                                    result.data = [LogKind.assign_ident, IdentExpression(const_name), var_name]
+                                else:
+                                    result.data = [LogKind.single, IdentExpression(const_name)]
                             else:
                                 print_literal()
                     case TokenKind.command_expr_bagcount:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("bagcount: %d/%d", Eval(EvalKind.bagcount),Eval(EvalKind.max_bagcount))]
+                        if is_assignment:
+                            if print_player_selector is None and original_player_selector is None:
+                                result.data = [LogKind.assign_eval_multi, Eval(EvalKind.bagcount), var_name]
+                            else:
+                                result.data = [LogKind.assign_eval, Eval(EvalKind.bagcount, player_selector=print_player_selector), var_name]
+                        else:
+                            result.data = [LogKind.multi, StrFormatExpression("bagcount: %d/%d", 
+                                          Eval(EvalKind.bagcount, player_selector=print_player_selector),
+                                          Eval(EvalKind.max_bagcount, player_selector=print_player_selector))]
                     case TokenKind.command_expr_mana:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("mana: %d/%d", Eval(EvalKind.mana), Eval(EvalKind.max_mana))]
+                        if is_assignment:
+                            if print_player_selector is None and original_player_selector is None:
+                                result.data = [LogKind.assign_eval_multi, Eval(EvalKind.mana), var_name]
+                            else:
+                                result.data = [LogKind.assign_eval, Eval(EvalKind.mana, player_selector=print_player_selector), var_name]
+                        else:
+                            result.data = [LogKind.multi, StrFormatExpression("mana: %d/%d", 
+                                          Eval(EvalKind.mana, player_selector=print_player_selector), 
+                                          Eval(EvalKind.max_mana, player_selector=print_player_selector))]
                     case TokenKind.command_expr_energy:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("energy: %d/%d", Eval(EvalKind.energy), Eval(EvalKind.max_energy))]
+                        if is_assignment:
+                            if print_player_selector is None and original_player_selector is None:
+                                result.data = [LogKind.assign_eval_multi, Eval(EvalKind.energy), var_name]
+                            else:
+                                result.data = [LogKind.assign_eval, Eval(EvalKind.energy, player_selector=print_player_selector), var_name]
+                        else:
+                            result.data = [LogKind.multi, StrFormatExpression("energy: %d/%d", 
+                                          Eval(EvalKind.energy, player_selector=print_player_selector), 
+                                          Eval(EvalKind.max_energy, player_selector=print_player_selector))]
                     case TokenKind.command_expr_health:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("health: %d/%d", Eval(EvalKind.health), Eval(EvalKind.max_health))]
+                        if is_assignment:
+                            if print_player_selector is None and original_player_selector is None:
+                                result.data = [LogKind.assign_eval_multi, Eval(EvalKind.health), var_name]
+                            else:
+                                result.data = [LogKind.assign_eval, Eval(EvalKind.health, player_selector=print_player_selector), var_name]
+                        else:
+                            result.data = [LogKind.multi, StrFormatExpression("health: %d/%d", 
+                                          Eval(EvalKind.health, player_selector=print_player_selector), 
+                                          Eval(EvalKind.max_health, player_selector=print_player_selector))]
                     case TokenKind.command_expr_gold:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("gold: %d/%d", Eval(EvalKind.gold), Eval(EvalKind.max_gold))]
+                        if is_assignment:
+                            if print_player_selector is None and original_player_selector is None:
+                                result.data = [LogKind.assign_eval_multi, Eval(EvalKind.gold), var_name]
+                            else:
+                                result.data = [LogKind.assign_eval, Eval(EvalKind.gold, player_selector=print_player_selector), var_name]
+                        else:
+                            result.data = [LogKind.multi, StrFormatExpression("gold: %d/%d", 
+                                          Eval(EvalKind.gold, player_selector=print_player_selector), 
+                                          Eval(EvalKind.max_gold, player_selector=print_player_selector))]
                     case TokenKind.command_expr_potion_count:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("potioncount: %d/%d", Eval(EvalKind.potioncount), Eval(EvalKind.max_potioncount))]
+                        if is_assignment:
+                            if print_player_selector is None and original_player_selector is None:
+                                result.data = [LogKind.assign_eval_multi, Eval(EvalKind.potioncount), var_name]
+                            else:
+                                result.data = [LogKind.assign_eval, Eval(EvalKind.potioncount, player_selector=print_player_selector), var_name]
+                        else:
+                            result.data = [LogKind.multi, StrFormatExpression("potioncount: %d/%d", 
+                                          Eval(EvalKind.potioncount, player_selector=print_player_selector), 
+                                          Eval(EvalKind.max_potioncount, player_selector=print_player_selector))]
                     case TokenKind.command_expr_playercount:
                         self.i += 1
-                        result.data = [LogKind.single, StrFormatExpression("playercount: %d", Eval(EvalKind.playercount))]
+                        if is_assignment:
+                            result.data = [LogKind.assign_eval, Eval(EvalKind.playercount), var_name]
+                        else:
+                            result.data = [LogKind.single, StrFormatExpression("playercount: %d", Eval(EvalKind.playercount))]
                     case TokenKind.command_expr_window_text:
                         self.i += 1
                         window_path = self.parse_window_path()
-                        result.data = [LogKind.multi, StrFormatExpression("windowtext: %s", Eval(EvalKind.windowtext, [window_path]))]
+                        if is_assignment:
+                            if print_player_selector is None and original_player_selector is None:
+                                result.data = [LogKind.assign_eval_multi, Eval(EvalKind.windowtext, [window_path]), var_name]
+                            else:
+                                result.data = [LogKind.assign_eval, Eval(EvalKind.windowtext, [window_path], player_selector=print_player_selector), var_name]
+                        else:
+                            result.data = [LogKind.multi, StrFormatExpression("windowtext: %s", 
+                                          Eval(EvalKind.windowtext, [window_path], player_selector=print_player_selector))]
                     case TokenKind.command_expr_any_player_list:
                         self.i += 1
-                        result.data = [LogKind.single, StrFormatExpression("clients using anyplayer: %s", Eval(EvalKind.any_player_list))]
+                        if is_assignment:
+                            result.data = [LogKind.assign_eval, Eval(EvalKind.any_player_list), var_name]
+                        else:
+                            result.data = [LogKind.single, StrFormatExpression("clients using anyplayer: %s", Eval(EvalKind.any_player_list))]
                     case TokenKind.string:
                         print_literal()
                     case _:
                         print_literal()
+                
+                # Restore the original player selector if we had a specific one for the print command
+                if print_player_selector is not None:
+                    result.player_selector = original_player_selector
+                
                 self.end_line()
             case TokenKind.command_teleport:
                 result.kind = CommandKind.teleport
@@ -1320,8 +1447,14 @@ class Parser:
         self.i += 1
         return IdentExpression(result.literal)
 
+    
     def parse_stmt(self) -> Stmt:
         match self.tokens[self.i].kind:
+            case TokenKind.keyword_foreach:
+                self.i += 1
+                expr = self.parse_expression()
+                body = self.parse_block()
+                return ForEachStmt(expr, body)
             case TokenKind.keyword_counter:
                 self.i += 1
                 counter_name = self.consume_any_ident()
@@ -1447,8 +1580,7 @@ class Parser:
                 return MixinStmt(ident.ident)
             case _:
                 return CommandStmt(self.parse_command())
-
-    
+            
     def parse(self) -> list[Stmt]:
         result = []
         while self.i < len(self.tokens):

@@ -19,6 +19,8 @@ class InstructionKind(Enum):
 
     log_single = auto()
     log_multi = auto()
+    log_assign_eval = auto()
+    log_assign_eval_multi = auto()
 
     jump = auto()
     jump_if = auto()
@@ -48,6 +50,9 @@ class InstructionKind(Enum):
     reset_counter = auto()
 
     declare_constant = auto()
+
+    foreach_start = auto()
+    foreach_end = auto()
 
     compound_deimos_call = auto()
 
@@ -170,6 +175,10 @@ class Compiler:
                         self.emit(InstructionKind.log_multi, [com.player_selector, com.data[1]])
                     case LogKind.single:
                         self.emit(InstructionKind.log_single, com.data[1])
+                    case LogKind.assign_eval:
+                        eval_expr = com.data[1]  
+                        var_name = com.data[2]   
+                        self.emit(InstructionKind.log_assign_eval, [eval_expr, var_name])
                     case _:
                         raise CompilerError(f"Unimplemented log kind: {com}")
 
@@ -300,6 +309,20 @@ class Compiler:
             case _:
                 raise CompilerError(f"Unhandled expression type: {expr}")
 
+    def compile_foreach_stmt(self, stmt: ForEachStmt):
+        start_foreach_label = self.gen_label("start_foreach")
+        end_foreach_label = self.gen_label("end_foreach")
+        
+        self.prep_expression(stmt.expr)
+        self.emit(InstructionKind.foreach_start, [stmt.expr, start_foreach_label])
+        
+        self.enter_branch()
+        self._compile(stmt.body)
+        self.exit_branch()
+        
+        self.emit(InstructionKind.foreach_end, end_foreach_label)
+        self.emit(InstructionKind.label, end_foreach_label)
+
     def compile_if_stmt(self, stmt: IfStmt):
         after_if_label = self.gen_label("after_if")
         branch_true_label = self.gen_label("branch_true")
@@ -375,6 +398,8 @@ class Compiler:
 
     def _compile(self, stmt: Stmt):
         match stmt:
+            case ForEachStmt():
+                return self.compile_foreach_stmt(stmt)
             case CounterStmt():
                 self.compile_counter_stmt(stmt)
             case ConstantDeclStmt():

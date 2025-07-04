@@ -28,6 +28,7 @@ class TokenKind(Enum):
     greater = auto()
     less = auto()
     equals = auto()
+    not_equals = auto()
 
     keyword_block = auto()
     keyword_call = auto()
@@ -67,6 +68,7 @@ class TokenKind(Enum):
     keyword_addone_counter = auto()
     keyword_minusone_counter = auto()
     keyword_reset_counter = auto()
+    keyword_foreach = auto()
 
     command_kill = auto()
     command_sleep = auto()
@@ -267,6 +269,10 @@ class Tokenizer:
                     case "<":
                         put_simple(TokenKind.less, c)
                         i += 1
+                    case "!":
+                        if i + 1 < len(l) and l[i + 1] == "=":
+                            put_simple(TokenKind.not_equals, "!=")
+                            i += 2
                     case "=":
                         if i + 1 < len(l) and l[i + 1] == "=":
                             put_simple(TokenKind.equals, "==")
@@ -358,8 +364,8 @@ class Tokenizer:
                             elif full[0].lower() == "p" and full[1:len(full)].isnumeric():
                                 put_simple(TokenKind.player_num, full, int(full[1:len(full)]))
                             # TODO: Implement wildcards in all stages
-                            #elif full.lower() == "p?":
-                            #    put_simple(TokenKind.player_wildcard, full)
+                            elif full.lower() == "p?":
+                                put_simple(TokenKind.player_wildcard, full)
                             else:
                                 match normalize_ident(full):
                                     # keywords
@@ -449,6 +455,8 @@ class Tokenizer:
                                         put_simple(TokenKind.keyword_addone_counter, full)
                                     case "minusone":
                                         put_simple(TokenKind.keyword_minusone_counter, full)
+                                    case "foreach":
+                                        put_simple(TokenKind.keyword_foreach, full)
 
                                     # commands
                                     case "kill" | "killbot" | "stop" | "stopbot" | "end" | "exit":
@@ -515,6 +523,8 @@ class Tokenizer:
                                         put_simple(TokenKind.command_move_cursor, full)
                                     case "cursorwindow" | "mousewindow":
                                         put_simple(TokenKind.command_move_cursor_window, full)
+                                    case "setprint":
+                                        put_simple(TokenKind.command_setprint, full)
 
                                     # expression commands
                                     case "contains":
