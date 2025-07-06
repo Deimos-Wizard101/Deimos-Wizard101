@@ -962,6 +962,30 @@ class Parser:
         result.player_selector = self.parse_player_selector()
 
         match self.tokens[self.i].kind:
+            case TokenKind.command_plusyaw:
+                result.kind = CommandKind.plusyaw
+                self.i += 1
+
+                if self.tokens[self.i].kind == TokenKind.number:
+                    token = self.tokens[self.i]
+                    number_value = float(token.literal)
+                    self.i += 1
+                    result.data = number_value
+                else:
+                    result.data = self.parse_expression()
+                self.end_line()
+            case TokenKind.command_minusyaw:
+                result.kind = CommandKind.minusyaw
+                self.i += 1
+
+                if self.tokens[self.i].kind == TokenKind.number:
+                    token = self.tokens[self.i]
+                    number_value = float(token.literal)
+                    self.i += 1
+                    result.data = number_value
+                else:
+                    result.data = self.parse_expression()
+                self.end_line()
             case TokenKind.command_restart_bot:
                 result.kind = CommandKind.restart_bot
                 self.i += 1
@@ -1071,6 +1095,36 @@ class Parser:
                             result.data = [LogKind.multi, StrFormatExpression("bagcount: %d/%d", 
                                           Eval(EvalKind.bagcount, player_selector=print_player_selector),
                                           Eval(EvalKind.max_bagcount, player_selector=print_player_selector))]
+                    case TokenKind.command_expr_playerxyz:
+                        self.i += 1
+                        if is_assignment:
+                            if print_player_selector is None and original_player_selector is None:
+                                result.data = [LogKind.assign_eval_multi, Eval(EvalKind.playerxyz), var_name]
+                            else:
+                                result.data = [LogKind.assign_eval, Eval(EvalKind.playerxyz, player_selector=print_player_selector), var_name]
+                        else:
+                            result.data = [LogKind.multi, StrFormatExpression("position: %s", 
+                                          Eval(EvalKind.posxyz, player_selector=print_player_selector))]
+                    case TokenKind.command_expr_playerzone:
+                        self.i += 1
+                        if is_assignment:
+                            if print_player_selector is None and original_player_selector is None:
+                                result.data = [LogKind.assign_eval_multi, Eval(EvalKind.playerzone), var_name]
+                            else:
+                                result.data = [LogKind.assign_eval, Eval(EvalKind.playerzone, player_selector=print_player_selector), var_name]
+                        else:
+                            result.data = [LogKind.multi, StrFormatExpression("zone: %s", 
+                                          Eval(EvalKind.zone, player_selector=print_player_selector))]
+                    case TokenKind.command_expr_playeryaw:
+                        self.i += 1
+                        if is_assignment:
+                            if print_player_selector is None and original_player_selector is None:
+                                result.data = [LogKind.assign_eval_multi, Eval(EvalKind.playeryaw), var_name]
+                            else:
+                                result.data = [LogKind.assign_eval, Eval(EvalKind.playeryaw, player_selector=print_player_selector), var_name]
+                        else:
+                            result.data = [LogKind.multi, StrFormatExpression("yaw: %f", 
+                                          Eval(EvalKind.yaw, player_selector=print_player_selector))]
                     case TokenKind.command_expr_mana:
                         self.i += 1
                         if is_assignment:

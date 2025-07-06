@@ -90,6 +90,8 @@ class TokenKind(Enum):
     command_entitytp = auto()
     command_plus_teleport = auto()
     command_minus_teleport = auto()
+    command_plusyaw = auto()
+    command_minusyaw = auto()
     command_tozone = auto()
     command_load_playstyle = auto()
     command_set_yaw = auto()
@@ -103,6 +105,7 @@ class TokenKind(Enum):
     command_restart_bot = auto()
     command_move_cursor = auto()
     command_move_cursor_window = auto()
+    command_yaw = auto()
 
     # command expressions
     command_expr_window_visible = auto()
@@ -152,6 +155,9 @@ class TokenKind(Enum):
     command_expr_goal_changed = auto()
     command_expr_zone_changed = auto()
     command_expr_account_level = auto()
+    command_expr_playerxyz = auto()
+    command_expr_playerzone = auto()
+    command_expr_playeryaw = auto()
 
     colon = auto() # :
     comma = auto()
@@ -189,16 +195,18 @@ class LineInfo:
             return f"{self.filename}:{self.line}:{self.column}-{self.last_column}"
         return f"{self.line}:{self.column}-{self.last_column}"
 
+
 class Token:
-    def __init__(self, kind: TokenKind, literal: str, line_info: LineInfo, value: Any | None = None):
+    def __init__(self, kind: TokenKind, literal: str, line_info: LineInfo, value: Any | None = None, debug_info: dict = None):
         self.kind = kind
         self.literal = literal
         self.value = value
         self.line_info = line_info
+        self.debug_info = debug_info or {} 
 
     def __repr__(self) -> str:
-        return f"{self.line_info} {self.kind.name}`{self.literal}`({self.value})"
-
+        debug_str = f", debug={self.debug_info}" if self.debug_info else ""
+        return f"{self.line_info} {self.kind.name}`{self.literal}`({self.value}{debug_str})"
 
 def render_tokens(toks: list[Token]) -> str:
     lines_strs: dict[int, str] = {}
@@ -215,10 +223,11 @@ def normalize_ident(dirty: str) -> str:
 
 
 class Tokenizer:
-    def __init__(self):
+    def __init__(self, expertmode_debug: bool = False):
         self._in_multiline_string = False
         self._multiline_buffer = ""
         self._multiline_start_line_info = LineInfo(0, 0, 0, 0)
+        self.expertmode_debug = expertmode_debug
 
     def tokenize_line(self, l: str, line_num: int, filename: str | None = None) -> list[str]:
         result = []
@@ -227,7 +236,16 @@ class Tokenizer:
         def put_simple(kind: TokenKind, literal: str, value: Any = None):
             nonlocal result, line_num, i, filename
             line_info = LineInfo(line=line_num, column=i+1, last_column=i+len(literal)+1, filename=filename)
-            result.append(Token(kind, literal, line_info, value))
+
+            debug_info = None
+            if self.expertmode_debug:
+                debug_info = {
+                    "source_line": i,
+                    "position": i,
+                    "line_number": line_num,
+                    "filename": filename,
+                }
+            result.append(Token(kind, literal, line_info, value, debug_info))
 
         def err(message: str, column_start: int):
             indent_start = " " * column_start
@@ -523,8 +541,10 @@ class Tokenizer:
                                         put_simple(TokenKind.command_move_cursor, full)
                                     case "cursorwindow" | "mousewindow":
                                         put_simple(TokenKind.command_move_cursor_window, full)
-                                    case "setprint":
-                                        put_simple(TokenKind.command_setprint, full)
+                                    case "plusyaw":
+                                        put_simple(TokenKind.command_plusyaw, full)
+                                    case "minusyaw":
+                                        put_simple(TokenKind.command_minusyaw, full)
 
                                     # expression commands
                                     case "contains":
@@ -623,6 +643,12 @@ class Tokenizer:
                                         put_simple(TokenKind.command_expr_zone_changed, full)
                                     case "accountlevel" | "level":
                                         put_simple(TokenKind.command_expr_account_level, full)
+                                    case "playerxyz":
+                                        put_simple(TokenKind.command_expr_playerxyz, full)
+                                    case "playeryaw":
+                                        put_simple(TokenKind.command_expr_playeryaw, full)
+                                    case "playerzone":
+                                        put_simple(TokenKind.command_expr_playerzone, full)
                                     case _:
                                         put_simple(TokenKind.identifier, full)
                             i = j
@@ -632,16 +658,27 @@ class Tokenizer:
 
     def tokenize(self, contents: str, filename: str | None = None) -> list[Token]:
         result = []
-        for line_num, line in enumerate(contents.splitlines()):
+        source_lines = contents.splitlines()
+        
+        for line_num, line in enumerate(source_lines):
             toks = self.tokenize_line(line, line_num+1, filename=filename)
+            
+            # Store the full source line in each token's debug_info if expertmode_debug is enabled
+            if self.expertmode_debug:
+                for tok in toks:
+                    if tok.debug_info:
+                        tok.debug_info["full_source"] = source_lines
+            
             if self._in_multiline_string:
                 self._multiline_buffer += "\n"
             elif len(toks) == 1:
                 # only end line
                 continue
             result.extend(toks)
+            
         if self._in_multiline_string:
             raise TokenizerError(f"Unclosed multiline string: {self._multiline_buffer} {self._multiline_start_line_info}")
+        
         return result
 
 

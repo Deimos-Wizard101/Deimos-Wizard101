@@ -27,7 +27,6 @@ from src.config_combat import delegate_combat_configs, default_config
 
 from loguru import logger
 
-import traceback
 
 class Task:
     def __init__(self, stack=None, ip=0):
@@ -202,10 +201,13 @@ class VM:
             return self._any_player_client if self._any_player_client else []
         elif selector.same_any:
             return self._any_player_client
-        elif selector.wildcard and not selector.player_nums and hasattr(self.current_task, 'current_foreach_client'):
-            return [self.current_task.current_foreach_client]
         elif selector.wildcard:
-            return self._clients
+            if hasattr(self.current_task, 'current_foreach_client') and self.current_task.current_foreach_client:
+                return [self.current_task.current_foreach_client]
+            elif hasattr(self, '_current_eval_client') and self._current_eval_client:
+                return [self._current_eval_client]
+            else:
+                return self._clients
         else:
             result: list[SprintyClient] = []
             if selector.inverted:
@@ -218,7 +220,7 @@ class VM:
             else:
                 for num in selector.player_nums:
                     client = self.player_by_num(num)
-                    if client:  # Only add the client if it exists
+                    if client:
                         result.append(client)
             
             return result
@@ -978,281 +980,292 @@ class VM:
                 raise VMError(f"Unimplemented expression: {expression}")
 
     async def eval(self, expression: Expression, client: Client | None = None):
-        match expression:
-            case IdentExpression():
-                if expression.ident.startswith('$'):
-                    const_name = expression.ident[1:]  # Remove the $ prefix
-                    if const_name in self._constants:
-                        value = self._constants[const_name]
-                        return value
-                    else:
-                        raise VMError(f"Unknown constant: ${const_name}")
-                return expression.ident
-            case ConstantReferenceExpression():
-                if expression.name in self._constants:
-                    value = self._constants[expression.name]
-                    return value.lower() if isinstance(value, str) else value
-                raise VMError(f"Unknown constant: ${expression.name}")
-                
-            case ConstantCheckExpression():
-                constant_name = expression.name
-                
-                if not constant_name.startswith('$'):
-                    return False
-                    
-                actual_constant_name = constant_name[1:]
-                
-                if expression.value is None:
-                    if actual_constant_name in self._constants:
-                        return self._constants[actual_constant_name]
-                    raise VMError(f"Unknown constant: {constant_name}")
+        # Store the current client being evaluated for wildcard resolution
+        old_eval_client = getattr(self, '_current_eval_client', None)
+        try:
+            if client:
+                self._current_eval_client = client
 
-                if actual_constant_name not in self._constants:
-                    return False
+            match expression:
+                case IdentExpression():
+                    if expression.ident.startswith('$'):
+                        const_name = expression.ident[1:]  # Remove the $ prefix
+                        if const_name in self._constants:
+                            return self._constants[const_name]
+                        elif const_name in self._counters:
+                            return self._counters[const_name]
+                        else:
+                            raise VMError(f"Unknown constant: ${const_name}")
+                    return expression.ident
+                case ConstantReferenceExpression():
+                    if expression.name in self._constants:
+                        value = self._constants[expression.name]
+                        return value.lower() if isinstance(value, str) else value
+                    elif expression.name in self._counters:
+                        value = self._counters[expression.name]
+                        return value if isinstance(value, int) else value
+                    raise VMError(f"Unknown constant: ${expression.name}")
+                case ConstantCheckExpression():
+                    constant_name = expression.name
                     
-                expected_value = await self.eval(expression.value)
-                actual_value = self._constants[actual_constant_name]
-                
-                # Handle boolean string conversion
-                if isinstance(expected_value, bool) and isinstance(actual_value, str):
-                    if actual_value.lower() == "true":
-                        actual_value = True
-                    elif actual_value.lower() == "false":
-                        actual_value = False
-                
-                # Case insensitive comparison for strings
-                if isinstance(expected_value, str) and isinstance(actual_value, str):
-                    return actual_value.lower() == expected_value.lower()
-                
-                return actual_value == expected_value
-            case RangeMinExpression():
-                range_value = await self.eval(expression.range_expr, client)
-                if isinstance(range_value, str):
-                    try:
-                        min_val, _ = map(float, range_value.split('-'))
-                        return min_val
-                    except ValueError:
-                        raise VMError(f"Invalid range format: {range_value}. Expected format like '1-100'")
-                else:
-                    raise VMError(f"Range expression must evaluate to a string, got {range_value}")
-                    
-            case RangeMaxExpression():
-                range_value = await self.eval(expression.range_expr, client)
-                if isinstance(range_value, str):
-                    try:
-                        _, max_val = map(float, range_value.split('-'))
-                        return max_val
-                    except ValueError:
-                        raise VMError(f"Invalid range format: {range_value}. Expected format like '1-100'")
-                else:
-                    raise VMError(f"Range expression must evaluate to a string, got {range_value}")
-            case IndexAccessExpression():
-                container = await self.eval(expression.expr, client)
-                index = await self.eval(expression.index, client)
-                
-                if isinstance(container, list) and isinstance(index, (int, float)):
-                    index_int = int(index)
-                    if 0 <= index_int < len(container):
-                        return container[index_int]
-                    else:
-                        # Return 0 for out of bounds index
-                        return 0.0
-                else:
-                    # If not a list or index is not a number, return 0
-                    return 0.0
-            case AndExpression():
-                if not expression.expressions:
-                    return True
-                
-                for expr in expression.expressions:
-                    try:
-                        result = await self.eval(expr, client)
-                        
-                        # Handle string boolean values
-                        if isinstance(result, str):
-                            if result.lower() == "true":
-                                result = True
-                            elif result.lower() == "false":
-                                result = False
-                            else:
-                                result = bool(result)
-                                
-                        if not result:
-                            return False
-                    except VMError:
+                    if not constant_name.startswith('$'):
                         return False
-                
-                return True
-            case OrExpression():
-                if not expression.expressions:
-                    return False
-                
-                for expr in expression.expressions:
-                    try:
-                        result = await self.eval(expr, client)
                         
-                        # Handle string boolean values
-                        if isinstance(result, str):
-                            if result.lower() == "true":
-                                result = True
-                            elif result.lower() == "false":
-                                result = False
-                            else:
-                                result = bool(result)
-                                
-                        if result:
-                            return True
-                    except VMError:
-                        continue  
-                
-                return False
-            case CommandExpression():
-                return await self._eval_command_expression(expression)
-            case NumberExpression():
-                return expression.number
-            case XYZExpression():
-                return XYZ(
-                    await self.eval(expression.x, client), # type: ignore
-                    await self.eval(expression.y, client), # type: ignore
-                    await self.eval(expression.z, client), # type: ignore
-                )
-            case UnaryExpression():
-                match expression.operator.kind:
-                    case TokenKind.minus:
-                        result = await self.eval(expression.expr, client)
-                        return -result # type: ignore
-                    case TokenKind.keyword_not:
-                        # First evaluate the expression to populate _any_player_client
-                        expr_result = await self.eval(expression.expr, client)
-                        
-                        if (isinstance(expression.expr, CommandExpression) and 
-                            expression.expr.command.player_selector.any_player):
-                            # Invert the selection - clients that didn't match become the new matches
-                            current_matches = self._any_player_client.copy()
-                            self._any_player_client = [c for c in self._clients if c not in current_matches]
-                        
-                        # Return negated result
-                        return not expr_result
-                    case _:
-                        raise VMError(f"Unimplemented unary expression: {expression}")
-            case StringExpression():
-                return expression.string
-            case StrFormatExpression():
-                format_str = expression.format_str
-                values = []
-                for eval in expression.values:
-                    result = await self.eval(eval, client)
-                    values.append(result)
-                return format_str % tuple(values)
-            case KeyExpression():
-                key = expression.key
-                if key not in Keycode.__members__:
-                    raise VMError(f"Unknown key code: {key}")
-                return Keycode[expression.key]
-            case EquivalentExpression():
-                left = await self.eval(expression.lhs, client)
-                right = await self.eval(expression.rhs, client)
-
-                if isinstance(left, list) and len(left) > 0:
-                    left = left[0]
-                if isinstance(right, list) and len(right) > 0:
-                    right = right[0]
-
-                if isinstance(left, str):
-                    left = left.lower()
-                if isinstance(right, str):
-                    right = right.lower()
+                    actual_constant_name = constant_name[1:]
                     
-                return left == right
-            case DivideExpression():
-                left = await self.eval(expression.lhs, client)
-                right = await self.eval(expression.rhs, client)
-                return (left / right) # type: ignore
-            case GreaterExpression():
-                left = await self.eval(expression.lhs, client)
-                right = await self.eval(expression.rhs, client)
-                if isinstance(left, list) and len(left) > 0:
-                    left = left[0] 
-                if isinstance(right, list) and len(right) > 0:
-                    right = right[0] 
-                return (left > right)
-            case Eval():
-                return await self._eval_expression(expression, client) #type: ignore
-            case SelectorGroup():
-                players = self._select_players(expression.players)
-                expr = expression.expr
-                if expression.players.any_player:
-                    self._any_player_client = []
-                    found_any = False
-                    for anyplayer in self._clients:
-                        result = await self.eval(expr, anyplayer)
-                        if result:
-                            self._any_player_client.append(anyplayer)
-                            found_any = True
+                    if expression.value is None:
+                        if actual_constant_name in self._constants:
+                            return self._constants[actual_constant_name]
+                        raise VMError(f"Unknown constant: {constant_name}")
+
+                    if actual_constant_name not in self._constants:
+                        return False
+                        
+                    expected_value = await self.eval(expression.value)
+                    actual_value = self._constants[actual_constant_name]
                     
-                    return found_any
-                else:
-                    for player in players:
-                        if not await self.eval(expr, player):
+                    # Handle boolean string conversion
+                    if isinstance(expected_value, bool) and isinstance(actual_value, str):
+                        if actual_value.lower() == "true":
+                            actual_value = True
+                        elif actual_value.lower() == "false":
+                            actual_value = False
+                    
+                    # Case insensitive comparison for strings
+                    if isinstance(expected_value, str) and isinstance(actual_value, str):
+                        return actual_value.lower() == expected_value.lower()
+                    
+                    return actual_value == expected_value
+                case RangeMinExpression():
+                    range_value = await self.eval(expression.range_expr, client)
+                    if isinstance(range_value, str):
+                        try:
+                            min_val, _ = map(float, range_value.split('-'))
+                            return min_val
+                        except ValueError:
+                            raise VMError(f"Invalid range format: {range_value}. Expected format like '1-100'")
+                    else:
+                        raise VMError(f"Range expression must evaluate to a string, got {range_value}")
+                        
+                case RangeMaxExpression():
+                    range_value = await self.eval(expression.range_expr, client)
+                    if isinstance(range_value, str):
+                        try:
+                            _, max_val = map(float, range_value.split('-'))
+                            return max_val
+                        except ValueError:
+                            raise VMError(f"Invalid range format: {range_value}. Expected format like '1-100'")
+                    else:
+                        raise VMError(f"Range expression must evaluate to a string, got {range_value}")
+                case IndexAccessExpression():
+                    container = await self.eval(expression.expr, client)
+                    index = await self.eval(expression.index, client)
+                    
+                    if isinstance(container, list) and isinstance(index, (int, float)):
+                        index_int = int(index)
+                        if 0 <= index_int < len(container):
+                            return container[index_int]
+                        else:
+                            # Return 0 for out of bounds index
+                            return 0.0
+                    else:
+                        # If not a list or index is not a number, return 0
+                        return 0.0
+                case AndExpression():
+                    if not expression.expressions:
+                        return True
+                    
+                    for expr in expression.expressions:
+                        try:
+                            result = await self.eval(expr, client)
+                            
+                            # Handle string boolean values
+                            if isinstance(result, str):
+                                if result.lower() == "true":
+                                    result = True
+                                elif result.lower() == "false":
+                                    result = False
+                                else:
+                                    result = bool(result)
+                                    
+                            if not result:
+                                return False
+                        except VMError:
                             return False
+                    
                     return True
-            case ReadVarExpr():
-                loc = await self.eval(expression.loc)
-                assert(loc != None and type(loc) == int)
-                test = self.current_task.stack[loc]
-                return test
-            case StackLocExpression():
-                return expression.offset
-            case SubExpression():
-                lhs = await self.eval(expression.lhs, client)
-                rhs = await self.eval(expression.rhs, client)
-                assert(isinstance(lhs, (int, float)))
-                assert(isinstance(rhs, (int, float)))
-                return lhs - rhs
-            case ListExpression():
-                result = []
-                
-                if hasattr(expression, 'items') and isinstance(expression.items, list):
-                    for item in expression.items:
-                        evaluated_item = await self.eval(item, client)
-                        if isinstance(evaluated_item, list):
-                            result.extend(evaluated_item)
-                        else:
-                            result.append(evaluated_item)
-                elif hasattr(expression, 'items') and isinstance(expression.items, ListExpression):
-                    inner_result = await self.eval(expression.items, client)
-                    result = inner_result if isinstance(inner_result, list) else [inner_result]
-                elif hasattr(expression, 'expr') and isinstance(expression.expr, ListExpression):
-                    inner_result = await self.eval(expression.expr, client)
-                    result = inner_result if isinstance(inner_result, list) else [inner_result]
-                elif hasattr(expression, 'expr'):
-                    single_result = await self.eval(expression.expr, client)
-                    result = [single_result]
-                
-                return result
-            case ContainsStringExpression():
-                lhs = await self.eval(expression.lhs, client)
-                rhs = await self.eval(expression.rhs, client)
-                
-                if isinstance(lhs, str):
-                    lhs = lhs.lower()
-                
-                if isinstance(rhs, list):
-                    normalized_rhs = []
-                    for item in rhs:
-                        if isinstance(item, str):
-                            normalized_rhs.append(item.lower())
-                        else:
-                            normalized_rhs.append(item)
-                    return any(item in lhs for item in normalized_rhs)
-                
-                if isinstance(rhs, str):
-                    rhs = rhs.lower()
-                
-                # Original behavior for single string
-                return (rhs in lhs) #type: ignore
-            case _:
-                raise VMError(f"Unimplemented expression type: {expression}")
+                case OrExpression():
+                    if not expression.expressions:
+                        return False
+                    
+                    for expr in expression.expressions:
+                        try:
+                            result = await self.eval(expr, client)
+                            
+                            # Handle string boolean values
+                            if isinstance(result, str):
+                                if result.lower() == "true":
+                                    result = True
+                                elif result.lower() == "false":
+                                    result = False
+                                else:
+                                    result = bool(result)
+                                    
+                            if result:
+                                return True
+                        except VMError:
+                            continue  
+                    
+                    return False
+                case CommandExpression():
+                    return await self._eval_command_expression(expression)
+                case NumberExpression():
+                    return expression.number
+                case XYZExpression():
+                    return XYZ(
+                        await self.eval(expression.x, client), # type: ignore
+                        await self.eval(expression.y, client), # type: ignore
+                        await self.eval(expression.z, client), # type: ignore
+                    )
+                case UnaryExpression():
+                    match expression.operator.kind:
+                        case TokenKind.minus:
+                            result = await self.eval(expression.expr, client)
+                            return -result # type: ignore
+                        case TokenKind.keyword_not:
+                            # First evaluate the expression to populate _any_player_client
+                            expr_result = await self.eval(expression.expr, client)
+                            
+                            if (isinstance(expression.expr, CommandExpression) and 
+                                expression.expr.command.player_selector.any_player):
+                                # Invert the selection - clients that didn't match become the new matches
+                                current_matches = self._any_player_client.copy()
+                                self._any_player_client = [c for c in self._clients if c not in current_matches]
+                            
+                            # Return negated result
+                            return not expr_result
+                        case _:
+                            raise VMError(f"Unimplemented unary expression: {expression}")
+                case StringExpression():
+                    return expression.string
+                case StrFormatExpression():
+                    format_str = expression.format_str
+                    values = []
+                    for eval in expression.values:
+                        result = await self.eval(eval, client)
+                        values.append(result)
+                    return format_str % tuple(values)
+                case KeyExpression():
+                    key = expression.key
+                    if key not in Keycode.__members__:
+                        raise VMError(f"Unknown key code: {key}")
+                    return Keycode[expression.key]
+                case EquivalentExpression():
+                    left = await self.eval(expression.lhs, client)
+                    right = await self.eval(expression.rhs, client)
+
+                    if isinstance(left, list) and len(left) > 0:
+                        left = left[0]
+                    if isinstance(right, list) and len(right) > 0:
+                        right = right[0]
+
+                    if isinstance(left, str):
+                        left = left.lower()
+                    if isinstance(right, str):
+                        right = right.lower()
+                        
+                    return left == right
+                case DivideExpression():
+                    left = await self.eval(expression.lhs, client)
+                    right = await self.eval(expression.rhs, client)
+                    return (left / right) # type: ignore
+                case GreaterExpression():
+                    left = await self.eval(expression.lhs, client)
+                    right = await self.eval(expression.rhs, client)
+                    if isinstance(left, list) and len(left) > 0:
+                        left = left[0] 
+                    if isinstance(right, list) and len(right) > 0:
+                        right = right[0] 
+                    return (left > right)
+                case Eval():
+                    return await self._eval_expression(expression, client) #type: ignore
+                case SelectorGroup():
+                    players = self._select_players(expression.players)
+                    expr = expression.expr
+                    if expression.players.any_player:
+                        self._any_player_client = []
+                        found_any = False
+                        for anyplayer in self._clients:
+                            result = await self.eval(expr, anyplayer)
+                            if result:
+                                self._any_player_client.append(anyplayer)
+                                found_any = True
+                        
+                        return found_any
+                    else:
+                        for player in players:
+                            if not await self.eval(expr, player):
+                                return False
+                        return True
+                case ReadVarExpr():
+                    loc = await self.eval(expression.loc)
+                    assert(loc != None and type(loc) == int)
+                    test = self.current_task.stack[loc]
+                    return test
+                case StackLocExpression():
+                    return expression.offset
+                case SubExpression():
+                    lhs = await self.eval(expression.lhs, client)
+                    rhs = await self.eval(expression.rhs, client)
+                    assert(isinstance(lhs, (int, float)))
+                    assert(isinstance(rhs, (int, float)))
+                    return lhs - rhs
+                case ListExpression():
+                    result = []
+                    
+                    if hasattr(expression, 'items') and isinstance(expression.items, list):
+                        for item in expression.items:
+                            evaluated_item = await self.eval(item, client)
+                            if isinstance(evaluated_item, list):
+                                result.extend(evaluated_item)
+                            else:
+                                result.append(evaluated_item)
+                    elif hasattr(expression, 'items') and isinstance(expression.items, ListExpression):
+                        inner_result = await self.eval(expression.items, client)
+                        result = inner_result if isinstance(inner_result, list) else [inner_result]
+                    elif hasattr(expression, 'expr') and isinstance(expression.expr, ListExpression):
+                        inner_result = await self.eval(expression.expr, client)
+                        result = inner_result if isinstance(inner_result, list) else [inner_result]
+                    elif hasattr(expression, 'expr'):
+                        single_result = await self.eval(expression.expr, client)
+                        result = [single_result]
+                    
+                    return result
+                case ContainsStringExpression():
+                    lhs = await self.eval(expression.lhs, client)
+                    rhs = await self.eval(expression.rhs, client)
+                    
+                    if isinstance(lhs, str):
+                        lhs = lhs.lower()
+                    
+                    if isinstance(rhs, list):
+                        normalized_rhs = []
+                        for item in rhs:
+                            if isinstance(item, str):
+                                normalized_rhs.append(item.lower())
+                            else:
+                                normalized_rhs.append(item)
+                        return any(item in lhs for item in normalized_rhs)
+                    
+                    if isinstance(rhs, str):
+                        rhs = rhs.lower()
+                    
+                    # Original behavior for single string
+                    return (rhs in lhs) #type: ignore
+                case _:
+                    raise VMError(f"Unimplemented expression type: {expression}")
+        finally:
+            self._current_eval_client = old_eval_client
 
     async def _eval_expression(self, eval: Eval, client: Client):
         kind = eval.kind
@@ -1271,6 +1284,14 @@ class VM:
             return value
         
         match kind:
+            case EvalKind.playerxyz:
+                position = await client.body.position()
+                return XYZ(position.x, position.y, position.z)
+            case EvalKind.playeryaw:
+                yaw = await client.body.yaw()
+                return round(yaw, 1)
+            case EvalKind.playerzone:
+                return await client.zone_name()
             case EvalKind.duel_round:
                 if await client.in_battle():
                     return await client.duel.round_num()
@@ -1465,6 +1486,22 @@ class VM:
                     await asyncio.gather(*tasks)
                     
                 logger.debug("All clients have finished pet dance game")
+            case "plusyaw":
+                arg = instruction.data[2]
+                yaw_adjustment = await eval_arg(arg, clients[0] if clients else None)
+                assert isinstance(yaw_adjustment, (int, float)), "Yaw adjustment must be a number"
+                for client in clients:
+                    yaw = await client.body.yaw()
+                    new_yaw = yaw + round(float(yaw_adjustment), 1)
+                    await client.body.write_yaw(new_yaw)
+            case "minusyaw":
+                arg = instruction.data[2]
+                yaw_adjustment = await eval_arg(arg, clients[0] if clients else None)
+                assert isinstance(yaw_adjustment, (int, float)), "Yaw adjustment must be a number"
+                for client in clients:
+                    yaw = await client.body.yaw()
+                    new_yaw = yaw - round(float(yaw_adjustment), 1)
+                    await client.body.write_yaw(new_yaw)
             case "teleport":
                 args = instruction.data[2]
                 assert type(args) == list
@@ -1668,7 +1705,7 @@ class VM:
                                 x = await eval_arg(args[1], client)
                                 y = await eval_arg(args[2], client)
                                 tg.create_task(proxy(client, x, y))
-                                await asyncio.sleep(.2)
+                                await asyncio.sleep(.5)
                             case CursorKind.window:
                                 path = await eval_arg(args[1], client)
                                 async def proxy(client: SprintyClient, path: list):
@@ -1677,7 +1714,7 @@ class VM:
                                         async with client.mouse_handler:
                                             await client.mouse_handler.set_mouse_position_to_window(window)
                                 tg.create_task(proxy(client, path))
-                                await asyncio.sleep(.2)
+                                await asyncio.sleep(.5)
             case "click":
                 args = instruction.data[2]
                 async with asyncio.TaskGroup() as tg:
@@ -1733,12 +1770,20 @@ class VM:
         expr_data = instruction.data
         expr = expr_data[0] if isinstance(expr_data, list) and len(expr_data) > 0 else expr_data
         
-        if not hasattr(self.current_task, 'foreach_clients') or self.current_task.foreach_ip != self.current_task.ip:
+        if not hasattr(self.current_task, 'foreach_stack'):
+            self.current_task.foreach_stack = []
+        
+        current_depth = len(self.current_task.foreach_stack)
+        is_new_foreach = (current_depth == 0 or 
+                          self.current_task.foreach_stack[-1].get('ip') != self.current_task.ip)
+        
+        if is_new_foreach:
             matching_clients = []
             
             for client in self._clients:
                 try:
                     result = await self.eval(expr, client)
+                    
                     if isinstance(result, str):
                         result = result.lower() == "true" if result.lower() in ("true", "false") else bool(result)
                     
@@ -1747,33 +1792,35 @@ class VM:
                 except Exception:
                     pass
             
-            self.current_task.foreach_clients = matching_clients
-            self.current_task.foreach_index = 0
-            self.current_task.foreach_ip = self.current_task.ip
+            self.current_task.foreach_stack.append({
+                'clients': matching_clients,
+                'index': 0,
+                'ip': self.current_task.ip
+            })
         
-        if (hasattr(self.current_task, 'foreach_clients') and 
-            self.current_task.foreach_clients and 
-            self.current_task.foreach_index < len(self.current_task.foreach_clients)):
-            
-            current_client = self.current_task.foreach_clients[self.current_task.foreach_index]
+        current_foreach = self.current_task.foreach_stack[-1]
+        
+        if current_foreach['clients'] and current_foreach['index'] < len(current_foreach['clients']):
+            current_client = current_foreach['clients'][current_foreach['index']]
             self.current_task.current_foreach_client = current_client
-            
             self._any_player_client = [current_client]
             
             self.current_task.ip += 1
         else:
             end_ip = self._find_matching_foreach_end(self.current_task.ip)
-            
             self.current_task.ip = end_ip
             
-            if hasattr(self.current_task, 'foreach_clients'):
-                delattr(self.current_task, 'foreach_clients')
-                delattr(self.current_task, 'foreach_index')
-                delattr(self.current_task, 'foreach_ip')
+            self.current_task.foreach_stack.pop()
+            
+            if not self.current_task.foreach_stack:
                 if hasattr(self.current_task, 'current_foreach_client'):
                     delattr(self.current_task, 'current_foreach_client')
-                
                 self._any_player_client = []
+            else:
+                outer_foreach = self.current_task.foreach_stack[-1]
+                current_client = outer_foreach['clients'][outer_foreach['index']]
+                self.current_task.current_foreach_client = current_client
+                self._any_player_client = [current_client]
     
     def _find_matching_bracket(self, start_ip, forward=True, start_kind=InstructionKind.foreach_start, end_kind=InstructionKind.foreach_end):
         nesting = 1
@@ -1802,28 +1849,35 @@ class VM:
         return self._find_matching_bracket(end_ip, forward=False)
     
     async def _handle_foreach_end(self):
-        self.current_task.foreach_index += 1
+        if not hasattr(self.current_task, 'foreach_stack') or not self.current_task.foreach_stack:
+            self.current_task.ip += 1
+            return
         
-        if self.current_task.foreach_index < len(self.current_task.foreach_clients):
-            next_client = self.current_task.foreach_clients[self.current_task.foreach_index]
+        current_foreach = self.current_task.foreach_stack[-1]
+        
+        current_foreach['index'] += 1
+        
+        if current_foreach['index'] < len(current_foreach['clients']):
+            next_client = current_foreach['clients'][current_foreach['index']]
             self.current_task.current_foreach_client = next_client
-            
             self._any_player_client = [next_client]
             
             start_ip = self._find_matching_foreach_start(self.current_task.ip)
-            
             self.current_task.ip = start_ip
         else:
             self.current_task.ip += 1
             
-            if hasattr(self.current_task, 'foreach_clients'):
-                delattr(self.current_task, 'foreach_clients')
-                delattr(self.current_task, 'foreach_index')
-                delattr(self.current_task, 'foreach_ip')
+            self.current_task.foreach_stack.pop()
+            
+            if not self.current_task.foreach_stack:
                 if hasattr(self.current_task, 'current_foreach_client'):
                     delattr(self.current_task, 'current_foreach_client')
-                
                 self._any_player_client = []
+            else:
+                outer_foreach = self.current_task.foreach_stack[-1]
+                current_client = outer_foreach['clients'][outer_foreach['index']]
+                self.current_task.current_foreach_client = current_client
+                self._any_player_client = [current_client]
 
     async def _process_untils(self):
         for i in range(len(self._until_infos) - 1, -1, -1):

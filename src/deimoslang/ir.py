@@ -184,7 +184,8 @@ class Compiler:
 
             case CommandKind.sendkey | CommandKind.click | CommandKind.teleport \
                 | CommandKind.goto | CommandKind.usepotion | CommandKind.buypotions \
-                | CommandKind.relog | CommandKind.tozone | CommandKind.cursor:
+                | CommandKind.relog | CommandKind.tozone | CommandKind.cursor \
+                | CommandKind.plusyaw | CommandKind.minusyaw:
                 self.emit_deimos_call(com)
 
             case CommandKind.select_friend:
@@ -198,7 +199,6 @@ class Compiler:
                 self.emit_deimos_call(non_inverted_com)
                 if com.data[-1] == True:
                     self.emit_deimos_call(com)
-
             case CommandKind.set_yaw:
                 self.emit(InstructionKind.set_yaw, [com.player_selector, com.data[0]])
             case CommandKind.load_playstyle:
@@ -312,7 +312,7 @@ class Compiler:
     def compile_foreach_stmt(self, stmt: ForEachStmt):
         start_foreach_label = self.gen_label("start_foreach")
         end_foreach_label = self.gen_label("end_foreach")
-        
+
         self.prep_expression(stmt.expr)
         self.emit(InstructionKind.foreach_start, [stmt.expr, start_foreach_label])
         

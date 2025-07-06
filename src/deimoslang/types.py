@@ -34,7 +34,8 @@ class CommandKind(Enum):
     toggle_combat = auto()
     restart_bot = auto()
     cursor = auto()
-    setprint = auto()
+    plusyaw = auto()
+    minusyaw = auto()
 
 class TeleportKind(Enum):
     position = auto()
@@ -69,6 +70,9 @@ class EvalKind(Enum):
     account_level = auto()
     duel_round = auto()
     reference_counter = auto()
+    playerxyz = auto()
+    playerzone = auto()
+    playeryaw = auto()
 
 class WaitforKind(Enum):
     dialog = auto()
