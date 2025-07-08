@@ -105,7 +105,6 @@ class TokenKind(Enum):
     command_restart_bot = auto()
     command_move_cursor = auto()
     command_move_cursor_window = auto()
-    command_yaw = auto()
 
     # command expressions
     command_expr_window_visible = auto()
@@ -197,16 +196,14 @@ class LineInfo:
 
 
 class Token:
-    def __init__(self, kind: TokenKind, literal: str, line_info: LineInfo, value: Any | None = None, debug_info: dict = None):
+    def __init__(self, kind: TokenKind, literal: str, line_info: LineInfo, value: Any | None = None):
         self.kind = kind
         self.literal = literal
         self.value = value
-        self.line_info = line_info
-        self.debug_info = debug_info or {} 
+        self.line_info = line_info 
 
     def __repr__(self) -> str:
-        debug_str = f", debug={self.debug_info}" if self.debug_info else ""
-        return f"{self.line_info} {self.kind.name}`{self.literal}`({self.value}{debug_str})"
+        return f"{self.line_info} {self.kind.name}`{self.literal}`({self.value})"
 
 def render_tokens(toks: list[Token]) -> str:
     lines_strs: dict[int, str] = {}
@@ -223,11 +220,10 @@ def normalize_ident(dirty: str) -> str:
 
 
 class Tokenizer:
-    def __init__(self, expertmode_debug: bool = False):
+    def __init__(self):
         self._in_multiline_string = False
         self._multiline_buffer = ""
         self._multiline_start_line_info = LineInfo(0, 0, 0, 0)
-        self.expertmode_debug = expertmode_debug
 
     def tokenize_line(self, l: str, line_num: int, filename: str | None = None) -> list[str]:
         result = []
@@ -237,15 +233,7 @@ class Tokenizer:
             nonlocal result, line_num, i, filename
             line_info = LineInfo(line=line_num, column=i+1, last_column=i+len(literal)+1, filename=filename)
 
-            debug_info = None
-            if self.expertmode_debug:
-                debug_info = {
-                    "source_line": i,
-                    "position": i,
-                    "line_number": line_num,
-                    "filename": filename,
-                }
-            result.append(Token(kind, literal, line_info, value, debug_info))
+            result.append(Token(kind, literal, line_info, value))
 
         def err(message: str, column_start: int):
             indent_start = " " * column_start
@@ -658,27 +646,16 @@ class Tokenizer:
 
     def tokenize(self, contents: str, filename: str | None = None) -> list[Token]:
         result = []
-        source_lines = contents.splitlines()
-        
-        for line_num, line in enumerate(source_lines):
+        for line_num, line in enumerate(contents.splitlines()):
             toks = self.tokenize_line(line, line_num+1, filename=filename)
-            
-            # Store the full source line in each token's debug_info if expertmode_debug is enabled
-            if self.expertmode_debug:
-                for tok in toks:
-                    if tok.debug_info:
-                        tok.debug_info["full_source"] = source_lines
-            
             if self._in_multiline_string:
                 self._multiline_buffer += "\n"
             elif len(toks) == 1:
                 # only end line
                 continue
             result.extend(toks)
-            
         if self._in_multiline_string:
             raise TokenizerError(f"Unclosed multiline string: {self._multiline_buffer} {self._multiline_start_line_info}")
-        
         return result
 
 

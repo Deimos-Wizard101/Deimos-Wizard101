@@ -2102,7 +2102,9 @@ class VM:
             case InstructionKind.set_yaw:
                 assert(type(instruction.data)==list)
                 selector = instruction.data[0]
-                yaw = instruction.data[1]
+                yaw_expr = instruction.data[1]
+
+                yaw = await self.eval(yaw_expr)
                 
                 if selector.any_player and self._any_player_client:
                     clients = self._any_player_client
@@ -2121,12 +2123,12 @@ class VM:
                 self.current_task.ip += 1
             case InstructionKind.load_playstyle:
                 logger.debug("Loading playstyle")
-                delegated = delegate_combat_configs(instruction.data, len(self._clients)) # type: ignore
+                playstyle_data = await self.eval(instruction.data)
+                delegated = delegate_combat_configs(playstyle_data, len(self._clients)) # type: ignore
                 logger.debug(delegated)
                 for i, client in enumerate(self._clients):
                     client.combat_config = delegated.get(i, default_config)
                 self.current_task.ip += 1
-
             case InstructionKind.deimos_call:
                 player_selector, command_name, data = instruction.data
                 deimos_call_instruction = Instruction(
