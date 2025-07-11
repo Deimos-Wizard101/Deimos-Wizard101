@@ -668,7 +668,7 @@ async def main():
 					minimap_task = asyncio.create_task(minimap_instance.start())
 					
 				minimap_status = True
-				logger.debug(f'{minimap_key} key pressed, enabling minimap.')
+				logger.debug(f'{minimap_key} key pressed, enabling minimap. +/- to Zoom In/Out')
 				
 				# Update GUI status
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('MinimapStatus', 'Enabled')))
