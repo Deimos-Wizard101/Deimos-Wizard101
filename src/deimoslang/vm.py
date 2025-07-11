@@ -2123,8 +2123,25 @@ class VM:
                 self.current_task.ip += 1
             case InstructionKind.load_playstyle:
                 logger.debug("Loading playstyle")
-                playstyle_data = await self.eval(instruction.data)
-                delegated = delegate_combat_configs(playstyle_data, len(self._clients)) # type: ignore
+
+                playstyle_config = instruction.data
+
+                if isinstance(playstyle_config, str) and playstyle_config.startswith('$'):
+                    constant_name = playstyle_config[1:]
+                    if constant_name in self._constants:
+                        playstyle_config = self._constants[constant_name]
+                    else:
+                        logger.warning(f"Playstyle variable '{constant_name}' not found, using default config")
+                        playstyle_config = default_config
+
+                if not isinstance(playstyle_config, str):
+                    try:
+                        playstyle_config = await self.eval(playstyle_config)
+                    except Exception as e:
+                        logger.error(f"Error evaluating playstyle expression: {e}")
+                        playstyle_config = default_config
+                
+                delegated = delegate_combat_configs(playstyle_config, len(self._clients))
                 logger.debug(delegated)
                 for i, client in enumerate(self._clients):
                     client.combat_config = delegated.get(i, default_config)
