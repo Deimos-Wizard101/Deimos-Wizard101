@@ -4,7 +4,6 @@ import requests
 import queue
 import threading
 import wizwalker
-from src.minimap import MiniMap
 from wizwalker import Keycode, HotkeyListener, ModifierKeys, utils, XYZ, Orient
 from wizwalker.utils import get_all_wizard_handles, get_foreground_window
 from wizwalker.client_handler import ClientHandler, Client
@@ -111,11 +110,6 @@ def read_config(config_name : str):
 	global rpc_status
 	global drop_status
 	global anti_afk_status
-	global minimap_key
-	global minimap_status
-	global minimap_instance
-	global minimap_task
-	minimap_key = parser.get('hotkeys', 'toggle_minimap', fallback='L')
 	# auto_updating = parser.getboolean('settings', 'auto_updating', fallback=True)
 	speed_multiplier = parser.getfloat('settings', 'speed_multiplier', fallback=5.0)
 	use_potions = parser.getboolean('settings', 'use_potions', fallback=True)
@@ -249,9 +243,6 @@ auto_pet_status = False
 auto_potion_status = False
 side_quest_status = False
 tool_status = True
-minimap_status = False
-minimap_instance = None
-minimap_task = None
 original_client_locations = dict()
 
 hotkeys_blocked = False
@@ -496,70 +487,36 @@ async def kill_tool(debug: bool):
 
 
 async def tool_finish():
-    global minimap_instance, minimap_task, minimap_status, tool_status
-    
-    if not walker or len(walker.clients) == 0:
-        return
-    
-    # Reset client speeds
-    try:
-        await asyncio.gather(*[p.client_object.write_speed_multiplier(client_speeds[p.process_id]) for p in walker.clients])
-    except Exception:
-        pass
-    
-    # Reset client cameras and titles
-    for p in walker.clients:
-        try:
-            p.title = 'Wizard101'
-            # Reset camera
-            if await p.game_client.is_freecam():
-                await p.camera_elastic()
-            else:
-                camera = await p.game_client.elastic_camera_controller()
-                client_object = await p.body.parent_client_object()
-                await camera.write_attached_client_object(client_object)
-                await camera.write_check_collisions(True)
-                await camera.write_distance_target(300.0)
-                await camera.write_distance(300.0)
-                await camera.write_min_distance(150.0)
-                await camera.write_max_distance(450.0)
-                await camera.write_zoom_resolution(150.0)
-            await p.body.write_scale(1.0)
-        except Exception:
-            pass
-    
-    # Stop minimap
-    if 'minimap_instance' in globals() and minimap_instance:
-        try:
-            await minimap_instance.stop()
-            minimap_instance = None
-            minimap_status = False
-        except Exception:
-            pass
-    
-    # Cancel minimap task
-    if 'minimap_task' in globals() and minimap_task:
-        try:
-            minimap_task.cancel()
-            minimap_task = None
-        except Exception:
-            pass
-    
-    # Clear hotkey listener
-    try:
-        await listener.clear()
-    except Exception:
-        pass
-    
-    # Close clients
-    for p in walker.clients:
-        try:
-            await p.close()
-        except Exception:
-            pass
-    
-    await asyncio.sleep(0)
-    tool_status = False
+	if not walker or len(walker.clients) == 0:
+		return
+	
+	await asyncio.gather(*[p.client_object.write_speed_multiplier(client_speeds[p.process_id]) for p in walker.clients])
+	for p in walker.clients:
+		p.title = 'Wizard101'
+		# Uncomment when freecam is fixed
+		if await p.game_client.is_freecam():
+			await p.camera_elastic()
+		else:
+			camera: ElasticCameraController = await p.game_client.elastic_camera_controller()
+			client_object = await p.body.parent_client_object()
+			await camera.write_attached_client_object(client_object)
+			await camera.write_check_collisions(True)
+			await camera.write_distance_target(300.0)
+			await camera.write_distance(300.0)
+			await camera.write_min_distance(150.0)
+			await camera.write_max_distance(450.0)
+			await camera.write_zoom_resolution(150.0)
+		await p.body.write_scale(1.0)
+	await listener.clear()
+	for p in walker.clients:
+		try:
+			await p.close()
+		except:
+			pass
+	# await walker.close()
+	await asyncio.sleep(0)
+	global tool_status
+	tool_status = False
 
 
 @logger.catch()
@@ -573,14 +530,6 @@ async def main():
 	await asyncio.sleep(0)
 	listener.start()
 
-	async def minimap_hotkey():
-		logger.debug(f"Minimap hotkey ({minimap_key}) pressed!")
-		try:
-			await toggle_minimap(walker.clients, debug=True)
-		except Exception as e:
-			logger.error(f"Error in minimap_hotkey: {e}")
-			import traceback
-			logger.error(traceback.format_exc())
 
 	async def x_press_hotkey():
 		await mass_key_press(foreground_client, background_clients, x_press_key, Keycode.X, duration=0.1, debug=True)
@@ -623,10 +572,6 @@ async def main():
 		if not freecam_status:
 			await friend_teleport_sync(walker.clients, debug=True)
 
-	async def toggle_minimap_hotkey():
-		if not freecam_status and not hotkeys_blocked:
-			await toggle_minimap(walker.clients, debug=True)
-
 
 	async def kill_tool_hotkey():
 		# await tool_finish()
@@ -642,42 +587,6 @@ async def main():
 		if walker.clients != 0:
 			gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.CloseFromBackend))
 		# raise deimosgui.ToolClosedException
-
-	async def toggle_minimap(clients, debug: bool = False):
-		global minimap_status, minimap_instance, minimap_task
-		
-		if minimap_status:
-			# Turn off minimap
-			try:
-				if minimap_instance:
-					await minimap_instance.stop()
-					minimap_instance = None
-				
-				if minimap_task and not minimap_task.done():
-					minimap_task.cancel()
-					minimap_task = None
-					
-				minimap_status = False
-				if debug:
-					logger.debug(f'{minimap_key} key pressed, disabling minimap.')
-			except Exception:
-				pass
-		else:
-			# Turn on minimap
-			try:
-				if not minimap_instance:
-					minimap_instance = MiniMap(clients)
-					
-				if not minimap_task or minimap_task.done():
-					minimap_task = asyncio.create_task(minimap_instance.start())
-					
-				minimap_status = True
-				if debug:
-					logger.debug(f'{minimap_key} key pressed, enabling minimap.')
-			except Exception:
-				minimap_status = False
-		
-		return minimap_status
 
 
 
@@ -890,7 +799,6 @@ async def main():
 		if not hotkey_status:
 			if debug:
 				logger.debug('Client selected, starting hotkey listener.')
-			await listener.add_hotkey(Keycode[minimap_key], minimap_hotkey, modifiers=ModifierKeys.NOREPEAT)
 			await listener.add_hotkey(Keycode[x_press_key], x_press_hotkey, modifiers=ModifierKeys.NOREPEAT)
 			# await listener.add_hotkey(Keycode[space_press_key], space_press_hotkey, modifiers=ModifierKeys.NOREPEAT)
 			await listener.add_hotkey(Keycode[sync_locations_key], xyz_sync_hotkey, modifiers=ModifierKeys.NOREPEAT)
@@ -915,7 +823,6 @@ async def main():
 		if hotkey_status:
 			if debug:
 				logger.debug('Client not selected, stopping hotkey listener.')
-			await listener.remove_hotkey(Keycode[minimap_key], modifiers=ModifierKeys.NOREPEAT)
 			await listener.remove_hotkey(Keycode[x_press_key], modifiers=ModifierKeys.NOREPEAT)
 			# await listener.remove_hotkey(Keycode[space_press_key], modifiers=ModifierKeys.NOREPEAT)
 			await listener.remove_hotkey(Keycode[sync_locations_key], modifiers=ModifierKeys.NOREPEAT)
