@@ -225,7 +225,6 @@ class GUIKeys:
     toggle_freecam = "togglefreecam"
     toggle_camera_collision = "togglecameracollision"
     toggle_show_expanded_logs = "toggleshowexpandedlogs"
-    toggle_minimap = "toggle_minimap"
 
     hotkey_quest_tp = "hotkeyquesttp"
     hotkey_freecam_tp = "hotkeyfreecamtp"
@@ -316,7 +315,6 @@ def create_gui(gui_theme, gui_text_color, gui_button_color, tool_name, tool_vers
         (tl('Questing'), GUIKeys.toggle_questing),
         (tl('Auto Pet'), GUIKeys.toggle_auto_pet),
         (tl('Auto Potion'), GUIKeys.toggle_auto_potion),
-        (tl('Minimap'), GUIKeys.toggle_minimap),
     ]
     hotkeys: list[tuple[str, str]] = [
         (tl('Quest TP'), GUIKeys.hotkey_quest_tp),
