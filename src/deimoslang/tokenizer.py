@@ -90,7 +90,9 @@ class TokenKind(Enum):
     command_tozone = auto()
     command_load_playstyle = auto()
     command_set_yaw = auto()
-    command_nav = auto() 
+    command_nav = auto()  
+    command_setdeck = auto()
+    command_getdeck = auto() 
     command_select_friend = auto()
     command_autopet = auto()
     command_set_goal = auto()
@@ -99,7 +101,7 @@ class TokenKind(Enum):
     command_toggle_combat = auto()
     command_restart_bot = auto()
     command_move_cursor = auto()
-    command_move_cursor_window = auto()
+    command_move_cursor_window = auto() 
 
     # command expressions
     command_expr_window_visible = auto()
@@ -491,7 +493,11 @@ class Tokenizer:
                                     case "turncam" | "setcamyaw":
                                         put_simple(TokenKind.command_set_yaw, full)
                                     case "nav" | "navtp":
-                                        put_simple(TokenKind.command_nav, full)
+                                        put_simple(TokenKind.command_nav, full) 
+                                    case "getdeck":
+                                        put_simple(TokenKind.command_getdeck, full)
+                                    case "setdeck":
+                                        put_simple(TokenKind.command_setdeck, full) 
                                     case "selectfriend" | "choosefriend":
                                         put_simple(TokenKind.command_select_friend, full)
                                     case "plustp" | "plusteleport":
@@ -511,7 +517,7 @@ class Tokenizer:
                                     case "cursor" | "movecursor" | "mousexy" | "movemouse":
                                         put_simple(TokenKind.command_move_cursor, full)
                                     case "cursorwindow" | "mousewindow":
-                                        put_simple(TokenKind.command_move_cursor_window, full)
+                                        put_simple(TokenKind.command_move_cursor_window, full) 
 
                                     # expression commands
                                     case "contains":

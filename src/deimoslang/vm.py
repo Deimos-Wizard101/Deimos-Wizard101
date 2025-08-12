@@ -8,7 +8,9 @@ from wizwalker.memory.memory_objects.quest_data import QuestData, GoalData
 from wizwalker.extensions.wizsprinter import SprintyClient
 from wizwalker.extensions.wizsprinter.wiz_sprinter import Coroutine, upgrade_clients
 from wizwalker.extensions.wizsprinter.wiz_navigator import toZone
+from wizwalker.extensions.scripting.deck_builder import DeckBuilder
 from src.teleport_math import navmap_tp, calc_Distance
+from src.deck_encoder import DeckEncoderDecoder
 
 from wizwalker.extensions.scripting.utils import _maybe_get_named_window, _cycle_to_online_friends, _click_on_friend, _friend_list_entry
 from src.utils import _cycle_friends_list
@@ -1712,7 +1714,41 @@ class VM:
                         self._until_infos = self._until_infos[:i]
                         self.current_task.stack = self.current_task.stack[:info.stack_size]
                         break
+                self.current_task.ip += 1 
+
+            case InstructionKind.setdeck:
+                async def setdeck(client: SprintyClient, token: str):
+                    logger.debug(f"Setting {client.title}'s deck...")
+                    async with DeckBuilder(client) as deck_builder:
+                        await deck_builder.set_deck_preset(deck)
+                assert type(instruction.data) == list
+                clients = self._select_players(instruction.data[0])
+                token = instruction.data[1]
+                assert type(token) == str
+                coder = DeckEncoderDecoder(token=token)
+                deck = coder.decode()
+                async with TaskGroup() as tg:
+                    for client in clients:
+                        tg.create_task(setdeck(client, token))
+                logger.debug("Successfully set decks.")
                 self.current_task.ip += 1
+
+            case InstructionKind.getdeck:
+                async def getdeck(client:SprintyClient):
+                    async with DeckBuilder(client) as deck_builder:
+                        deck = await deck_builder.get_deck_preset()
+                        coder = DeckEncoderDecoder(deck=deck)
+                        token = coder.encode()
+                        logger.debug(f"{client.title}: --> {token} <--");
+
+                assert type(instruction.data) == list
+                clients = self._select_players(instruction.data[0])
+                logger.debug("Reading deck...")
+                async with TaskGroup() as tg:
+                    for client in clients:
+                        tg.create_task(getdeck(client))
+                self.current_task.ip += 1
+ 
             case InstructionKind.log_single:
                 assert(isinstance(instruction.data, Expression))
 

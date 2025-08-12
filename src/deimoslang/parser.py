@@ -1279,6 +1279,16 @@ class Parser:
                         self.i += 1
                     result.data = [" ".join(name_parts)]
                 self.end_line()
+            case TokenKind.command_setdeck:
+                result.kind = CommandKind.setdeck
+                self.i += 1
+                token = self.expect_consume(TokenKind.string)
+                result.data = [token.value]
+                self.end_line()
+            case TokenKind.command_getdeck:
+                result.kind = CommandKind.getdeck
+                self.i += 1
+                self.end_line()
             case _:
                 self.err(self.tokens[self.i], "Unhandled command token")
         return result
