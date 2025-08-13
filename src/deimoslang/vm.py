@@ -1356,7 +1356,7 @@ class VM:
                             
                             for client in clients:
                                 async def tp_to_entity(client):
-                                    entity = await client.get_base_entity_by_name(name)
+                                    entity = await client.find_closest_by_name(name)
                                     if entity:
                                         pos = await entity.location()
                                         if use_navmap:
