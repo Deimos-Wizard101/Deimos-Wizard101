@@ -156,6 +156,7 @@ async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game
                 # wait for pet game selection window to appear
                 while await is_visible_by_path(client, pet_feed_window_visible_path):
                     # click wizard city game
+                    await client.send_key(Keycode.X, 0.1)
                     if await is_visible_by_path(client, wizard_city_dance_game_path):
                         async with client.mouse_handler:
                             await click_window_by_path(client, wizard_city_dance_game_path)

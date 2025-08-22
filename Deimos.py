@@ -1892,7 +1892,6 @@ async def main():
 
 	async def zone_check_loop():
 		zone_blacklist = [
-			'WizardCity-TreasureTower-WC_TT',
 			'Raids',
 			'Battlegrounds'
 		]
@@ -1909,14 +1908,7 @@ async def main():
 			'WizardCity/AZ_Arena',
 			'WizardCity/PA_Arena',
 			'WizardCity/GH_Arena',
-			'WizardCity/LM_Arena',
-			'WizardCity/TreasureTower/WC_TT01_Balance_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Death_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Fire_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Ice_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Life_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Myth_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Storm_L01'
+			'WizardCity/LM_Arena'
 
 		]
 
