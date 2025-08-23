@@ -656,14 +656,34 @@ async def click_window_until_closed(client: Client, path):
 
 async def refill_potions(client: Client, mark: bool = False, recall: bool = True, original_zone=None):
     if await client.stats.reference_level() >= 6:
-        # mark if needed
         if mark:
             if await client.zone_name() != 'WizardCity/WC_Hub':
-                original_mana = await client.stats.current_mana()
-                while await client.stats.current_mana() >= original_mana:
-                    logger.debug(f'Client {client.title} - Marking Location')
-                    await client.send_key(Keycode.PAGE_DOWN, 0.1)
-                    await asyncio.sleep(.75)
+                root = client.root_window
+                recall_window = await get_window_from_path(root, teleport_mark_recall_path)
+
+                had_mark_before = False
+                if recall_window and not await recall_window.is_control_grayed():
+                    had_mark_before = True
+                    logger.debug(f'Client {client.title} - Already had a mark before placing a new one')
+
+                # press the mark hotkey once and waiting 2s for recall UI to update
+                await client.send_key(Keycode.PAGE_DOWN, 0.1)
+                await asyncio.sleep(2.0)
+
+                # re-check the recall button
+                recall_window = await get_window_from_path(root,teleport_mark_recall_path)
+
+                if not recall_window:
+                    logger.debug(f'Client {client.title} - Could not find Recall button after marking')
+                else:
+                    still_has_mark = not await recall_window.is_control_grayed()
+
+                    if had_mark_before and not still_has_mark:
+                        # originally had mark, but lost it after pressing mark
+                        await client.send_key(Keycode.PAGE_DOWN, 0.1)
+                        await asyncio.sleep(1.0)
+                    else:
+                        logger.debug(f'Client {client.title} - Mark state is valid (has_mark={still_has_mark})')
 
         # Navigate to ravenwood
         await navigate_to_ravenwood(client)
