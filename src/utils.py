@@ -658,9 +658,26 @@ async def refill_potions(client: Client, mark: bool = False, recall: bool = True
     if await client.stats.reference_level() >= 6:
         if mark:
             if await client.zone_name() != 'WizardCity/WC_Hub':
-                root = client.root_window
-                recall_window = await get_window_from_path(root, teleport_mark_recall_path)
+                
+                # Handles niche case scenario of teleport just being used before needing to buy potions such as teleporting out of a dungeon
+                recall_timer_window = await get_window_from_path(client.root_window, teleport_mark_recall_timer_path)
+                recall_timer = await recall_timer_window.maybe_text()
 
+                if recall_timer != "":
+                    logger.debug(f'Client {client.title} - Waiting out recall timer before going to buy potions.')
+                    recall_timer = int((recall_timer.replace("<center>", "")).replace("</center>", ""))
+
+                    # Sleeping for most of the timer to avoid spamming calls, then checking it every .1 seconds
+                    if recall_timer > 5:
+                        await asyncio.sleep(recall_timer - 2)
+                    while True:
+                        new_timer = await recall_timer_window.maybe_text()
+                        if new_timer == "" or int((str(new_timer).replace("<center>", "")).replace("</center>", "")) <= 0:
+                            break
+                        await asyncio.sleep(0.1)
+                    await asyncio.sleep(1)
+                
+                recall_window = await get_window_from_path(client.root_window, teleport_mark_recall_path)
                 had_mark_before = False
                 if recall_window and not await recall_window.is_control_grayed():
                     had_mark_before = True
@@ -671,7 +688,7 @@ async def refill_potions(client: Client, mark: bool = False, recall: bool = True
                 await asyncio.sleep(2.0)
 
                 # re-check the recall button
-                recall_window = await get_window_from_path(root,teleport_mark_recall_path)
+                recall_window = await get_window_from_path(client.root_window,teleport_mark_recall_path)
 
                 if not recall_window:
                     logger.debug(f'Client {client.title} - Could not find Recall button after marking')
