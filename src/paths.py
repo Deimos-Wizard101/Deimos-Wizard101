@@ -108,6 +108,7 @@ close_real_friend_list_button_path = ['WorldView', 'windowHUD', 'wndFriendsList'
 
 # Teleport Mark Recall Path
 teleport_mark_recall_path = ['WorldView', 'windowHUD', 'compassAndTeleporterButtons', 'RecallButton']
+teleport_mark_recall_timer_path = ['WorldView', 'windowHUD', 'compassAndTeleporterButtons', 'RecallButton', 'txtRecallTimer']
 
 # Dungeon Recall Path
 dungeon_recall_path = ['WorldView', 'windowHUD', 'compassAndTeleporterButtons', 'ResumeInstanceButton']
@@ -173,3 +174,4 @@ energy_amount_path = ['WorldView', 'DeckConfiguration', '', 'ControlSprite', 'wn
 quest_buttons_parent_path = ['WorldView', 'DeckConfiguration', 'wndQuestList']
 quest_two_button_path = ['WorldView', 'DeckConfiguration', 'wndQuestList', 'wndQuestInfo1']
 all_quests_sort_button_path = ['WorldView', 'DeckConfiguration', 'wndQuestList', 'QuestLogAllButton']
+
