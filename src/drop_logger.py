@@ -74,7 +74,7 @@ def filter_drops(input_list: List[str]) -> List[str]:
     return drops
 
 
-def find_new_stuff(old: str, new: str) -> str:
+async def find_new_stuff(old: str, new: str) -> str:
     # CREDIT TO SIROLAF FOR THIS FUNCTION
 	found_idx = -1
 
@@ -93,19 +93,19 @@ def find_new_stuff(old: str, new: str) -> str:
 
 async def logging_loop(client: Client):
     # TODO: Finish this loop and create a system for determining new drops
+    first_run = True
     while True:
         await asyncio.sleep(1)
 
         chat_text = await get_chat(client)
+        if first_run:
+            first_run = False
+            if chat_text:
+                temp_drops = filter_drops(chat_text.split('\n'))
+                client.latest_drops = '\n'.join(temp_drops)
         if chat_text:
             temp_drops = filter_drops(chat_text.split('\n'))
-            new_drops = ""
-            if client.latest_drops:
-                new_drops = find_new_stuff(client.latest_drops, '\n'.join(temp_drops))
-            else:
-                new_drops = '\n'.join(temp_drops)
-            #if not client.latest_drops:
-            #    client.latest_drops = '\n'.join(temp_drops)
+            new_drops = await find_new_stuff(client.latest_drops, '\n'.join(temp_drops))
 
             if new_drops:
                 client.latest_drops = '\n'.join(temp_drops)
