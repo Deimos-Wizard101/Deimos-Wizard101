@@ -110,5 +110,5 @@ async def logging_loop(client: Client):
             if new_drops:
                 new_drops_list = new_drops.split('\n')
                 if len(new_drops_list) > 1 and not new_drops_list[0]:
-                    new_drops_list = new_drops_list[1:]
+                    new_drops_list.pop(0)
                 [logger.debug(f'{client.title} - New Drop: {drop}') for drop in new_drops_list]
