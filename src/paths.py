@@ -87,6 +87,17 @@ exit_wysteria_tournament = ['WorldView', 'TournamentRanking', 'exit']
 # Chat Window
 chat_window_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'chatLogContainer', 'chatLogInnerContainer', 'chatLog']
 
+# Chat Channels
+main_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'MainContainer', 'MainFilterButton']
+group_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'GroupContainer', 'GroupFilterButton']
+house_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'HouseContainer', 'HouseFilterButton']
+friend_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'FriendContainer', 'FriendFilterButton']
+channel_one_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'Channel1Container', 'Channel1FilterButton']
+channel_two_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'Channel2Container', 'Channel2FilterButton']
+channel_three_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'Channel3Container', 'Channel3FilterButton']
+guild_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'Channel4Container', 'Channel4FilterButton']
+team_up_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'TeamUpContainer', 'TeamUpFilterButton']
+
 # Popup Message Path
 popup_msgtext_path = ["WorldView", "NPCRangeWin", "imgBackground", "NPCRangeTxtMessage"]
 
