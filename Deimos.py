@@ -2002,6 +2002,11 @@ async def main():
 								logger.info("Tool close triggered by user.")
 							case _:
 								logger.exception(exception)
+						for p in walker.clients:
+							try:
+								await p.close()
+							except:
+								pass
 						quit(0)
 				logger.debug('Waiting for all Wizard101 clients to be closed...')
 				while walker.clients:
