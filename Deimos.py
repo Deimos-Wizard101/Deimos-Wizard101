@@ -2004,6 +2004,7 @@ async def main():
 								logger.exception(exception)
 						for p in walker.clients:
 							try:
+								p.title = 'Wizard101'
 								await p.close()
 							except:
 								pass
