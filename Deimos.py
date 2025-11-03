@@ -1992,33 +1992,25 @@ async def main():
 					walker.remove_dead_clients()
 					walker.get_new_clients()
 					await asyncio.sleep(delay)
-				logger.debug('Waiting for all Wizard101 clients to be closed...')
-				while walker.clients:
+				async def gui_task_checker():
 					if gui_task.done():
 						exception = gui_task.exception()
 						match exception:
 							case deimosgui.ToolClosedException():
 								logger.info("Tool close triggered by user.")
 						quit(0)
+				logger.debug('Waiting for all Wizard101 clients to be closed...')
+				while walker.clients:
+					await gui_task_checker()
 					await refresh_clients()
 					await asyncio.sleep(0.1)
 				logger.debug('Waiting for all previous Wizard101 clients to be reopened...')
 				while not walker.clients:
-					if gui_task.done():
-						exception = gui_task.exception()
-						match exception:
-							case deimosgui.ToolClosedException():
-								logger.info("Tool close triggered by user.")
-						quit(0)
+					await gui_task_checker()
 					await refresh_clients()
 					await asyncio.sleep(0.1)
 				while len(walker.clients) != len(clients_check):
-					if gui_task.done():
-						exception = gui_task.exception()
-						match exception:
-							case deimosgui.ToolClosedException():
-								logger.info("Tool close triggered by user.")
-						quit(0)
+					await gui_task_checker()
 					await refresh_clients()
 					await asyncio.sleep(0.1)
 				await hooking_logic()
