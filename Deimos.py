@@ -1984,8 +1984,8 @@ async def main():
 			logger.debug('Activating hooks for all clients, please be patient...')
 			try:
 				await asyncio.gather(*[p.activate_hooks() for p in walker.clients])
-			except wizwalker.errors.PatternFailed:
-				logger.critical('Error occured in the hooking process. Please restart all Wizard101 clients.')
+			except wizwalker.errors.PatternFailed as e:
+				logger.critical(f"Error occured in the hooking process - {e}")
 
 				clients_check = walker.clients
 				async def refresh_clients(delay: float = 0.5):
