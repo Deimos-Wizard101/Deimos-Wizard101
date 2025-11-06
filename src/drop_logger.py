@@ -59,8 +59,9 @@ async def get_current_active_chat_channel(client: Client) -> List[str]:
     for window_path in chat_channel_list:
         if await is_visible_by_path(client, window_path):
             channel_window = await get_window_from_path(client.root_window, window_path)
-            if await channel_window.read_value_from_offset(872, Primitive.bool): # value for if the channel is active
-                return window_path
+            if channel_window:
+                if await channel_window.read_value_from_offset(872, Primitive.bool): # value for if the channel is active
+                    return window_path
     
     return None # this should not happen
 
