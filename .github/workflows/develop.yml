@@ -1,0 +1,132 @@
+name: Build Deimos
+
+on:
+  push:
+    branches:
+      - dev-main  # Only trigger on dev-main branch pushes
+  
+  # Optional: Allow manual builds
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for changelog
+    
+    - name: Extract version from Deimos.py
+      id: version
+      shell: bash
+      run: |
+        echo "Extracting version from Deimos.py..."
+        
+        # Check if Deimos.py exists
+        if [ ! -f "Deimos.py" ]; then
+          echo "ERROR: Deimos.py not found in repository root"
+          exit 1
+        fi
+        
+        # Extract version using grep and sed
+        VERSION_LINE=$(grep -n "tool_version: str = " Deimos.py | head -1)
+        
+        if [ -z "$VERSION_LINE" ]; then
+          echo "ERROR: Could not find 'tool_version: str = ' in Deimos.py"
+          echo "Make sure the version is defined as: tool_version: str = 'x.x.x'"
+          exit 1
+        fi
+        
+        # Extract the version number from the line
+        VERSION_NUMBER=$(echo "$VERSION_LINE" | sed -n "s/.*tool_version: str = ['\"]\\([^'\"]*\\)['\"].*/\\1/p")
+        
+        if [ -z "$VERSION_NUMBER" ]; then
+          echo "ERROR: Could not parse version number from: $VERSION_LINE"
+          echo "Make sure the version format is: tool_version: str = 'x.x.x'"
+          exit 1
+        fi
+        
+        # Validate version format (basic semver check)
+        if ! echo "$VERSION_NUMBER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'; then
+          echo "ERROR: Invalid version format: $VERSION_NUMBER"
+          echo "Expected format: x.x.x or x.x.x-suffix (e.g., 1.2.3 or 1.2.3-beta)"
+          exit 1
+        fi
+        
+        VERSION_TAG="v${VERSION_NUMBER}"
+        
+        echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_OUTPUT
+        echo "VERSION_NUMBER=${VERSION_NUMBER}" >> $GITHUB_OUTPUT
+        echo "Found version: ${VERSION_NUMBER} (tag: ${VERSION_TAG})"
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt --force-reinstall
+        pip install pyinstaller
+    
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller -F -w --clean -i Deimos-logo.ico --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest"
+        echo "Build completed successfully"
+        dir dist
+    
+    - name: Verify required files exist
+      shell: bash
+      run: |
+        echo "Checking for required files..."
+        if [ ! -f "dist/Deimos.exe" ]; then
+          echo "ERROR: Deimos.exe not found in dist folder"
+          exit 1
+        fi
+        if [ ! -f "Deimos-config.ini" ]; then
+          echo "ERROR: Deimos-config.ini not found"
+          exit 1
+        fi
+        if [ ! -f "LICENSE" ]; then
+          echo "ERROR: LICENSE file not found"
+          exit 1
+        fi
+        echo "All required files found ✓"
+        echo "Deimos.exe size: $(stat -c%s dist/Deimos.exe) bytes"
+    
+    - name: Create build package
+      shell: powershell
+      run: |
+        Write-Host "Creating build package..."
+        New-Item -ItemType Directory -Path "release" -Force
+        
+        # Copy files to release directory
+        Copy-Item "dist/Deimos.exe" -Destination "release/"
+        Copy-Item "Deimos-config.ini" -Destination "release/"
+        Copy-Item "LICENSE" -Destination "release/"
+        
+        # Create zip file with version in name using PowerShell
+        $zipName = "Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip"
+        Compress-Archive -Path "release/*" -DestinationPath $zipName -Force
+        
+        Write-Host "Build package created: $zipName"
+        Write-Host "Package contents:"
+        Get-ChildItem "release" | Format-Table Name, Length
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Deimos-${{ steps.version.outputs.VERSION_TAG }}
+        path: Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip
+        retention-days: 90
+
+    - name: Build Summary
+      shell: bash
+      run: |
+        echo "✅ Build ${{ steps.version.outputs.VERSION_TAG }} completed successfully!"
+        echo "📦 Package: Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip"
+        echo "📁 Package size: $(stat -c%s "Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip") bytes"
+        echo "⬇️ Download from Actions artifacts tab"
