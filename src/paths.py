@@ -87,6 +87,17 @@ exit_wysteria_tournament = ['WorldView', 'TournamentRanking', 'exit']
 # Chat Window
 chat_window_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'chatLogContainer', 'chatLogInnerContainer', 'chatLog']
 
+# Chat Channels
+main_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'MainContainer', 'MainFilterButton']
+group_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'GroupContainer', 'GroupFilterButton']
+house_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'HouseContainer', 'HouseFilterButton']
+friend_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'FriendContainer', 'FriendFilterButton']
+channel_one_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'Channel1Container', 'Channel1FilterButton']
+channel_two_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'Channel2Container', 'Channel2FilterButton']
+channel_three_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'Channel3Container', 'Channel3FilterButton']
+guild_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'Channel4Container', 'Channel4FilterButton']
+team_up_chat_channel_path = ['WorldView', 'WizardChatBox', 'chatContainer', 'FilterLayout', 'TeamUpContainer', 'TeamUpFilterButton']
+
 # Popup Message Path
 popup_msgtext_path = ["WorldView", "NPCRangeWin", "imgBackground", "NPCRangeTxtMessage"]
 
@@ -108,6 +119,7 @@ close_real_friend_list_button_path = ['WorldView', 'windowHUD', 'wndFriendsList'
 
 # Teleport Mark Recall Path
 teleport_mark_recall_path = ['WorldView', 'windowHUD', 'compassAndTeleporterButtons', 'RecallButton']
+teleport_mark_recall_timer_path = ['WorldView', 'windowHUD', 'compassAndTeleporterButtons', 'RecallButton', 'txtRecallTimer']
 
 # Dungeon Recall Path
 dungeon_recall_path = ['WorldView', 'windowHUD', 'compassAndTeleporterButtons', 'ResumeInstanceButton']
@@ -173,3 +185,4 @@ energy_amount_path = ['WorldView', 'DeckConfiguration', '', 'ControlSprite', 'wn
 quest_buttons_parent_path = ['WorldView', 'DeckConfiguration', 'wndQuestList']
 quest_two_button_path = ['WorldView', 'DeckConfiguration', 'wndQuestList', 'wndQuestInfo1']
 all_quests_sort_button_path = ['WorldView', 'DeckConfiguration', 'wndQuestList', 'QuestLogAllButton']
+

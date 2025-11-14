@@ -24,7 +24,9 @@ class CommandKind(Enum):
     click = auto()
     tozone = auto()
     load_playstyle = auto()
-    set_yaw = auto()
+    set_yaw = auto() 
+    setdeck = auto()
+    getdeck = auto() 
     select_friend = auto()
     autopet = auto()
     compound = auto()
@@ -33,7 +35,7 @@ class CommandKind(Enum):
     set_zone = auto()
     toggle_combat = auto()
     restart_bot = auto()
-    cursor = auto()
+    cursor = auto() 
 
 class TeleportKind(Enum):
     position = auto()

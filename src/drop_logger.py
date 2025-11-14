@@ -1,7 +1,8 @@
 from wizwalker import Client
 from wizwalker.memory.memory_objects.window import Window
+from wizwalker.memory.memory_object import Primitive
 from src.utils import get_window_from_path, is_visible_by_path
-from src.paths import chat_window_path
+from src.paths import chat_window_path, main_chat_channel_path, group_chat_channel_path, house_chat_channel_path, friend_chat_channel_path, channel_one_chat_channel_path, channel_two_chat_channel_path, channel_three_chat_channel_path, guild_chat_channel_path, team_up_chat_channel_path
 from typing import List
 from loguru import logger
 import re
@@ -26,6 +27,18 @@ drop_types = [
     'Amulet',
 ]
 
+chat_channel_list = [
+    main_chat_channel_path, 
+    group_chat_channel_path, 
+    house_chat_channel_path, 
+    friend_chat_channel_path, 
+    channel_one_chat_channel_path, 
+    channel_two_chat_channel_path, 
+    channel_three_chat_channel_path, 
+    guild_chat_channel_path, 
+    team_up_chat_channel_path
+]
+
 
 async def get_chat(client: Client) -> str:
     # Returns the text directly from the chat window
@@ -40,6 +53,17 @@ async def get_chat(client: Client) -> str:
 
     else:
         return ''
+
+
+async def get_current_active_chat_channel(client: Client) -> List[str]:
+    for window_path in chat_channel_list:
+        if await is_visible_by_path(client, window_path):
+            channel_window = await get_window_from_path(client.root_window, window_path)
+            if channel_window:
+                if await channel_window.read_value_from_offset(872, Primitive.bool): # value for if the channel is active
+                    return window_path
+    
+    return None # this should not happen
 
 
 def filter_drops(input_list: List[str]) -> List[str]:
@@ -93,16 +117,28 @@ def find_new_stuff(old: str, new: str) -> str:
 
 async def logging_loop(client: Client):
     # TODO: Finish this loop and create a system for determining new drops
+    chat_text = await get_chat(client)
+    if chat_text:
+        temp_drops = filter_drops(chat_text.split('\n'))
+        client.latest_drops = '\n'.join(temp_drops)
+    current_channel = await get_current_active_chat_channel(client)
     while True:
         await asyncio.sleep(1)
 
-        chat_text = await get_chat(client)
-        if chat_text:
+        if await is_visible_by_path(client, chat_window_path):
+            chat_text = await get_chat(client)
+            #if chat_text:
             temp_drops = filter_drops(chat_text.split('\n'))
-            new_drops = find_new_stuff(client.latest_drops, '\n'.join(temp_drops))
-            if not client.latest_drops:
+            temp_channel = await get_current_active_chat_channel(client)
+            if current_channel != temp_channel:
+                client.latest_drops = '\n'.join(temp_drops)
+                current_channel = temp_channel
+            else:
+                new_drops = find_new_stuff(client.latest_drops, '\n'.join(temp_drops))
                 client.latest_drops = '\n'.join(temp_drops)
 
-            elif new_drops:
-                client.latest_drops = '\n'.join(temp_drops)
-                [logger.debug(f'{client.title} - New Drop: {drop}') for drop in new_drops.split('\n')[1:]]
+                if new_drops:
+                    new_drops_list = new_drops.split('\n')
+                    if len(new_drops_list) > 1 and not new_drops_list[0]:
+                        new_drops_list.pop(0)
+                    [logger.debug(f'{client.title} - New Drop: {drop}') for drop in new_drops_list]

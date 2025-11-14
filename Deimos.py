@@ -54,7 +54,7 @@ gui.PySimpleGUI.SUPPRESS_RAISE_KEY_ERRORS = True
 
 cMessageBox = ctypes.windll.user32.MessageBoxW
 
-tool_version: str = '3.11.0'
+tool_version: str = '3.12.1'
 tool_name: str = 'Deimos'
 tool_author: str = 'Deimos-Wizard101'
 repo_name: str = tool_name + '-Wizard101'
@@ -1892,7 +1892,6 @@ async def main():
 
 	async def zone_check_loop():
 		zone_blacklist = [
-			'WizardCity-TreasureTower-WC_TT',
 			'Raids',
 			'Battlegrounds'
 		]
@@ -1909,14 +1908,7 @@ async def main():
 			'WizardCity/AZ_Arena',
 			'WizardCity/PA_Arena',
 			'WizardCity/GH_Arena',
-			'WizardCity/LM_Arena',
-			'WizardCity/TreasureTower/WC_TT01_Balance_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Death_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Fire_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Ice_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Life_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Myth_L01',
-    			'WizardCity/TreasureTower/WC_TT01_Storm_L01'
+			'WizardCity/LM_Arena'
 
 		]
 
@@ -1992,23 +1984,43 @@ async def main():
 			logger.debug('Activating hooks for all clients, please be patient...')
 			try:
 				await asyncio.gather(*[p.activate_hooks() for p in walker.clients])
-			except wizwalker.errors.PatternFailed:
-				logger.critical('Error occured in the hooking process. Please restart all Wizard101 clients.')
+			except wizwalker.errors.PatternFailed as e:
+				logger.critical(f"Error occured in the hooking process. {e}")
 
 				clients_check = walker.clients
 				async def refresh_clients(delay: float = 0.5):
 					walker.remove_dead_clients()
 					walker.get_new_clients()
 					await asyncio.sleep(delay)
+				async def gui_task_checker():
+					if gui_task.done():
+						exception = gui_task.exception()
+						match exception:
+							case None:
+								pass
+							case deimosgui.ToolClosedException():
+								logger.info("Tool close triggered by user.")
+							case _:
+								logger.exception(exception)
+						for p in walker.clients:
+							try:
+								p.title = 'Wizard101'
+								await p.close()
+							except:
+								pass
+						quit(0)
 				logger.debug('Waiting for all Wizard101 clients to be closed...')
 				while walker.clients:
+					await gui_task_checker()
 					await refresh_clients()
 					await asyncio.sleep(0.1)
 				logger.debug('Waiting for all previous Wizard101 clients to be reopened...')
 				while not walker.clients:
+					await gui_task_checker()
 					await refresh_clients()
 					await asyncio.sleep(0.1)
 				while len(walker.clients) != len(clients_check):
+					await gui_task_checker()
 					await refresh_clients()
 					await asyncio.sleep(0.1)
 				await hooking_logic()
@@ -2136,7 +2148,7 @@ async def main():
 						pass
 
 	finally:
-		tasks: List[asyncio.Task] = [ban_watcher_task, foreground_client_switching_task, combat_task, assign_foreground_clients_task, dialogue_task, anti_afk_loop_task, sigil_task, questing_task, in_combat_loop_task, questing_leader_combat_detection_task, gui_task, potion_usage_loop_task, rpc_loop_task, drop_logging_loop_task, zone_check_loop_task, anti_afk_questing_loop_task]
+		tasks: List[asyncio.Task] = [ban_watcher_task, foreground_client_switching_task, combat_task, assign_foreground_clients_task, dialogue_task, anti_afk_loop_task, sigil_task, questing_task, in_combat_loop_task, questing_leader_combat_detection_task, gui_task, potion_usage_loop_task, rpc_loop_task, drop_logging_loop_task, zone_check_loop_task, anti_afk_questing_loop_task, speed_task]
 		for task in tasks:
 			if task is not None and not task.cancelled():
 				task.cancel()

@@ -34,6 +34,8 @@ class InstructionKind(Enum):
 
     load_playstyle = auto()
     set_yaw = auto()
+    setdeck = auto()
+    getdeck = auto()
 
     push_stack = auto()
     pop_stack = auto()
@@ -189,6 +191,10 @@ class Compiler:
                 self.emit(InstructionKind.set_yaw, [com.player_selector, com.data[0]])
             case CommandKind.load_playstyle:
                 self.emit(InstructionKind.load_playstyle, com.data[0])
+            case CommandKind.setdeck:
+                self.emit(InstructionKind.setdeck, [com.player_selector, com.data[0]])
+            case CommandKind.getdeck:
+                self.emit(InstructionKind.getdeck, [com.player_selector])
             case _:
                 raise CompilerError(f"Unimplemented command: {com}")
 

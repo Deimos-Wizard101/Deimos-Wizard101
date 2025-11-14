@@ -37,7 +37,7 @@ class SprintyClient():
 
 
 	async def get_base_entities_with_name(self, name: str, excluded_ids: Set[int] = None):
-		return await self.remove_excluded_entities_from(await super().get_base_entities_with_name(name), excluded_ids)
+		return await self.remove_excluded_entities_from(await self.client.get_base_entities_with_name(name), excluded_ids)
 
 
 	async def get_base_entities_with_vague_name(self, name: str, excluded_ids: Set[int] = None) -> List[DynamicClientObject]:
