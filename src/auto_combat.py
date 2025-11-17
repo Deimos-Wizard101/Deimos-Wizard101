@@ -425,7 +425,8 @@ class Sunshine(CombatHandler):
 
                 if SpellEffects.steal_health in effect_types:
                     card_value += 1
-                #attempts to overide spell selection logic    
+                #attempts to overide spell selection logic   
+
                 if await self.will_kill(card): 
                     # card_value += 20
                     logger.debug("Damage Calc Overide")
@@ -456,19 +457,24 @@ class Sunshine(CombatHandler):
     async def will_kill(self, card: CombatCard, enchant: CombatCard = None) -> bool:
 
         kill_counter = 0
+        effect_targets = await read_spell_target(card)
         for target in self.mobs:
             target_health = self.mob_healths[target]
             damage = await self.calculate_damage(target, card, enchant)
             if damage >= target_health:
                 kill_counter = kill_counter + 1
-
-        if self.client.kill_minions_first: # a bool that checks in config if we should kill minions first
-            if kill_counter / len(self.mobs) >= 0.5:
-                return True
+        #aoe damage
+        if any(effects in effect_targets for effects in DAMAGE_AOE_TARGETS):
+            if self.client.kill_minions_first: # a bool that checks in config if we should kill minions first
+                if kill_counter / len(self.mobs) >= 0.5:
+                    return True
+            else:
+                if kill_counter / len(self.mobs) == 1:
+                    return True
         else:
+            #single target damage
             if kill_counter / len(self.mobs) == 1:
-                return True
-    
+                    return True
     async def calculate_damage(self, target: CombatMember, card: CombatCard, enchant: CombatCard = None) -> float:
         """
         Calculates damage from a given card, on a specific target combat member.
