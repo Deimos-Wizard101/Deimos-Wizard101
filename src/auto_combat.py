@@ -12,7 +12,7 @@ from loguru import logger
 from wizwalker import Primitive
 
 from src.deimoslang import parser
-from wizwalker.utils import maybe_wait_for_value_with_timeout, maybe_wait_for_any_value_with_timeout
+from wizwalker.utils import maybe_wait_for_any_value_with_timeout
 # Credits to Major for inspiration 
 school_ids = {0: 2343174, 1: 72777, 2: 83375795, 3: 2448141, 4: 2330892, 5: 78318724, 6: 1027491821, 7: 2625203, 8: 78483, 9: 2504141, 10: 663550619, 11: 1429009101, 12: 1488274711, 13: 1760873841, 14: 806477568, 15: 931528087}
 school_list_ids = {index: i for i, index in school_ids.items()}
