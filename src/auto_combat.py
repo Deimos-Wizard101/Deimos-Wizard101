@@ -463,18 +463,18 @@ class Sunshine(CombatHandler):
             damage = await self.calculate_damage(target, card, enchant)
             if damage >= target_health:
                 kill_counter = kill_counter + 1
-        #aoe damage
-        if any(effects in effect_targets for effects in DAMAGE_AOE_TARGETS):
-            if self.client.kill_minions_first: # a bool that checks in config if we should kill minions first
-                if kill_counter / len(self.mobs) >= 0.5:
-                    return True
-            else:
-                if kill_counter / len(self.mobs) == 1:
-                    return True
+                
+        if not any(effects in effect_targets for effects in DAMAGE_AOE_TARGETS) and kill_counter > 0:
+            kill_counter = 1 # single target hit can only kill one mob at a time
+
+
+        if self.client.kill_minions_first: # a bool that checks in config if we should kill minions first
+            if kill_counter / len(self.mobs) >= 0.5:
+                return True
         else:
-            #single target damage
             if kill_counter / len(self.mobs) == 1:
-                    return True
+                return True
+
     async def calculate_damage(self, target: CombatMember, card: CombatCard, enchant: CombatCard = None) -> float:
         """
         Calculates damage from a given card, on a specific target combat member.
