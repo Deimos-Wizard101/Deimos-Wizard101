@@ -261,6 +261,7 @@ pet_task: asyncio.Task = None
 
 bot_task: asyncio.Task = None
 flythrough_task: asyncio.Task = None
+current_vm = None
 
 def file_len(filepath) -> List[str]:
 	# return the number of lines in a file
@@ -1650,9 +1651,11 @@ async def main():
 							expert_mode = command_data.startswith("###deimos_expertmode")
 							async def run_bot():
 								logger.debug('Started Bot')
+								global current_vm
 								if expert_mode:
 									while True:
 										v = vm.VM(walker.clients)
+										current_vm = v
 										try:
 											v.load_from_text(command_data)
 											v.running = True
@@ -1708,6 +1711,33 @@ async def main():
 							desired_scale = param_input(com.data, 1.0)
 							logger.debug(f'Set Scale to {desired_scale}')
 							await asyncio.gather(*[client.body.write_scale(desired_scale) for client in walker.clients])
+						case deimosgui.GUICommandType.SwapClients:
+							if not walker.clients:
+								logger.info("This GUI option requires hooks to be active, skipping.")
+								continue
+							try:
+								index1, index2 = com.data
+								idx1, idx2 = index1 - 1, index2 - 1
+								# Validate bounds
+								if not (0 <= idx1 < len(walker.clients) and 0 <= idx2 < len(walker.clients)):
+									logger.error(
+										f'Invalid indices: {index1}, {index2}. Only {len(walker.clients)} clients available.')
+									continue
+								# Store titles and swap clients
+								title1, title2 = walker.clients[idx1].title, walker.clients[idx2].title
+								walker.clients[idx1], walker.clients[idx2] = walker.clients[idx2], walker.clients[idx1]
+								walker.clients[idx1].title, walker.clients[idx2].title = title1, title2
+								if current_vm is not None:  # Sync VM state if bot is running
+									current_vm._clients[idx1], current_vm._clients[idx2] = current_vm._clients[idx2], \
+										current_vm._clients[idx1]
+									current_vm._clients[idx1].title, current_vm._clients[idx2].title = title1, title2
+									current_vm._any_player_client = []
+									for data_type in current_vm.logged_data.values():  # Clear logged data for swapped clients
+										for title in (title1, title2):
+											data_type.pop(title, None)
+								await asyncio.sleep(3) # this is here just to prevent from spamming it
+							except Exception as e:
+								logger.error(f'Failed to swap clients: {e}')
 			except queue.Empty:
 				pass
 

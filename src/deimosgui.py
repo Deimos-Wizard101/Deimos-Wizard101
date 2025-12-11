@@ -211,6 +211,8 @@ class GUICommandType(Enum):
     ShowUITreePopup = auto()
     ShowEntityListPopup = auto()
 
+    SwapClients = auto()
+
 # TODO:
 # - inherit from StrEnum in 3.11 to make this nicer
 # - fix naming convention, it's inconsistent
@@ -258,6 +260,7 @@ class GUIKeys:
     button_set_distance = "buttonsetdistance"
     button_view_stats = "buttonviewstats"
     button_swap_members = "buttonswapmembers"
+    button_swap_clients = "buttonswapclients"
 
     button_execute_flythrough = "buttonexecuteflythrough"
     button_kill_flythrough = "buttonkillflythrough"
@@ -363,8 +366,19 @@ def create_gui(gui_theme, gui_text_color, gui_button_color, tool_name, tool_vers
     utils_layout = [
         [copy_zone],
         [copy_pos],
-        [copy_yaw]
+        [copy_yaw],
+
+        # I mean I guess it could be put in advance feature
+        [
+            gui.Text('Clients To Be Swapped:', text_color=gui_text_color),
+            gui.InputText(size=(3, 1), key='SwapIndex1Input'),
+            gui.InputText(size=(3, 1), key='SwapIndex2Input'),
+            hotkey_button('Swap Clients', GUIKeys.button_swap_clients)
+        ]
     ]
+
+
+
 
     framed_utils_layout = gui.Frame(tl('Utils'), utils_layout, title_color=gui_text_color)
 
@@ -825,6 +839,12 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                 ally_input = inputs['AllyInput']
                 window['EnemyInput'].update(ally_input)
                 window['AllyInput'].update(enemy_input)
+
+            case GUIKeys.button_swap_clients:
+                index1 = inputs.get('SwapIndex1Input', '')
+                index2 = inputs.get('SwapIndex2Input', '')
+                if index1 and index2:
+                    send_queue.put(GUICommand(GUICommandType.SwapClients, (int(index1), int(index2))))
 
             # case 'Set Auto Pet World':
             # 	if inputs['PetWorldInput']:
