@@ -1281,6 +1281,7 @@ async def main():
 		gui_thread.daemon = True
 		gui_thread.start()
 		enemy_stats = []
+		last_swap_time = 0
 		while True:
 			if walker.clients and foreground_client:
 				current_zone = await foreground_client.zone_name()
@@ -1712,6 +1713,11 @@ async def main():
 							logger.debug(f'Set Scale to {desired_scale}')
 							await asyncio.gather(*[client.body.write_scale(desired_scale) for client in walker.clients])
 						case deimosgui.GUICommandType.SwapClients:
+							if time.time() - last_swap_time < 3:
+								logger.debug("Swap clients on cooldown, ignoring.")
+								continue
+							last_swap_time = time.time()
+
 							if not walker.clients:
 								logger.info("This GUI option requires hooks to be active, skipping.")
 								continue
@@ -1732,10 +1738,9 @@ async def main():
 										current_vm._clients[idx1]
 									current_vm._clients[idx1].title, current_vm._clients[idx2].title = title1, title2
 									current_vm._any_player_client = []
-									for data_type in current_vm.logged_data.values():  # Clear logged data for swapped clients
+									for data_type in current_vm.logged_data.values():  # Clear logged data for swapped clients,
 										for title in (title1, title2):
 											data_type.pop(title, None)
-								await asyncio.sleep(3) # this is here just to prevent from spamming it
 							except Exception as e:
 								logger.error(f'Failed to swap clients: {e}')
 			except queue.Empty:
