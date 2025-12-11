@@ -368,9 +368,8 @@ def create_gui(gui_theme, gui_text_color, gui_button_color, tool_name, tool_vers
         [copy_pos],
         [copy_yaw],
 
-        # I mean I guess it could be put in advance feature
+        # I mean I guess it could be put in advance features
         [
-            gui.Text('Clients To Be Swapped:', text_color=gui_text_color),
             gui.InputText(size=(3, 1), key='SwapIndex1Input'),
             gui.InputText(size=(3, 1), key='SwapIndex2Input'),
             hotkey_button('Swap Clients', GUIKeys.button_swap_clients)
@@ -841,8 +840,8 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                 window['AllyInput'].update(enemy_input)
 
             case GUIKeys.button_swap_clients:
-                index1 = inputs.get('SwapIndex1Input', '')
-                index2 = inputs.get('SwapIndex2Input', '')
+                index1 = re.sub(r'[^0-9]', '', str(inputs.get('SwapIndex1Input', '')))
+                index2 = re.sub(r'[^0-9]', '', str(inputs.get('SwapIndex2Input', '')))
                 if index1 and index2:
                     send_queue.put(GUICommand(GUICommandType.SwapClients, (int(index1), int(index2))))
 
