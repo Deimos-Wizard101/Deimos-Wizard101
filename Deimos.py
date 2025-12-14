@@ -1959,7 +1959,7 @@ async def main():
 		except:
 			pass
 		cMessageBox(None, "Deimos has encountered a fatal error (Code 0C24). Please contact slackaduts on discord for more info.", "Deimos error", 0x10 | 0x1000)
-		quit(0)
+		sys.exit(0)
 
 
 	async def hooking_logic(default_logic : bool = False):
@@ -2008,7 +2008,7 @@ async def main():
 								await p.close()
 							except:
 								pass
-						quit(0)
+						sys.exit(0)
 				logger.debug('Waiting for all Wizard101 clients to be closed...')
 				while walker.clients:
 					await gui_task_checker()
