@@ -11,17 +11,17 @@ _dance_moves_transtable = str.maketrans("abcd", "WDSA")
 
 # Thanks to peechez for this class
 class DanceGameMovesHook(SimpleHook):
-    pattern = rb"\x48\x8B\xF8\x48\x39\x70\x10"
+    pattern = rb"\x48\x8B\xD8\x48\x39\x70\x10\x76.\x8B\xC6"
     instruction_length = 7
     exports = [("dance_game_moves", 8)]
     noops = 2
 
     async def bytecode_generator(self, packed_exports):
         return (
-                b"\x48\x8B\xF8"
+                b"\x48\x8B\xD8"
                 b"\x48\x8B\x00"
                 b"\x48\xA3" + packed_exports[0][1] +
-                b"\x48\x8B\xC7"
+                b"\x48\x8B\xC3"
                 b"\x48\x39\x70\x10"
         )
 
