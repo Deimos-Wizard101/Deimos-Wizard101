@@ -1280,10 +1280,13 @@ async def main():
 		gui_thread.daemon = True
 		gui_thread.start()
 		enemy_stats = []
+		current_pos = None
+		current_rotation = None
 		while True:
 			if walker.clients and foreground_client:
 				current_zone = await foreground_client.zone_name()
-				try:
+				#try:
+				if current_zone and not await foreground_client.is_loading():
 					if await foreground_client.game_client.is_freecam():
 						camera = await foreground_client.game_client.free_camera_controller()
 						current_pos = await camera.position()
@@ -1310,9 +1313,12 @@ async def main():
 								current_rotation.yaw = trunc(current_rotation.yaw, 3)
 								current_rotation.pitch = trunc(current_rotation.pitch, 3)
 								current_rotation.roll = trunc(current_rotation.roll, 3)
+				else:
+					current_pos: XYZ = XYZ(0, 0, 0)
+					current_rotation: Orient = Orient(0, 0, 0)
 						
-				except wizwalker.errors.MemoryReadError as e:
-					await handle_coord_error(e)
+				#except wizwalker.errors.MemoryReadError as e:
+				#	await handle_coord_error(e)
 					
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Title', f'Client: {foreground_client.title}')))
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Zone', f'Zone: {current_zone}')))
