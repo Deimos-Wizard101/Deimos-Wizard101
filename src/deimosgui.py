@@ -171,7 +171,6 @@ class PsgSink:
     def get_buffer(self):
         return self.buffer
 
-
 class GUICommandType(Enum):
     # deimos <-> window
     Close = auto()
@@ -282,7 +281,7 @@ class GUICommand:
         self.com_type = com_type
         self.data = data
 
-def hotkey_button(name: str, key, auto_size: bool, text_color: str, button_color: str, size=(None, None)):
+def hotkey_button(name: str, key, auto_size: bool, text_color: str, button_color: str, size: tuple[int, int]):
     return gui.Button(name, size=size, auto_size_button=auto_size, button_color=(text_color, button_color), key=key)
 
 def create_gui(gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode):
