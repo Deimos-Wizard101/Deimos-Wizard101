@@ -106,7 +106,7 @@ parser = ConfigParser()
 
 def read_config(config_name : str):
 	parser.read(config_name)
-	
+
 	# Settings
 	# global auto_updating
 	global speed_multiplier
@@ -2116,7 +2116,10 @@ async def main():
 		await asyncio.gather(*[logging_loop(p) for p in walker.clients])
 
 	async def zone_check_loop():
-		zone_blacklist = []
+		zone_blacklist = [
+			'Raids',
+			'Battlegrounds'
+		]
 
 		explicit_zone_blacklist = [
 			'WizardCity/WC_Duel_Arena_New',
@@ -2216,10 +2219,10 @@ async def main():
 			
 			try:
 				await asyncio.gather(*[p.activate_hooks() for p in walker.clients])
-			
+
 			except wizwalker.errors.PatternFailed as e:
 				logger.critical(f"Error occured in the hooking process. {e}")
-			
+
 				clients_check = walker.clients
 				
 				async def refresh_clients(delay: float = 0.5):
@@ -2403,13 +2406,12 @@ async def main():
 
 	finally:
 		tasks: List[asyncio.Task] = [ban_watcher_task, foreground_client_switching_task, combat_task, assign_foreground_clients_task, dialogue_task, anti_afk_loop_task, sigil_task, questing_task, in_combat_loop_task, questing_leader_combat_detection_task, gui_task, potion_usage_loop_task, rpc_loop_task, drop_logging_loop_task, zone_check_loop_task, anti_afk_questing_loop_task, speed_task]
-		
+
 		for task in tasks:
 			if task is not None and not task.cancelled():
 				task.cancel()
-		
-		await tool_finish()
 
+		await tool_finish()
 
 def bool_to_string(input: bool):
 	if input:

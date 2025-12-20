@@ -197,7 +197,6 @@ class GUICommandType(Enum):
 
     AnchorCam = auto()
     SetCamPosition = auto()
-    SetCamToEntity = auto()
     SetCamDistance = auto()
 
     ExecuteFlythrough = auto()
@@ -740,7 +739,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
             case gui.WINDOW_CLOSE_ATTEMPTED_EVENT:
                 send_queue.put(GUICommand(GUICommandType.AttemptedClose))
-            
+
             # Toggles
             case GUIKeys.toggle_speedhack | GUIKeys.toggle_combat | GUIKeys.toggle_dialogue | GUIKeys.toggle_sigil | \
                 GUIKeys.toggle_questing | GUIKeys.toggle_auto_pet | GUIKeys.toggle_auto_potion | GUIKeys.toggle_freecam | \
