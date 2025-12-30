@@ -3,7 +3,7 @@ loguru>=0.7.2
 pyperclip>=1.9.0
 requests>=2.32.3
 git+https://github.com/Deimos-Wizard101/wizwalker@development
-git+https://github.com/Deimos-Wizard101/wizsprinter@lib-update
+git+https://github.com/Deimos-Wizard101/wizsprinter@main
 pypresence>=4.3.0
 pywin32>=306
 pyyaml>=6.0.1
