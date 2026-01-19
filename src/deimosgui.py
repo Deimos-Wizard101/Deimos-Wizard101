@@ -595,7 +595,7 @@ def show_ui_tree_popup(ui_tree_content):
         [gui.Button('Close')]
     ]
     UITreeWindow = gui.Window('UI Tree', layout, finalize=True, icon="..\\Deimos-logo.ico", keep_on_top=True)
-    return (UITreeWindow, ui_tree_list)
+    return (UITreeWindow, ui_tree_list, path_dict)
 
 def show_entity_list_popup(entity_list_content):
     entity_list = entity_list_content.splitlines()
@@ -619,6 +619,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     entity_list = []
     UITreeWindow = None
     ui_tree_list = []
+    path_dict = {}
 
     running = True
 
@@ -650,7 +651,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         console_psg.toggle_show_expanded_logs()
 
                     case GUICommandType.ShowUITreePopup:
-                        UITreeWindow, ui_tree_list = show_ui_tree_popup(com.data)
+                        UITreeWindow, ui_tree_list, path_dict = show_ui_tree_popup(com.data)
 
                     case GUICommandType.ShowEntityListPopup:
                         EntityListWindow, entity_list = show_entity_list_popup(com.data)
@@ -857,6 +858,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                 UITreeWindow.close()
                 UITreeWindow = None
                 ui_tree_list = []
+                path_dict = {}
             elif event == '-SEARCH-':
                 search_term = values['-SEARCH-'].lower()
                 filtered_list = [line for line in ui_tree_list if search_term in line.lower()]
@@ -867,6 +869,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                 UITreeWindow.close()
                 UITreeWindow = None
                 ui_tree_list = []
+                path_dict = {}
                 path_str = str(path)
                 pyperclip.copy(path_str)
 
