@@ -47,7 +47,7 @@ from src import deimosgui
 from src.deimosgui import GUIKeys
 from src.tokenizer import tokenize
 from src.deimoslang import vm
-
+from src.auto_combat import Sunshine
 gui.set_global_icon("..\\Deimos-logo.ico")
 gui.PySimpleGUI.SUPPRESS_ERROR_POPUPS = True
 gui.PySimpleGUI.SUPPRESS_RAISE_KEY_ERRORS = True
@@ -198,9 +198,12 @@ def read_config(config_name : str):
 	global kill_minions_first
 	global automatic_team_based_combat
 	global discard_duplicate_cards
+	global use_old_combat_system
+
 	kill_minions_first = parser.getboolean('combat', 'kill_minions_first', fallback=False)
 	automatic_team_based_combat = parser.getboolean('combat', 'automatic_team_based_combat', fallback=False)
 	discard_duplicate_cards = parser.getboolean('combat', 'discard_duplicate_cards', fallback=True)
+	use_old_combat_system = parser.getboolean('combat', 'use_old_combat_system', fallback=False)
 
 
 	# Auto Pet Settings
@@ -918,10 +921,13 @@ async def main():
 
 					if await client.in_battle():
 						logger.debug(f'Client {client.title} in combat, handling combat.')
-
-						#CONFIG COMBAT
-						battle = SprintyCombat(client, StrCombatConfigProvider(client.combat_config), True)
-						await battle.wait_for_combat()
+						if client.use_old_combat_system == True:
+							# OLD COMBAT
+							await Sunshine(client).wait_for_combat()
+						else:
+							#CONFIG COMBAT
+							battle = SprintyCombat(client, StrCombatConfigProvider(client.combat_config), True)
+							await battle.wait_for_combat()
 
 		await asyncio.gather(*[async_combat(p) for p in walker.clients])
 
@@ -2063,7 +2069,7 @@ async def main():
 		p.automatic_team_based_combat = automatic_team_based_combat
 		p.latest_drops = ''
 		p.combat_config = default_config
-
+		p.use_old_combat_system = use_old_combat_system
 		p.use_potions = use_potions
 		p.buy_potions = buy_potions
 		p.client_to_follow = client_to_follow
