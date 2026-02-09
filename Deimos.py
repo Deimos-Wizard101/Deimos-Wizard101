@@ -33,7 +33,6 @@ from src.questing import Quester
 from src.sigil import Sigil
 from src.utils import index_with_str, is_visible_by_path, is_free, auto_potions, auto_potions_force_buy, to_world, collect_wisps_with_limit, try_task_coro, read_webpage, override_wiz_install_using_handle#, assign_pet_level
 from src.paths import advance_dialog_path, decline_quest_path, play_button_path
-import PySimpleGUI as gui
 import pyperclip
 from src.sprinty_client import SprintyClient
 from src.gui_inputs import param_input, trunc
@@ -47,10 +46,6 @@ from src import deimosgui
 from src.deimosgui import GUIKeys
 from src.tokenizer import tokenize
 from src.deimoslang import vm
-
-gui.set_global_icon("..\\Deimos-logo.ico")
-gui.PySimpleGUI.SUPPRESS_ERROR_POPUPS = True
-gui.PySimpleGUI.SUPPRESS_RAISE_KEY_ERRORS = True
 
 cMessageBox = ctypes.windll.user32.MessageBoxW
 
@@ -164,7 +159,6 @@ def read_config(config_name : str):
 	gui_scale = parser.getfloat('gui', 'scale', fallback=1.0)
 	gui_font = parser.get('gui', 'font', fallback='Bahnschrift')
 	gui_font_size = parser.getint('gui', 'font_size', fallback=14)
-	gui.set_options(scaling=gui_scale, font=(gui_font, gui_font_size))
 	# gui.set_options(scaling=gui_scale, font=('Bahnschrift', gui_font_size))
 
 
@@ -368,10 +362,6 @@ def is_version_greater(version: str, comparison_version: str) -> bool:
 # 	if auto_updating:
 # 		if is_version_greater(latest_version, tool_version):
 # 			run_updater()
-
-
-def hotkey_button(name: str, auto_size: bool = False, text_color: str = gui_text_color, button_color: str = gui_button_color):
-	return gui.Button(name, button_color=(text_color, button_color), auto_size_button=auto_size)
 
 
 async def mass_key_press(foreground_client : Client, background_clients : list[Client], pressed_key_name: str, key, duration : float = 0.1, debug : bool = False):
@@ -1267,18 +1257,15 @@ async def main():
 		global gui_send_queue
 		global bot_task
 		global flythrough_task
-		global gui_thread
 		global gui_send_queue
 		global recv_queue
+		global ws_bridge
 		gui_send_queue = queue.Queue()
 		recv_queue = queue.Queue()
 		# swap queue order because sending from window means receiving from here
-		gui_thread = threading.Thread(
-			target=deimosgui.manage_gui,
-			args=(recv_queue, gui_send_queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, gui_langcode)
-		)
-		gui_thread.daemon = True
-		gui_thread.start()
+		ws_bridge = deimosgui.WebSocketBridge(recv_queue, gui_send_queue)
+		logger.add(ws_bridge.log_sink, colorize=True)
+		asyncio.create_task(ws_bridge.start())
 		enemy_stats = []
 		current_pos = None
 		current_rotation = None

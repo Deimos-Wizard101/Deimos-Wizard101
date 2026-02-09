@@ -11,3 +11,4 @@ dist/
 .secret/*
 .secret
 .secrets
+*.lock
