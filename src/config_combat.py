@@ -13,7 +13,7 @@ from typing import List, Dict, Tuple
 import re
 
 
-default_config = "any<trap & inc_damage>[potent] @ enemy | any<trap & inc_damage & aoe>[potent] | any<blade & out_damage>[sharp] @ self | any<blade & out_damage & aoe>[sharp] | any<global> | any<aura & out_damage> | any<shadow> | any<damage & aoe>[any<mod_damage>] | any<damage>[any<mod_damage>] @ enemy"
+default_config = 'Willcast @ enemy & Willcast @ boss & "Pet - Sharpened Blade" @ spell(any<blade>) & "Sharpened Blade - Amulet" @ spell(any<blade>) & Sharpened @ spell(any<blade>) & Sharpened @ spell(any<blade>) & "Potent Trap - Amulet" @ spell(Feint) & "Potent Trap - Tear" @ spell(Feint) & "Potent Trap - Tear" @ spell(any<trap>) & Potent @ spell(any<trap>) & Potent @ spell(any<trap>) & any<mod_damage> @ spell(any<damage>) & any<mod_damage> @ spell(any<damage>) & "Feint Mass - Amulet" | "Detonate All 200 - Amulet" | any<blade> @ self | any<trap> @ boss | any<trap> @ enemy | any<aura> | any<global> | any<aoe> | any<damage> @ boss | any<damage> @ enemy'
 # "any<damage>[epic] @ enemy | any<damage>[colossal] @ enemy | any<damage>[gargantuan] @ enemy | any<damage>[monstrous] @ enemy | any<damage>[giant] @ enemy | any<damage>[strong] @ enemy"
 
 class StrCombatConfigProvider(CombatConfigProvider):
