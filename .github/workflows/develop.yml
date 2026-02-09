@@ -74,7 +74,7 @@ jobs:
     
     - name: Build with PyInstaller
       run: |
-        pyinstaller -F -w --clean -i Deimos-logo.ico --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest"
+        pyinstaller -F -w --clean -i Deimos-logo.ico --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest" --hidden-import=requests --hidden-import=aiohttp
         echo "Build completed successfully"
         dir dist
     
