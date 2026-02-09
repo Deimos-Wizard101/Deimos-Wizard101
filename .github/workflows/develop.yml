@@ -3,9 +3,9 @@ name: Build Deimos
 on:
   push:
     branches:
-      - dev-main  # Only trigger on dev-main branch pushes
-  
-  # Optional: Allow manual builds
+      - dev-main
+      - new-gui
+
   workflow_dispatch:
 
 jobs:
