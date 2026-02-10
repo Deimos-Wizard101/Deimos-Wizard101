@@ -21,7 +21,6 @@ from .ir import *
 
 from src.drop_logger import get_chat, filter_drops, find_new_stuff
 from src.auto_pet import dancedance
-from src.dance_game_hook import attempt_activate_dance_hook
 from src.utils import is_visible_by_path, is_free, get_window_from_path, refill_potions, refill_potions_if_needed \
                     , logout_and_in, click_window_by_path, get_quest_name
 from src.command_parser import teleport_to_friend_from_list
@@ -1300,7 +1299,6 @@ class VM:
                     try:
                         logger.debug(f"Client {client.title}: Starting pet dance game.")
                         logger.debug(f"Client {client.title}: Activating dance game hook")
-                        await attempt_activate_dance_hook(client)
 
                         await dancedance(client)
                         

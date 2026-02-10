@@ -17,7 +17,6 @@ from wizwalker.memory import ObjectType, Window, WindowFlags
 from wizwalker.combat import CombatMember
 from loguru import logger
 
-from src.dance_game_hook import attempt_deactivate_dance_hook
 from src.paths import *
 from src.sprinty_client import SprintyClient
 import typing
@@ -307,6 +306,15 @@ async def text_from_path(client: Client, path: list[str]) -> str:
     # Returns text from a window via the window path
     window = await get_window_from_path(client.root_window, path)
     return await window.maybe_text()
+
+async def wait_until_path_in_tree(client: Client, path: list[str], timeout: int = 30):
+    start_time = time.monotonic()
+    while not await is_visible_by_path(client, path):
+        await asyncio.sleep(1)
+        if time.monotonic() - start_time > timeout:
+            logger.debug("UI loading timed out.")
+            break
+    return
 
 
 async def wait_for_loading_screen(client: Client):
@@ -1254,7 +1262,6 @@ async def try_task_coro(coro: Coroutine, clients: List[Client], deactive_mousele
     except asyncio.CancelledError:
         for p in clients:
             p.feeding_pet_status = False
-        await asyncio.gather(*[attempt_deactivate_dance_hook(p) for p in clients])
         pass
 
     except wizwalker.errors.MemoryInvalidated | wizwalker.errors.ExceptionalTimeout:

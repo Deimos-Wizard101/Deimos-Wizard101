@@ -1,18 +1,134 @@
 import asyncio
+import time
 import traceback
 from asyncio import CancelledError
 
 from loguru import logger
 from pymem.exception import MemoryReadError
 from wizwalker import HookAlreadyActivated, HookNotActive, HookNotReady, Client, Keycode, XYZ
-from wizwalker.memory import HookHandler, SimpleHook
-
-from src.dance_game_hook import attempt_activate_dance_hook, attempt_deactivate_dance_hook
+from wizwalker.memory import MemoryReader
+import struct
+from typing import List, Optional
 from src.paths import *
 from src.teleport_math import navmap_tp
-from src.utils import navigate_to_ravenwood, click_window_by_path, is_visible_by_path, navigate_to_commons_from_ravenwood, post_keys, get_window_from_path, safe_wait_for_zone_change, LoadingScreenNotFound, FriendBusyOrInstanceClosed, get_popup_title
+from src.utils import navigate_to_ravenwood, click_window_by_path, is_visible_by_path, navigate_to_commons_from_ravenwood, post_keys, get_window_from_path, safe_wait_for_zone_change, LoadingScreenNotFound, FriendBusyOrInstanceClosed, get_popup_title, wait_until_path_in_tree
 
-_dance_moves_transtable = str.maketrans("abcd", "WDSA")
+
+#Full credit to Click for the Constants from Ghidra Analysis
+PETGAMEDANCE_VTABLE_OFFSET = 0x2A425C8
+OFFSET_SERVER_MOVES_START = 0x908      # Pointer to server's move array
+OFFSET_SERVER_MOVES_END = 0x910        # Pointer to end of server's moves
+OFFSET_PLAYER_MOVES_START = 0x928      # Pointer to player's input array
+OFFSET_PLAYER_MOVES_END = 0x930        # Pointer to end of player's inputs
+
+
+DIRECTION_KEYS = {
+    0: Keycode.W,   # Up
+    1: Keycode.D,   # Right
+    2: Keycode.S,   # Down
+    3: Keycode.A,   # Left
+}
+
+async def find_pet_game_dance(client: Client) -> Optional[int]:
+    """
+    Find the PetGameDance object in memory by scanning for its vtable pointer.
+    """
+    reader = MemoryReader(client._pymem)
+    base_address = client._pymem.base_address
+    vtable_addr = base_address + PETGAMEDANCE_VTABLE_OFFSET
+    vtable_bytes = struct.pack("<Q", vtable_addr)
+    try:
+        addresses = await reader.pattern_scan(
+            vtable_bytes,
+            return_multiple=True,
+            module=None
+        )
+
+        if addresses:
+            return addresses[0]
+    except Exception as e:
+        #logger.debug(f"Failed to find PetGameDance: {e}")
+        pass
+    return None
+
+
+async def read_moves_array(client: Client, pet_game_addr: int) -> List[int]:
+    """
+    Read the server's moves array from the PetGameDance object.
+    """
+    pymem = client._pymem
+    try:
+        start_ptr_bytes = pymem.read_bytes(pet_game_addr + OFFSET_SERVER_MOVES_START, 8)
+        end_ptr_bytes = pymem.read_bytes(pet_game_addr + OFFSET_SERVER_MOVES_END, 8)
+
+        start_ptr = struct.unpack("<Q", start_ptr_bytes)[0]
+        end_ptr = struct.unpack("<Q", end_ptr_bytes)[0]
+    except Exception as e:
+        logger.debug(f"Failed to read pointers: {e}")
+        return []
+
+    if start_ptr == 0 or end_ptr == 0 or end_ptr <= start_ptr:
+        return []
+    num_moves = (end_ptr - start_ptr) // 4
+
+    if num_moves > 100 or num_moves <= 0:
+        return []
+    try:
+        moves_bytes = pymem.read_bytes(start_ptr, num_moves * 4)
+        moves = list(struct.unpack(f"<{num_moves}i", moves_bytes))
+    except Exception as e:
+        logger.debug(f"Failed to read moves: {e}")
+        return []
+
+    return moves
+
+
+async def play_dance_game(client, timeout = 120):
+    """
+    PetDanceGame game loop
+    """
+    last_moves = []
+    pet_game_addr = None
+    start_time = time.monotonic()
+    expected_vtable = client._pymem.base_address + PETGAMEDANCE_VTABLE_OFFSET
+    logger.debug(f"Starting PetGameDance for {client.title}")
+    while True:
+        # Timeout guard
+        if time.monotonic() - start_time > timeout:
+            # Client is likely stuck in a loading screen
+            logger.debug("Dance monitor timed out.")
+            break
+
+        try:
+            if pet_game_addr is None:
+                pet_game_addr = await find_pet_game_dance(client)
+                if not pet_game_addr:
+                    await asyncio.sleep(0.5)
+                    continue
+            # Validate object via vtable check
+            try: vtable = struct.unpack( "<Q", client._pymem.read_bytes(pet_game_addr, 8))[0]
+
+            except Exception as e:
+                logger.debug(f"PetGameDance Vtable check failed: {e}")
+
+            # Read moves
+            moves = await read_moves_array(client, pet_game_addr)
+
+            # Send moves
+            if moves and moves != last_moves:
+                await dancedance(client, moves)
+                logger.debug(f"{client.title}: Dance:{len(moves) - 2}/5")
+                last_moves = moves.copy()
+
+            await asyncio.sleep(0.1)
+
+            # Break the loop after 5 dances
+            if len(moves) >= 7:
+                break
+
+        except Exception as e:
+            logger.debug(f"Monitor error: {e}")
+            break
 
 async def navigate_to_pavilion_from_commons(cl: Client):
     # Teleport to pet pavilion door
@@ -33,7 +149,6 @@ async def navigate_to_dance_game(cl: Client):
 
 async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game: bool):
     finished_feeding = False
-    dance_hook_activated = False
 
     while not finished_feeding:
         popup_title = await get_popup_title(client)
@@ -75,11 +190,6 @@ async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game
         # if player has enough energy to play the game
         if total_energy >= energy_cost:
             # if the config forces us to play the dance game or we are unable to skip games yet - and the hook is not already active - activate the hook
-            if (only_play_dance_game or not await is_visible_by_path(client, skip_pet_game_button_path)) and not dance_hook_activated:
-                logger.debug('Client ' + client.title + ': Activating dance game hook.')
-                # dance hook seems to need time to activate fully - without a sleep, it will miss turns in the game
-                await attempt_activate_dance_hook(client, sleep_time=5.0)
-                dance_hook_activated = True
 
 
             # skip game if it is an option and the user's config for always playing the game is off
@@ -168,19 +278,20 @@ async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game
                             await click_window_by_path(client, play_dance_game_button_path)
                         await asyncio.sleep(.1)
 
-                # automatic success method
-                # play the dance game and win it
-                await dancedance(client)
+                # Wait for PetGameDance to load and play it
+                await safe_wait_for_zone_change(client,"ThePhantomZoneWorld/PetGameDance")
+                await play_dance_game(client)
 
-                # if we leveled up from the small amount of XP the pet game gave us, account for it
-                if await is_visible_by_path(client, won_pet_leveled_up_window_path):
-                    await won_game_leveled_up(client, ignore_pet_level_up)
-                # else:
-                # click 'Next'
+                # Click 'Next' to skip badge reward window 
+                await wait_until_path_in_tree(client, won_pet_game_continue_and_feed_button_path)
                 if await is_visible_by_path(client, won_pet_game_continue_and_feed_button_path):
                     async with client.mouse_handler:
                         await click_window_by_path(client, won_pet_game_continue_and_feed_button_path)
                     await asyncio.sleep(1.5)
+
+                # if we leveled up from the small amount of XP the pet game gave us, account for it
+                if await is_visible_by_path(client, won_pet_leveled_up_window_path):
+                    await won_game_leveled_up(client, ignore_pet_level_up)
 
                 # click first snack
                 if await is_visible_by_path(client, won_first_pet_snack_path):
@@ -224,10 +335,6 @@ async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game
                 await click_window_by_path(client, pet_feed_window_cancel_button_path)
             await asyncio.sleep(.2)
 
-    if dance_hook_activated:
-        logger.debug('Client ' + client.title + ': Deactivating dance game hook.')
-        await attempt_deactivate_dance_hook(client)
-
     # home button can in rare cases be greyed out after auto_buy - wait some time to make sure that clients don't get stuck if other code tries to send them home
     # await asyncio.sleep(6.5)
 
@@ -239,22 +346,16 @@ async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game
 
 
 # Thanks to Peechez for this code from wizdancer
-async def dancedance(client: Client):
-    # wait for the dance game text box to appear
+async def dancedance(client, moves):
     while not await is_visible_by_path(client, dance_game_action_textbox_path):
         await asyncio.sleep(.1)
-
     action_window = await get_window_from_path(client.root_window, dance_game_action_textbox_path)
-
-    for _ in range(5):
-        while await action_window.maybe_text() == "<center>Go!":
-            await asyncio.sleep(0.125)
-        while await action_window.maybe_text() != "<center>Go!":
-            await asyncio.sleep(0.125)
-
-        await asyncio.sleep(1.5)
-        await post_keys(client, await client.hook_handler.read_current_dance_game_moves())
-    await asyncio.sleep(3)
+    while await action_window.maybe_text() != "<center>Go!":
+        await asyncio.sleep(0.125)
+    await asyncio.sleep(1.5)
+    for step in moves:
+        keycode = DIRECTION_KEYS[step] 
+        await client.send_key(keycode, 0.1)
 
 
 async def won_game_leveled_up(client: Client, auto_pet_ignore_pet_level_up):
