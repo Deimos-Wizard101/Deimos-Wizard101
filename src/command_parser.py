@@ -115,11 +115,6 @@ async def parse_command(clients: List[Client], command_str: str):
     all_clients = clients.copy()
     command_str = command_str.replace(', ', ',')
 
-    check_strings = ['tozone', 'to_zone', 'waitforzonechange', 'wait_for_zone_change']
-    # remove _ from command_str except for a few commands that it interferes with
-    if not any(substring in command_str for substring in check_strings):
-        command_str = command_str.replace('_', '')
-
     split_command = tokenize(command_str)
 
     if not split_command:
