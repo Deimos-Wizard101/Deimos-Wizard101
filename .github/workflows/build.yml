@@ -33,7 +33,7 @@ jobs:
       run: uv python install
 
     - name: Install dependencies
-      run: uv sync
+      run: uv sync --group dev
 
     - name: Get version from source code
       id: version
@@ -75,7 +75,7 @@ jobs:
     
     - name: Build with PyInstaller
       run: |
-        uv run pyinstaller -F -w --clean -i Deimos-logo.ico --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest"
+        uv run --group dev pyinstaller -F -w --clean -i Deimos-logo.ico --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest"
         echo "Build completed successfully"
         dir dist
     
