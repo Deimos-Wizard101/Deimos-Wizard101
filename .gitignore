@@ -1,8 +1,8 @@
+__pycache__/
 *.pyc
 logs/
 Deimos-Testconfig.ini
 venv
-.venv/
 *.exe
 testbot.txt
 *.spec
@@ -12,6 +12,4 @@ dist/
 .secret/*
 .secret
 .secrets
-node_modules/
-frontend/dist/
-bun.lock
+*.lock
