@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev-main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Set up Python
+      run: uv python install
+
+    - name: Install dependencies
+      run: uv sync
+
+    - name: Build with PyInstaller
+      run: |
+        uv run pyinstaller -F -w --clean -i Deimos-logo.ico --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest"
+
+    - name: Verify build output
+      shell: bash
+      run: |
+        if [ ! -f "dist/Deimos.exe" ]; then
+          echo "Build failed: Deimos.exe not found"
+          exit 1
+        fi
+        echo "Build OK: $(stat -c%s dist/Deimos.exe) bytes"
