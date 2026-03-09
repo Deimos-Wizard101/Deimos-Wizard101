@@ -1,3 +1,4 @@
+__pycache__/
 *.pyc
 logs/
 Deimos-Testconfig.ini
@@ -11,3 +12,4 @@ dist/
 .secret/*
 .secret
 .secrets
+*.lock
