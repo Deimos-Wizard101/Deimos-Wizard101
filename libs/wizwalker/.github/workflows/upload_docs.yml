@@ -1,0 +1,60 @@
+name: upload_docs
+
+# build the documentation whenever there are new commits on main
+on:
+  push:
+    branches:
+      - master
+    # Alternative: only build for tags.
+    # tags:
+    #   - '*'
+
+jobs:
+  # Build the documentation and upload the static HTML files as an artifact.
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up python
+        uses: actions/setup-python@v3
+        with:
+          python-version: 3.8
+
+      - name: Install poetry
+        run: py -3.8 -m pip install poetry
+
+      - name: Install environment
+        run: poetry install
+
+      - name: Build docs
+        run: poetry run pdoc -t pdoc_template -o ./docs/ ./wizwalker/
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: github-pages
+          path: ./docs/
+
+      - name: Clone repo
+        run: git clone https://github.com/StarrFox/wizwalker --branch gh-pages --single-branch gh-pages
+
+      - name: Copy new docs into repo
+        run: xcopy /E /I /Y "docs" "gh-pages"
+        shell: cmd
+
+      - name: Commit changes
+        run: |
+          cd gh-pages
+          git config --local user.email "action@github.com"
+          git config --local user.name = "GitHub Action"
+          git add .
+          git commit -a -m "Update documentation"
+
+      - name: Push changes
+        if: ${{ success() }}
+        uses: ad-m/github-push-action@master
+        with:
+          branch: gh-pages
+          directory: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
