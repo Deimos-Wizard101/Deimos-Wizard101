@@ -12,7 +12,7 @@ dependencies = [
     "wizwalker",
     "wizsprinter",
     "pypresence>=4.3.0",
-    "pywin32>=306",
+    "pywin32>=306; sys_platform == 'win32'",
     "pyyaml>=6.0.1",
     "pysimplegui",
 ]
@@ -21,17 +21,15 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.metadata]
-allow-direct-references = true
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
 
-[tool.uv]
-override-dependencies = [
-    "wizwalker @ git+https://github.com/Deimos-Wizard101/wizwalker@development",
-]
+[tool.uv.workspace]
+members = ["libs/wizwalker", "libs/wizsprinter"]
 
 [tool.uv.sources]
-wizwalker = { git = "https://github.com/Deimos-Wizard101/wizwalker", branch = "development" }
-wizsprinter = { git = "https://github.com/Deimos-Wizard101/wizsprinter", branch = "main" }
+wizwalker = { workspace = true }
+wizsprinter = { workspace = true }
 pysimplegui = { path = "wheels/PySimpleGUI-4.60.5-py3-none-any.whl" }
 
 [dependency-groups]
