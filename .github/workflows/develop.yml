@@ -3,9 +3,9 @@ name: Build Deimos
 on:
   push:
     branches:
-      - dev-main
-      - new-gui
-
+      - dev-main  # Only trigger on dev-main branch pushes
+  
+  # Optional: Allow manual builds
   workflow_dispatch:
 
 jobs:
@@ -61,20 +61,18 @@ jobs:
         echo "VERSION_NUMBER=${VERSION_NUMBER}" >> $GITHUB_OUTPUT
         echo "Found version: ${VERSION_NUMBER} (tag: ${VERSION_TAG})"
     
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
     - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    
+      run: uv python install
+
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt --force-reinstall
-        pip install pyinstaller
-    
+      run: uv sync
+
     - name: Build with PyInstaller
       run: |
-        pyinstaller -F -w --clean -i Deimos-logo.ico --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest" --hidden-import=requests --hidden-import=aiohttp
+        uv run pyinstaller -F -w --clean -i Deimos-logo.ico --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest"
         echo "Build completed successfully"
         dir dist
     
