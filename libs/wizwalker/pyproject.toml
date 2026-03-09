@@ -1,0 +1,24 @@
+[project]
+name = "wizwalker"
+version = "1.8.2"
+description = "Wizard101 scripting library"
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+dependencies = [
+    "loguru>=0.7.2",
+    "aiofiles>=23.2.1",
+    "pymem==1.13.1; sys_platform == 'win32'",
+    "appdirs>=1.4.4",
+    "click>=8.1.7",
+    "click-default-group>=1.2.4",
+    "janus>=1.0.0",
+    "pefile>=2023.2.7",
+    "regex>=2024.5.15",
+]
+
+[project.scripts]
+wizwalker = "wizwalker.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

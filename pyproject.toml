@@ -1,12 +1,20 @@
-[tool.poetry]
-name = "WizSprinter"
-version = "0.5.5"
-description = "A semi-official WizWalker extension"
-authors = ["SirOlaf <sirolaf@protonmail.com>"]
-readme = "README.rst"
-license = "GPL-3.0-or-later"
-packages = [
-    { include = "wizwalker" }
+[project]
+name = "deimos-wizard101"
+version = "3.12.3"
+description = "A Wizard101 automation tool"
+requires-python = ">=3.13"
+license = "GPL-3.0"
+dependencies = [
+    "thefuzz>=0.22.1",
+    "loguru>=0.7.2",
+    "pyperclip>=1.9.0",
+    "requests>=2.32.3",
+    "wizwalker",
+    "wizsprinter",
+    "pypresence>=4.3.0",
+    "pywin32>=306; sys_platform == 'win32'",
+    "pyyaml>=6.0.1",
+    "pysimplegui",
 ]
 
 [tool.poetry.dependencies]
@@ -21,5 +29,21 @@ branch = "development"
 pytest = "^5.2"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.uv.workspace]
+members = ["libs/wizwalker", "libs/wizsprinter"]
+
+[tool.uv.sources]
+wizwalker = { workspace = true }
+wizsprinter = { workspace = true }
+pysimplegui = { path = "wheels/PySimpleGUI-4.60.5-py3-none-any.whl" }
+
+[dependency-groups]
+dev = [
+    "pyinstaller",
+]
