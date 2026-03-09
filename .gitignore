@@ -2,6 +2,7 @@
 logs/
 Deimos-Testconfig.ini
 venv
+.venv/
 *.exe
 testbot.txt
 *.spec
