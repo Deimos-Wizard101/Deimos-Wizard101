@@ -12,3 +12,6 @@ dist/
 .secret/*
 .secret
 .secrets
+node_modules/
+frontend/dist/
+bun.lock
