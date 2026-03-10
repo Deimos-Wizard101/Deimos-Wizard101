@@ -328,7 +328,7 @@ def show_entity_list_popup(entity_list_content):
         dpg.add_button(label="Close", callback=on_close)
 
 
-def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode):
+def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode, gui_scale=1.0):
     if langcode != 'en':
         translate = gettext.translation("messages", "locale", languages=[langcode])
         tl = translate.gettext
@@ -347,7 +347,29 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             pass
 
     dpg.create_context()
-    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=620, height=450, always_on_top=gui_on_top, resizable=False)
+
+    # Apply GUI scale from config (default 1.0, set in Deimos-config.ini under [gui] scale=)
+    _scale = float(gui_scale) if gui_scale else 1.0
+    _vp_width = int(620 * _scale)
+    _vp_height = int(450 * _scale)
+
+    if _scale != 1.0:
+        _font_size = int(13 * _scale)
+        _font_paths = [
+            "C:/Windows/Fonts/segoeui.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/tahoma.ttf",
+        ]
+        for _fp in _font_paths:
+            try:
+                with dpg.font_registry():
+                    _default_font = dpg.add_font(_fp, _font_size)
+                dpg.bind_font(_default_font)
+                break
+            except Exception:
+                continue
+
+    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=_vp_width, height=_vp_height, always_on_top=gui_on_top, resizable=False)
 
     # Theme setup
     with dpg.theme() as global_theme:
@@ -595,43 +617,57 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                     # Tool info panel
                     import webbrowser
                     with dpg.child_window(width=-1, height=230, border=True, tag="tool_info_panel"):
-                        # We'll center items after the first frame using set_item_indent
-                        _info_items_to_center = []
+                        # 3-column table: stretch | content | stretch — forces centering
+                        with dpg.table(header_row=False, borders_innerH=False, borders_outerH=False,
+                                       borders_innerV=False, borders_outerV=False, pad_outerX=False):
+                            dpg.add_table_column(width_stretch=True)
+                            dpg.add_table_column(width_fixed=True)
+                            dpg.add_table_column(width_stretch=True)
 
-                        dpg.add_spacer(height=15)
+                            with dpg.table_row():
+                                dpg.add_spacer()
+                                dpg.add_spacer(height=15)
+                                dpg.add_spacer()
 
-                        try:
-                            _logo_width, _logo_height, _logo_channels, _logo_data = dpg.load_image("Deimos-logo.png")
-                            with dpg.texture_registry():
-                                dpg.add_static_texture(width=_logo_width, height=_logo_height, default_value=_logo_data, tag="logo_texture")
-                            _logo_item = dpg.add_image("logo_texture", tag="logo_image")
-                            _info_items_to_center.append((_logo_item, _logo_width))
-                        except Exception:
-                            _logo_item = dpg.add_text("(logo)")
-                            _info_items_to_center.append((_logo_item, 40))
+                            with dpg.table_row():
+                                dpg.add_spacer()
+                                try:
+                                    _logo_w, _logo_h, _, _logo_data = dpg.load_image("Deimos-logo.png")
+                                    with dpg.texture_registry():
+                                        dpg.add_static_texture(width=_logo_w, height=_logo_h, default_value=_logo_data, tag="logo_texture")
+                                    dpg.add_image("logo_texture", tag="logo_image")
+                                except Exception:
+                                    dpg.add_text("(logo)")
+                                dpg.add_spacer()
 
-                        dpg.add_spacer(height=6)
+                            with dpg.table_row():
+                                dpg.add_spacer()
+                                dpg.add_spacer(height=6)
+                                dpg.add_spacer()
 
-                        _version_text = f"{tool_name} v{tool_version}"
-                        _version_item = dpg.add_text(_version_text)
-                        # Approximate text width: ~7px per char
-                        _info_items_to_center.append((_version_item, len(_version_text) * 7))
+                            with dpg.table_row():
+                                dpg.add_spacer()
+                                dpg.add_text(f"{tool_name} v{tool_version}")
+                                dpg.add_spacer()
 
-                        dpg.add_spacer(height=2)
+                            with dpg.table_row():
+                                dpg.add_spacer()
+                                dpg.add_spacer(height=2)
+                                dpg.add_spacer()
 
-                        def _open_discord(sender, app_data):
-                            webbrowser.open("https://discord.gg/59UrPJwYDm")
-                        _discord_label = "discord.gg/59UrPJwYDm"
-                        dpg.add_button(label=_discord_label, callback=_open_discord, tag="discord_link")
-                        with dpg.theme() as link_theme:
-                            with dpg.theme_component(dpg.mvButton):
-                                dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 0, 0, 0))
-                                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 50, 80, 255))
-                                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (0, 0, 0, 0))
-                                dpg.add_theme_color(dpg.mvThemeCol_Text, (100, 149, 237, 255))
-                        dpg.bind_item_theme("discord_link", link_theme)
-                        # Button is wider due to padding (~16px extra)
-                        _info_items_to_center.append(("discord_link", len(_discord_label) * 7 + 16))
+                            with dpg.table_row():
+                                dpg.add_spacer()
+                                def _open_discord(_s, _a):
+                                    webbrowser.open("https://discord.gg/59UrPJwYDm")
+                                dpg.add_button(label="discord.gg/59UrPJwYDm", callback=_open_discord, tag="discord_link")
+                                with dpg.theme() as link_theme:
+                                    with dpg.theme_component(dpg.mvButton):
+                                        dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 0, 0, 0))
+                                        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 50, 80, 255))
+                                        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (0, 0, 0, 0))
+                                        dpg.add_theme_color(dpg.mvThemeCol_Text, (100, 149, 237, 255))
+                                dpg.bind_item_theme("discord_link", link_theme)
+                                dpg.add_spacer()
 
             # ==================== Camera Tab ====================
             with dpg.tab(label=tl('Camera')):
@@ -836,7 +872,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     dpg.set_primary_window("primary_window", True)
 
     running = True
-    _centered = False
 
     while dpg.is_dearpygui_running() and running:
         # Auto-close license popup after ~5 seconds (300 frames at 60fps)
@@ -844,20 +879,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             license_start_frame[0] = dpg.get_frame_count()
         if dpg.does_item_exist(license_popup_tag) and dpg.get_frame_count() - license_start_frame[0] > 300:
             close_license()
-
-        # Center tool info items after layout settles (frame 10+)
-        if not _centered and dpg.get_frame_count() > 10:
-            _centered = True
-            try:
-                panel_width = dpg.get_item_width("tool_info_panel")
-                if panel_width and panel_width > 0:
-                    # Account for child_window padding (~16px total)
-                    usable = panel_width - 16
-                    for item, item_width in _info_items_to_center:
-                        indent = max(0, (usable - item_width) // 2)
-                        dpg.set_item_indent(item, indent)
-            except Exception:
-                pass
 
         # Process commands from backend
         try:
@@ -903,11 +924,24 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
         dpg.render_dearpygui_frame()
 
-    # User closed the viewport (X button) — signal backend to unhook gracefully
+    # Signal backend about the close
     if not running:
         # Backend told us to close via GUICommandType.Close
         send_queue.put(GUICommand(GUICommandType.Close))
     else:
-        # User closed the window themselves
+        # User closed the window themselves — signal backend to unhook gracefully
         send_queue.put(GUICommand(GUICommandType.AttemptedClose))
+        # Wait for backend to finish unhooking before destroying context
+        import time
+        timeout = 30  # max seconds to wait
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                com = recv_queue.get_nowait()
+                if com.com_type == GUICommandType.Close:
+                    break
+            except queue.Empty:
+                pass
+            time.sleep(0.1)
+
     dpg.destroy_context()

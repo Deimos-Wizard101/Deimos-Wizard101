@@ -1267,7 +1267,7 @@ async def main():
 		# swap queue order because sending from window means receiving from here
 		gui_thread = threading.Thread(
 			target=deimosgui.manage_gui,
-			args=(recv_queue, gui_send_queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, gui_langcode)
+			args=(recv_queue, gui_send_queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, gui_langcode, gui_scale)
 		)
 		gui_thread.daemon = True
 		gui_thread.start()
@@ -2154,6 +2154,11 @@ async def main():
 				task.cancel()
 
 		await tool_finish()
+		# Signal GUI thread that unhooking is done so it can exit cleanly
+		try:
+			gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.Close))
+		except Exception:
+			pass
 
 
 def bool_to_string(input: bool):
