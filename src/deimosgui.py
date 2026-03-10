@@ -551,7 +551,8 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             with dpg.tab(label=tl('Hotkeys')):
                 with dpg.group(horizontal=True):
                     # Toggles frame
-                    with dpg.child_window(width=140, height=-1, border=True):
+                    _hotkey_h = int(230 * _scale)
+                    with dpg.child_window(width=140, height=_hotkey_h, border=True):
                         dpg.add_text(tl('Toggles'))
                         dpg.add_separator()
                         toggles = [
@@ -570,7 +571,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                                 dpg.bind_item_theme(dpg.last_item(), button_theme)
 
                     # Hotkeys + Mass Hotkeys stacked
-                    with dpg.child_window(width=130, height=-1, border=True):
+                    with dpg.child_window(width=130, height=_hotkey_h, border=True):
                         dpg.add_text(tl('Hotkeys'))
                         dpg.add_separator()
                         dpg.add_button(label=tl('Quest TP'), callback=teleport_callback(GUIKeys.hotkey_quest_tp), width=-1)
@@ -591,7 +592,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
                     # Tool info panel — fixed width, content centered via indent
                     import webbrowser
-                    with dpg.child_window(width=-1, height=-1, border=False, tag="tool_info_panel"):
+                    with dpg.child_window(width=-1, height=_hotkey_h, border=False, tag="tool_info_panel"):
                         dpg.add_spacer(height=15)
 
                         _info_center_items = []  # (item_tag, approx_width) — centered in render loop
