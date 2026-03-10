@@ -2,16 +2,15 @@ from enum import Enum, auto
 import gettext
 import queue
 import re
-import os
-import webbrowser
-import tkinter as tk
-import customtkinter as ctk
-from tkinter import filedialog
+import dearpygui.dearpygui as dpg
 import pyperclip
 from src.combat_objects import school_id_to_names
 from src.paths import wizard_city_dance_game_path
-from src.utils import assign_pet_level
+from src.utils import assign_pet_level, get_ui_tree_text
 from threading import Thread
+
+import sys
+import re
 from loguru import logger
 import ctypes
 
@@ -31,25 +30,30 @@ def terminate_thread(thread: Thread):
         ctypes.pythonapi.PyThreadState_SetAsyncExc(thread.ident, None)
         raise SystemError("PyThreadState_SetAsyncExc failed")
 
-
 class ToolClosedException(Exception):
     pass
 
 
-class TkSink:
-    def __init__(self, console_textbox: ctk.CTkTextbox):
-        self.console = console_textbox
+class DpgSink:
+    def __init__(self, console_tag):
+        self.console_tag = console_tag
         self.buffer = []
         self.max_lines = 1000
         self.show_expanded_logs = False
 
         self.level_colors = {
-            "DEBUG": "grey",
-            "INFO": "white",
-            "SUCCESS": "green",
-            "WARNING": "yellow",
-            "ERROR": "red",
-            "CRITICAL": "#ff3333",
+            "DEBUG": (150, 150, 150, 255),
+            "INFO": (255, 255, 255, 255),
+            "SUCCESS": (255, 255, 255, 255),
+            "WARNING": (255, 255, 0, 255),
+            "ERROR": (255, 0, 0, 255),
+            "CRITICAL": (255, 255, 255, 255),
+        }
+
+        # For SUCCESS/CRITICAL we'll just use text color (bg not directly supported in dpg input_text)
+        self.level_special_colors = {
+            "SUCCESS": (0, 255, 0, 255),
+            "CRITICAL": (255, 50, 50, 255),
         }
 
     def copy(self):
@@ -80,21 +84,21 @@ class TkSink:
 
         split_msg = clean_message.split("|")
         if len(split_msg) < 3:
-            for l in self.level_colors:
+            for l, c in self.level_colors.items():
                 if l in clean_message:
                     level = l
                     break
             else:
                 level = "DEBUG"
         else:
-            level = split_msg[1].strip()
+            level = split_msg[1].lstrip().rstrip()
 
-        def collapse_log(input_str: str) -> str:
-            if "-" not in input_str:
-                return input_str
-            split_input = input_str.split("-")
+        def collapse_log(input: str) -> str:
+            if "-" not in input:
+                return input
+            split_input = input.split("-")
             if len(split_input) < 4:
-                return input_str
+                return input
             return split_input[3].lstrip()
 
         truncated_message = level + " - " + collapse_log(clean_message)
@@ -105,28 +109,21 @@ class TkSink:
 
         try:
             message_to_write = clean_message if self.show_expanded_logs else truncated_message
-            color = self.level_colors.get(level, "white")
-            tag_name = f"level_{level}"
-            self.console.configure(state="normal")
-            self.console.insert("end", message_to_write, tag_name)
-            self.console.tag_config(tag_name, foreground=color)
-            self.console.configure(state="disabled")
-            self.console.see("end")
+            current = dpg.get_value(self.console_tag)
+            if current:
+                dpg.set_value(self.console_tag, current + message_to_write)
+            else:
+                dpg.set_value(self.console_tag, message_to_write)
         except Exception:
             pass
 
     def refresh(self):
         try:
-            self.console.configure(state="normal")
-            self.console.delete("1.0", "end")
+            text = ""
             for clean, trunc, level in self.buffer:
                 message_to_write = clean if self.show_expanded_logs else trunc
-                color = self.level_colors.get(level, "white")
-                tag_name = f"level_{level}"
-                self.console.insert("end", message_to_write, tag_name)
-                self.console.tag_config(tag_name, foreground=color)
-            self.console.configure(state="disabled")
-            self.console.see("end")
+                text += message_to_write
+            dpg.set_value(self.console_tag, text)
         except Exception:
             pass
 
@@ -244,22 +241,34 @@ class GUICommand:
         self.data = data
 
 
-def _make_btn(parent, text, command, btn_color="#4a019e", text_color="white", **kwargs):
-    """Helper to create a styled button."""
-    height = kwargs.pop('height', 28)
-    return ctk.CTkButton(parent, text=text, command=command,
-                         fg_color=btn_color, text_color=text_color,
-                         hover_color=_lighten(btn_color), height=height, **kwargs)
+# Tags for widgets we need to read/update
+_TAGS = {}
+
+def _tag(name):
+    """Get or create a dpg tag string."""
+    return name
 
 
-def _lighten(hex_color, amount=30):
-    hex_color = hex_color.lstrip('#')
-    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
-    r, g, b = min(r + amount, 255), min(g + amount, 255), min(b + amount, 255)
-    return f"#{r:02x}{g:02x}{b:02x}"
+def _make_button_callback(send_queue, event_key):
+    """Create a simple callback that sends a GUICommand on button click."""
+    def callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.ToggleOption, event_key))
+    return callback
 
 
-def show_ui_tree_popup(root, ui_tree_content):
+def _make_copy_callback(send_queue, event_key):
+    def callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.Copy, event_key))
+    return callback
+
+
+def _make_teleport_callback(send_queue, event_key):
+    def callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.Teleport, event_key))
+    return callback
+
+
+def show_ui_tree_popup(ui_tree_content):
     ui_tree_list = ui_tree_content.splitlines()
 
     path_dict = {}
@@ -273,7 +282,7 @@ def show_ui_tree_popup(root, ui_tree_content):
         if name_match:
             name = name_match.group(1)
         else:
-            name = clean_line.split()[0] if clean_line.split() else clean_line
+            name = clean_line.split()[0]
 
         while len(path_stack) > indent:
             path_stack.pop()
@@ -284,99 +293,66 @@ def show_ui_tree_popup(root, ui_tree_content):
         path_dict[line] = current_path[1:] if len(current_path) > 1 else current_path
         path_stack.append(name)
 
-    popup = ctk.CTkToplevel(root)
-    popup.title("UI Tree")
-    popup.geometry("700x500")
-    popup.attributes("-topmost", True)
+    popup_tag = "ui_tree_popup"
+    listbox_tag = "ui_tree_listbox"
+    search_tag = "ui_tree_search"
 
-    ctk.CTkLabel(popup, text="Click the path needed to copy it to clipboard.").pack(padx=10, pady=(10, 5))
+    if dpg.does_item_exist(popup_tag):
+        dpg.delete_item(popup_tag)
 
-    search_var = ctk.StringVar()
-    search_entry = ctk.CTkEntry(popup, textvariable=search_var, placeholder_text="Search...")
-    search_entry.pack(fill="x", padx=10, pady=5)
+    def on_search(sender, app_data):
+        search_term = app_data.lower()
+        filtered = [line for line in ui_tree_list if search_term in line.lower()]
+        dpg.configure_item(listbox_tag, items=filtered)
 
-    listbox_frame = ctk.CTkFrame(popup)
-    listbox_frame.pack(fill="both", expand=True, padx=10, pady=5)
-
-    listbox = tk.Listbox(listbox_frame, bg="#2b2b2b", fg="white", selectbackground="#4a019e",
-                         font=("Consolas", 10), borderwidth=0, highlightthickness=0)
-    scrollbar = ctk.CTkScrollbar(listbox_frame, command=listbox.yview)
-    listbox.configure(yscrollcommand=scrollbar.set)
-    listbox.pack(side="left", fill="both", expand=True)
-    scrollbar.pack(side="right", fill="y")
-
-    for item in ui_tree_list:
-        listbox.insert("end", item)
-
-    def on_search(*args):
-        search_term = search_var.get().lower()
-        listbox.delete(0, "end")
-        for item in ui_tree_list:
-            if search_term in item.lower():
-                listbox.insert("end", item)
-
-    search_var.trace_add("write", on_search)
-
-    def on_select(event):
-        selection = listbox.curselection()
-        if selection:
-            selected = listbox.get(selection[0])
-            if selected in path_dict:
-                pyperclip.copy(str(path_dict[selected]))
+    def on_select(sender, app_data):
+        if app_data:
+            selected_line = app_data
+            if selected_line in path_dict:
+                path = path_dict[selected_line]
+                pyperclip.copy(str(path))
             else:
-                pyperclip.copy(selected)
-            popup.destroy()
+                pyperclip.copy(selected_line)
+            dpg.delete_item(popup_tag)
 
-    listbox.bind("<<ListboxSelect>>", on_select)
+    def on_close(sender, app_data):
+        dpg.delete_item(popup_tag)
 
-    ctk.CTkButton(popup, text="Close", command=popup.destroy).pack(padx=10, pady=10)
+    with dpg.window(label="UI Tree", tag=popup_tag, width=700, height=500, on_close=on_close):
+        dpg.add_text("Click the path needed to copy it to clipboard.")
+        dpg.add_input_text(label="Search", tag=search_tag, callback=on_search, on_enter=False)
+        dpg.add_listbox(items=ui_tree_list, tag=listbox_tag, num_items=20, callback=on_select, width=-1)
+        dpg.add_button(label="Close", callback=on_close)
 
 
-def show_entity_list_popup(root, entity_list_content):
+def show_entity_list_popup(entity_list_content):
     entity_list = entity_list_content.splitlines()
 
-    popup = ctk.CTkToplevel(root)
-    popup.title("Entity List")
-    popup.geometry("700x500")
-    popup.attributes("-topmost", True)
+    popup_tag = "entity_list_popup"
+    listbox_tag = "entity_list_listbox"
+    search_tag = "entity_list_search"
 
-    ctk.CTkLabel(popup, text="Click the entity needed to copy the name and location to clipboard.").pack(padx=10, pady=(10, 5))
+    if dpg.does_item_exist(popup_tag):
+        dpg.delete_item(popup_tag)
 
-    search_var = ctk.StringVar()
-    search_entry = ctk.CTkEntry(popup, textvariable=search_var, placeholder_text="Search...")
-    search_entry.pack(fill="x", padx=10, pady=5)
+    def on_search(sender, app_data):
+        search_term = app_data.lower()
+        filtered = [line for line in entity_list if search_term in line.lower()]
+        dpg.configure_item(listbox_tag, items=filtered)
 
-    listbox_frame = ctk.CTkFrame(popup)
-    listbox_frame.pack(fill="both", expand=True, padx=10, pady=5)
+    def on_select(sender, app_data):
+        if app_data:
+            pyperclip.copy(app_data)
+            dpg.delete_item(popup_tag)
 
-    listbox = tk.Listbox(listbox_frame, bg="#2b2b2b", fg="white", selectbackground="#4a019e",
-                         font=("Consolas", 10), borderwidth=0, highlightthickness=0)
-    scrollbar = ctk.CTkScrollbar(listbox_frame, command=listbox.yview)
-    listbox.configure(yscrollcommand=scrollbar.set)
-    listbox.pack(side="left", fill="both", expand=True)
-    scrollbar.pack(side="right", fill="y")
+    def on_close(sender, app_data):
+        dpg.delete_item(popup_tag)
 
-    for item in entity_list:
-        listbox.insert("end", item)
-
-    def on_search(*args):
-        search_term = search_var.get().lower()
-        listbox.delete(0, "end")
-        for item in entity_list:
-            if search_term in item.lower():
-                listbox.insert("end", item)
-
-    search_var.trace_add("write", on_search)
-
-    def on_select(event):
-        selection = listbox.curselection()
-        if selection:
-            pyperclip.copy(listbox.get(selection[0]))
-            popup.destroy()
-
-    listbox.bind("<<ListboxSelect>>", on_select)
-
-    ctk.CTkButton(popup, text="Close", command=popup.destroy).pack(padx=10, pady=10)
+    with dpg.window(label="Entity List", tag=popup_tag, width=700, height=500, on_close=on_close):
+        dpg.add_text("Click the entity needed to copy the name and location to clipboard.")
+        dpg.add_input_text(label="Search", tag=search_tag, callback=on_search, on_enter=False)
+        dpg.add_listbox(items=entity_list, tag=listbox_tag, num_items=20, callback=on_select, width=-1)
+        dpg.add_button(label="Close", callback=on_close)
 
 
 def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode):
@@ -388,529 +364,567 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         gettext.textdomain('messages')
         tl = gettext.gettext
 
-    ctk.set_appearance_mode("dark")
-    ctk.set_default_color_theme("dark-blue")
+    dpg.create_context()
+    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=620, height=450, always_on_top=gui_on_top, resizable=False, decorated=False)
 
-    btn_color = gui_button_color if gui_button_color.startswith('#') else f"#{gui_button_color}"
+    # Theme setup
+    with dpg.theme() as global_theme:
+        with dpg.theme_component(dpg.mvAll):
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 8, 8)
+            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 4)
 
-    root = ctk.CTk()
-    root.title(f"{tool_name} GUI v{tool_version}")
-    root.resizable(False, False)
-    root.attributes("-topmost", gui_on_top)
+    # Button theme
+    _hex = gui_button_color.lstrip('#') if isinstance(gui_button_color, str) else "4a019e"
+    btn_r, btn_g, btn_b = int(_hex[0:2], 16), int(_hex[2:4], 16), int(_hex[4:6], 16)
+    with dpg.theme() as button_theme:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, (btn_r, btn_g, btn_b, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (min(btn_r+30, 255), min(btn_g+30, 255), min(btn_b+30, 255), 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (max(btn_r-20, 0), max(btn_g-20, 0), max(btn_b-20, 0), 255))
 
-    # Set icon
-    icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Deimos-logo.ico")
-    if os.path.exists(icon_path):
-        try:
-            root.iconbitmap(icon_path)
-        except Exception:
-            pass
+    dpg.bind_theme(global_theme)
 
-    # Widget references for updates
-    widgets = {}
-    toggle_vars = {}
+    global console_sink
+    global console_psg
 
-    def btn(parent, text, command, **kwargs):
-        return _make_btn(parent, text, command, btn_color=btn_color, text_color=gui_text_color, **kwargs)
+    # License popup (auto-close after 5 seconds)
+    license_popup_tag = "license_popup"
+    license_start_frame = [0]
 
-    # ===================== Custom Title Bar =====================
-    root.overrideredirect(True)
+    def close_license(sender=None, app_data=None):
+        if dpg.does_item_exist(license_popup_tag):
+            dpg.delete_item(license_popup_tag)
 
-    titlebar = ctk.CTkFrame(root, height=32, corner_radius=0, fg_color="#1e1e1e")
-    titlebar.pack(fill="x", side="top")
-    titlebar.pack_propagate(False)
+    with dpg.window(label=tl('License Agreement'), tag=license_popup_tag, modal=True, no_close=False, on_close=close_license, width=500, height=120):
+        dpg.add_text(tl('Deimos will always be free and open-source.\nBy using Deimos, you agree to the GPL v3 license agreement.\nIf you bought this, you got scammed!'))
+        dpg.add_button(label="OK", callback=close_license)
 
-    # Icon in title bar
-    icon_png_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Deimos-logo.png")
-    if os.path.exists(icon_png_path):
-        try:
-            from PIL import Image
-            title_icon_image = ctk.CTkImage(Image.open(icon_png_path), size=(20, 20))
-            ctk.CTkLabel(titlebar, image=title_icon_image, text="").pack(side="left", padx=(8, 4))
-        except Exception:
-            pass
+    # Callbacks
+    def toggle_callback(event_key):
+        def cb(sender, app_data):
+            send_queue.put(GUICommand(GUICommandType.ToggleOption, event_key))
+        return cb
 
-    ctk.CTkLabel(titlebar, text=f"{tool_name} v{tool_version}", font=("Segoe UI", 12),
-                 text_color="white").pack(side="left", padx=4)
+    def copy_callback(event_key):
+        def cb(sender, app_data):
+            send_queue.put(GUICommand(GUICommandType.Copy, event_key))
+        return cb
 
-    close_btn = ctk.CTkButton(titlebar, text="✕", width=40, height=32, corner_radius=0,
-                               fg_color="transparent", hover_color="#c42b1c", text_color="white",
-                               command=lambda: send_queue.put(GUICommand(GUICommandType.AttemptedClose)))
-    close_btn.pack(side="right")
+    def teleport_callback(event_key):
+        def cb(sender, app_data):
+            send_queue.put(GUICommand(GUICommandType.Teleport, event_key))
+        return cb
 
-    # Title bar dragging
-    _drag = {"x": 0, "y": 0}
-    def start_drag(e):
-        _drag["x"] = e.x
-        _drag["y"] = e.y
-    def do_drag(e):
-        x = root.winfo_x() + e.x - _drag["x"]
-        y = root.winfo_y() + e.y - _drag["y"]
-        root.geometry(f"+{x}+{y}")
-    titlebar.bind("<Button-1>", start_drag)
-    titlebar.bind("<B1-Motion>", do_drag)
+    def custom_tp_callback(sender, app_data):
+        tp_inputs = [dpg.get_value('XInput'), dpg.get_value('YInput'), dpg.get_value('ZInput'), dpg.get_value('YawInput')]
+        if any(tp_inputs):
+            send_queue.put(GUICommand(GUICommandType.CustomTeleport, {
+                'X': tp_inputs[0], 'Y': tp_inputs[1], 'Z': tp_inputs[2], 'Yaw': tp_inputs[3],
+            }))
 
-    # ===================== Disclaimer =====================
-    disclaimer_frame = ctk.CTkFrame(root, fg_color="transparent")
-    disclaimer_frame.pack(fill="x", padx=10, pady=(4, 0))
-    ctk.CTkLabel(disclaimer_frame,
-                 text=tl('Deimos will always be a free tool. If you paid for this, you got scammed!'),
-                 font=("Segoe UI", 11)).pack(anchor="w")
+    def entity_tp_callback(sender, app_data):
+        val = dpg.get_value('EntityTPInput')
+        if val:
+            send_queue.put(GUICommand(GUICommandType.EntityTeleport, val))
 
-    # ===================== Tab View =====================
-    tabview = ctk.CTkTabview(root, height=260)
-    tabview.pack(fill="both", expand=True, padx=10, pady=(0, 5))
+    def xyz_sync_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.XYZSync))
 
-    tab_hotkeys = tabview.add(tl('Hotkeys'))
-    tab_camera = tabview.add(tl('Camera'))
-    tab_dev = tabview.add(tl('Dev Utils'))
-    tab_stats = tabview.add(tl('Stats'))
-    tab_flythrough = tabview.add(tl('Flythrough'))
-    tab_bot = tabview.add(tl('Bot'))
-    tab_combat = tabview.add(tl('Combat'))
-    tab_misc = tabview.add(tl('Misc'))
-    tab_console = tabview.add(tl('Console'))
+    def x_press_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.XPress))
 
-    # ==================== Hotkeys Tab ====================
-    hotkeys_left = ctk.CTkFrame(tab_hotkeys)
-    hotkeys_left.pack(side="left", fill="y", padx=(0, 5))
+    def anchor_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.AnchorCam, dpg.get_value('CamEntityInput')))
 
-    # Toggles
-    toggles_frame = ctk.CTkFrame(hotkeys_left)
-    toggles_frame.pack(fill="x", pady=(0, 5))
-    ctk.CTkLabel(toggles_frame, text=tl('Toggles'), font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=5)
+    def set_cam_pos_callback(sender, app_data):
+        inputs = [dpg.get_value('CamXInput'), dpg.get_value('CamYInput'), dpg.get_value('CamZInput'),
+                  dpg.get_value('CamYawInput'), dpg.get_value('CamRollInput'), dpg.get_value('CamPitchInput')]
+        if any(inputs):
+            send_queue.put(GUICommand(GUICommandType.SetCamPosition, {
+                'X': inputs[0], 'Y': inputs[1], 'Z': inputs[2],
+                'Yaw': inputs[3], 'Roll': inputs[4], 'Pitch': inputs[5],
+            }))
 
-    toggles = [
-        (tl('Speedhack'), GUIKeys.toggle_speedhack),
-        (tl('Combat'), GUIKeys.toggle_combat),
-        (tl('Dialogue'), GUIKeys.toggle_dialogue),
-        (tl('Sigil'), GUIKeys.toggle_sigil),
-        (tl('Questing'), GUIKeys.toggle_questing),
-        (tl('Auto Pet'), GUIKeys.toggle_auto_pet),
-        (tl('Auto Potion'), GUIKeys.toggle_auto_potion),
-    ]
+    def set_distance_callback(sender, app_data):
+        inputs = [dpg.get_value('CamDistanceInput'), dpg.get_value('CamMinInput'), dpg.get_value('CamMaxInput')]
+        if any(inputs):
+            send_queue.put(GUICommand(GUICommandType.SetCamDistance, {
+                "Distance": inputs[0], "Min": inputs[1], "Max": inputs[2],
+            }))
 
-    for name, key in toggles:
-        row = ctk.CTkFrame(toggles_frame, fg_color="transparent")
-        row.pack(fill="x", padx=5, pady=1)
-        var = tk.BooleanVar(value=False)
-        toggle_vars[f'{name}Status'] = var
-        cb = ctk.CTkCheckBox(row, text="", variable=var, width=20, state="disabled",
-                             checkbox_width=18, checkbox_height=18)
-        cb.pack(side="left")
-        btn(row, name, lambda k=key: send_queue.put(GUICommand(GUICommandType.ToggleOption, k)),
-            width=90).pack(side="left", padx=(4, 0))
+    def go_to_zone_callback(sender, app_data):
+        val = dpg.get_value('ZoneInput')
+        if val:
+            send_queue.put(GUICommand(GUICommandType.GoToZone, (False, str(val))))
 
-    # Hotkeys + Mass Hotkeys
-    hotkeys_mid = ctk.CTkFrame(tab_hotkeys)
-    hotkeys_mid.pack(side="left", fill="y", padx=(0, 5))
+    def mass_go_to_zone_callback(sender, app_data):
+        val = dpg.get_value('ZoneInput')
+        if val:
+            send_queue.put(GUICommand(GUICommandType.GoToZone, (True, str(val))))
 
-    hk_frame = ctk.CTkFrame(hotkeys_mid)
-    hk_frame.pack(fill="x", pady=(0, 5))
-    ctk.CTkLabel(hk_frame, text=tl('Hotkeys'), font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=5)
-    btn(hk_frame, tl('Quest TP'), lambda: send_queue.put(GUICommand(GUICommandType.Teleport, GUIKeys.hotkey_quest_tp)),
-        width=110).pack(padx=5, pady=1)
-    btn(hk_frame, tl('Freecam'), lambda: send_queue.put(GUICommand(GUICommandType.ToggleOption, GUIKeys.toggle_freecam)),
-        width=110).pack(padx=5, pady=1)
-    btn(hk_frame, tl('Freecam TP'), lambda: send_queue.put(GUICommand(GUICommandType.Teleport, GUIKeys.hotkey_freecam_tp)),
-        width=110).pack(padx=5, pady=1)
+    def go_to_world_callback(sender, app_data):
+        val = dpg.get_value('WorldInput')
+        if val:
+            send_queue.put(GUICommand(GUICommandType.GoToWorld, (False, val)))
 
-    mhk_frame = ctk.CTkFrame(hotkeys_mid)
-    mhk_frame.pack(fill="x", pady=(5, 0))
-    ctk.CTkLabel(mhk_frame, text=tl('Mass Hotkeys'), font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=5)
-    btn(mhk_frame, tl('Mass TP'), lambda: send_queue.put(GUICommand(GUICommandType.Teleport, GUIKeys.mass_hotkey_mass_tp)),
-        width=110).pack(padx=5, pady=1)
-    btn(mhk_frame, tl('XYZ Sync'), lambda: send_queue.put(GUICommand(GUICommandType.XYZSync)),
-        width=110).pack(padx=5, pady=1)
-    btn(mhk_frame, tl('X Press'), lambda: send_queue.put(GUICommand(GUICommandType.XPress)),
-        width=110).pack(padx=5, pady=1)
+    def mass_go_to_world_callback(sender, app_data):
+        val = dpg.get_value('WorldInput')
+        if val:
+            send_queue.put(GUICommand(GUICommandType.GoToWorld, (True, val)))
 
-    # Tool Info Panel
-    info_frame = ctk.CTkFrame(tab_hotkeys)
-    info_frame.pack(side="left", fill="both", expand=True, padx=(0, 0))
+    def go_to_bazaar_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.GoToBazaar, False))
 
-    # Logo
-    logo_png = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Deimos-logo.png")
-    if os.path.exists(logo_png):
-        try:
-            from PIL import Image
-            logo_image = ctk.CTkImage(Image.open(logo_png), size=(64, 64))
-            ctk.CTkLabel(info_frame, image=logo_image, text="").pack(pady=(20, 5))
-        except Exception:
-            pass
+    def mass_go_to_bazaar_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.GoToBazaar, True))
 
-    ctk.CTkLabel(info_frame, text=f"{tool_name} v{tool_version}",
-                 font=("Segoe UI", 14, "bold")).pack(pady=(5, 2))
+    def refill_potions_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.RefillPotions, False))
 
-    discord_btn = ctk.CTkButton(info_frame, text="Discord: discord.gg/JHrdCNK",
-                                 fg_color="transparent", hover_color="#333355",
-                                 text_color="#6495ED", font=("Segoe UI", 12, "underline"),
-                                 command=lambda: webbrowser.open("https://discord.gg/JHrdCNK"))
-    discord_btn.pack(pady=2)
+    def mass_refill_potions_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.RefillPotions, True))
 
-    # ==================== Camera Tab ====================
-    dev_notice = tl('The utils below are for advanced users and no support will be given on them.')
-    ctk.CTkLabel(tab_camera, text=dev_notice, wraplength=550).pack(anchor="w", padx=5, pady=(5, 2))
+    def execute_flythrough_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.ExecuteFlythrough, dpg.get_value('flythrough_creator')))
 
-    cam_row1 = ctk.CTkFrame(tab_camera, fg_color="transparent")
-    cam_row1.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(cam_row1, text="X:").pack(side="left")
-    widgets['CamXInput'] = ctk.CTkEntry(cam_row1, width=70)
-    widgets['CamXInput'].pack(side="left", padx=2)
-    ctk.CTkLabel(cam_row1, text="Y:").pack(side="left")
-    widgets['CamYInput'] = ctk.CTkEntry(cam_row1, width=70)
-    widgets['CamYInput'].pack(side="left", padx=2)
-    ctk.CTkLabel(cam_row1, text="Z:").pack(side="left")
-    widgets['CamZInput'] = ctk.CTkEntry(cam_row1, width=70)
-    widgets['CamZInput'].pack(side="left", padx=2)
-    btn(cam_row1, tl('Set Camera Position'),
-        lambda: send_queue.put(GUICommand(GUICommandType.SetCamPosition, {
-            'X': widgets['CamXInput'].get(), 'Y': widgets['CamYInput'].get(), 'Z': widgets['CamZInput'].get(),
-            'Yaw': widgets['CamYawInput'].get(), 'Roll': widgets['CamRollInput'].get(), 'Pitch': widgets['CamPitchInput'].get(),
-        }))).pack(side="left", padx=2)
+    def kill_flythrough_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.KillFlythrough))
 
-    cam_row2 = ctk.CTkFrame(tab_camera, fg_color="transparent")
-    cam_row2.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(cam_row2, text=tl('Yaw') + ':').pack(side="left")
-    widgets['CamYawInput'] = ctk.CTkEntry(cam_row2, width=70)
-    widgets['CamYawInput'].pack(side="left", padx=2)
-    ctk.CTkLabel(cam_row2, text=tl('Roll') + ':').pack(side="left")
-    widgets['CamRollInput'] = ctk.CTkEntry(cam_row2, width=70)
-    widgets['CamRollInput'].pack(side="left", padx=2)
-    ctk.CTkLabel(cam_row2, text=tl('Pitch') + ':').pack(side="left")
-    widgets['CamPitchInput'] = ctk.CTkEntry(cam_row2, width=70)
-    widgets['CamPitchInput'].pack(side="left", padx=2)
+    def run_bot_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.ExecuteBot, dpg.get_value('bot_creator')))
 
-    cam_row3 = ctk.CTkFrame(tab_camera, fg_color="transparent")
-    cam_row3.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(cam_row3, text=tl('Entity') + ':').pack(side="left")
-    widgets['CamEntityInput'] = ctk.CTkEntry(cam_row3, width=140)
-    widgets['CamEntityInput'].pack(side="left", padx=2)
-    btn(cam_row3, tl('Anchor'),
-        lambda: send_queue.put(GUICommand(GUICommandType.AnchorCam, widgets['CamEntityInput'].get()))).pack(side="left", padx=2)
-    btn(cam_row3, tl('Toggle Cam Collision'),
-        lambda: send_queue.put(GUICommand(GUICommandType.ToggleOption, GUIKeys.toggle_camera_collision))).pack(side="left", padx=2)
+    def kill_bot_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.KillBot))
 
-    cam_row4 = ctk.CTkFrame(tab_camera, fg_color="transparent")
-    cam_row4.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(cam_row4, text=tl('Distance') + ':').pack(side="left")
-    widgets['CamDistanceInput'] = ctk.CTkEntry(cam_row4, width=70)
-    widgets['CamDistanceInput'].pack(side="left", padx=2)
-    ctk.CTkLabel(cam_row4, text=tl('Min') + ':').pack(side="left")
-    widgets['CamMinInput'] = ctk.CTkEntry(cam_row4, width=70)
-    widgets['CamMinInput'].pack(side="left", padx=2)
-    ctk.CTkLabel(cam_row4, text=tl('Max') + ':').pack(side="left")
-    widgets['CamMaxInput'] = ctk.CTkEntry(cam_row4, width=70)
-    widgets['CamMaxInput'].pack(side="left", padx=2)
-    btn(cam_row4, tl('Set Distance'),
-        lambda: send_queue.put(GUICommand(GUICommandType.SetCamDistance, {
-            "Distance": widgets['CamDistanceInput'].get(), "Min": widgets['CamMinInput'].get(), "Max": widgets['CamMaxInput'].get(),
-        }))).pack(side="left", padx=2)
+    def set_playstyles_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.SetPlaystyles, dpg.get_value('combat_config')))
 
-    cam_row5 = ctk.CTkFrame(tab_camera, fg_color="transparent")
-    cam_row5.pack(fill="x", padx=5, pady=2)
-    btn(cam_row5, tl('Copy Camera Position'),
-        lambda: send_queue.put(GUICommand(GUICommandType.Copy, GUIKeys.copy_camera_position))).pack(side="left", padx=2)
-    btn(cam_row5, tl('Copy Camera Rotation'),
-        lambda: send_queue.put(GUICommand(GUICommandType.Copy, GUIKeys.copy_camera_rotation))).pack(side="left", padx=2)
+    def set_scale_callback(sender, app_data):
+        send_queue.put(GUICommand(GUICommandType.SetScale, dpg.get_value('scale')))
 
-    # ==================== Dev Utils Tab ====================
-    ctk.CTkLabel(tab_dev, text=dev_notice, wraplength=550).pack(anchor="w", padx=5, pady=(5, 2))
-
-    # TP Utils
-    ctk.CTkLabel(tab_dev, text=tl('TP Utils'), font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=5)
-    tp_row1 = ctk.CTkFrame(tab_dev, fg_color="transparent")
-    tp_row1.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(tp_row1, text="X:").pack(side="left")
-    widgets['XInput'] = ctk.CTkEntry(tp_row1, width=55)
-    widgets['XInput'].pack(side="left", padx=2)
-    ctk.CTkLabel(tp_row1, text="Y:").pack(side="left")
-    widgets['YInput'] = ctk.CTkEntry(tp_row1, width=55)
-    widgets['YInput'].pack(side="left", padx=2)
-    ctk.CTkLabel(tp_row1, text="Z:").pack(side="left")
-    widgets['ZInput'] = ctk.CTkEntry(tp_row1, width=55)
-    widgets['ZInput'].pack(side="left", padx=2)
-    ctk.CTkLabel(tp_row1, text=tl('Yaw') + ':').pack(side="left")
-    widgets['YawInput'] = ctk.CTkEntry(tp_row1, width=55)
-    widgets['YawInput'].pack(side="left", padx=2)
-    btn(tp_row1, tl('Custom TP'), lambda: send_queue.put(GUICommand(GUICommandType.CustomTeleport, {
-        'X': widgets['XInput'].get(), 'Y': widgets['YInput'].get(),
-        'Z': widgets['ZInput'].get(), 'Yaw': widgets['YawInput'].get(),
-    }))).pack(side="left", padx=2)
-
-    tp_row2 = ctk.CTkFrame(tab_dev, fg_color="transparent")
-    tp_row2.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(tp_row2, text=tl('Entity Name') + ':').pack(side="left")
-    widgets['EntityTPInput'] = ctk.CTkEntry(tp_row2, width=220)
-    widgets['EntityTPInput'].pack(side="left", padx=2)
-    btn(tp_row2, tl('Entity TP'), lambda: send_queue.put(GUICommand(GUICommandType.EntityTeleport, widgets['EntityTPInput'].get())) if widgets['EntityTPInput'].get() else None).pack(side="left", padx=2)
-
-    # Dev Utils section
-    ctk.CTkLabel(tab_dev, text=tl('Dev Utils'), font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=5, pady=(5, 0))
-    dev_row1 = ctk.CTkFrame(tab_dev, fg_color="transparent")
-    dev_row1.pack(fill="x", padx=5, pady=2)
-    btn(dev_row1, tl('Available Entities'), lambda: send_queue.put(GUICommand(GUICommandType.Copy, GUIKeys.copy_entity_list))).pack(side="left", padx=2)
-    btn(dev_row1, tl('Available Paths'), lambda: send_queue.put(GUICommand(GUICommandType.Copy, GUIKeys.copy_ui_tree))).pack(side="left", padx=2)
-
-    dev_row2 = ctk.CTkFrame(tab_dev, fg_color="transparent")
-    dev_row2.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(dev_row2, text=tl('Zone Name') + ':').pack(side="left")
-    widgets['ZoneInput'] = ctk.CTkEntry(dev_row2, width=120)
-    widgets['ZoneInput'].pack(side="left", padx=2)
-    btn(dev_row2, tl('Go To Zone'), lambda: send_queue.put(GUICommand(GUICommandType.GoToZone, (False, widgets['ZoneInput'].get()))) if widgets['ZoneInput'].get() else None).pack(side="left", padx=2)
-    btn(dev_row2, tl('Mass Go To Zone'), lambda: send_queue.put(GUICommand(GUICommandType.GoToZone, (True, widgets['ZoneInput'].get()))) if widgets['ZoneInput'].get() else None).pack(side="left", padx=2)
-
-    worlds = ['WizardCity', 'Krokotopia', 'Marleybone', 'MooShu', 'DragonSpire', 'Grizzleheim', 'Celestia', 'Wysteria', 'Zafaria', 'Avalon', 'Azteca', 'Khrysalis', 'Polaris', 'Mirage', 'Empyrea', 'Karamelle', 'Lemuria']
-    dev_row3 = ctk.CTkFrame(tab_dev, fg_color="transparent")
-    dev_row3.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(dev_row3, text=tl('World Name') + ':').pack(side="left")
-    widgets['WorldInput'] = ctk.CTkComboBox(dev_row3, values=worlds, width=120, state="readonly")
-    widgets['WorldInput'].set('WizardCity')
-    widgets['WorldInput'].pack(side="left", padx=2)
-    btn(dev_row3, tl('Go To World'), lambda: send_queue.put(GUICommand(GUICommandType.GoToWorld, (False, widgets['WorldInput'].get())))).pack(side="left", padx=2)
-    btn(dev_row3, tl('Mass Go To World'), lambda: send_queue.put(GUICommand(GUICommandType.GoToWorld, (True, widgets['WorldInput'].get())))).pack(side="left", padx=2)
-
-    dev_row4 = ctk.CTkFrame(tab_dev, fg_color="transparent")
-    dev_row4.pack(fill="x", padx=5, pady=2)
-    btn(dev_row4, tl('Go To Bazaar'), lambda: send_queue.put(GUICommand(GUICommandType.GoToBazaar, False))).pack(side="left", padx=2)
-    btn(dev_row4, tl('Mass Go To Bazaar'), lambda: send_queue.put(GUICommand(GUICommandType.GoToBazaar, True))).pack(side="left", padx=2)
-    btn(dev_row4, tl('Refill Potions'), lambda: send_queue.put(GUICommand(GUICommandType.RefillPotions, False))).pack(side="left", padx=2)
-    btn(dev_row4, tl('Mass Refill Potions'), lambda: send_queue.put(GUICommand(GUICommandType.RefillPotions, True))).pack(side="left", padx=2)
-
-    # ==================== Stats Tab ====================
-    ctk.CTkLabel(tab_stats, text=dev_notice, wraplength=550).pack(anchor="w", padx=5, pady=(5, 2))
-
-    indices = [str(i + 1) for i in range(12)]
-    stat_row1 = ctk.CTkFrame(tab_stats, fg_color="transparent")
-    stat_row1.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(stat_row1, text=tl('Caster/Target') + ':').pack(side="left")
-    widgets['EnemyInput'] = ctk.CTkComboBox(stat_row1, values=indices, width=80, state="readonly")
-    widgets['EnemyInput'].set('1')
-    widgets['EnemyInput'].pack(side="left", padx=2)
-    widgets['AllyInput'] = ctk.CTkComboBox(stat_row1, values=indices, width=80, state="readonly")
-    widgets['AllyInput'].set('1')
-    widgets['AllyInput'].pack(side="left", padx=2)
-
-    schools = ['Fire', 'Ice', 'Storm', 'Myth', 'Life', 'Death', 'Balance', 'Star', 'Sun', 'Moon', 'Shadow']
-    stat_row2 = ctk.CTkFrame(tab_stats, fg_color="transparent")
-    stat_row2.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(stat_row2, text=tl('Dmg') + ':').pack(side="left")
-    widgets['DamageInput'] = ctk.CTkEntry(stat_row2, width=55)
-    widgets['DamageInput'].pack(side="left", padx=2)
-    ctk.CTkLabel(stat_row2, text=tl('School') + ':').pack(side="left")
-    widgets['SchoolInput'] = ctk.CTkComboBox(stat_row2, values=schools, width=80, state="readonly")
-    widgets['SchoolInput'].set('Fire')
-    widgets['SchoolInput'].pack(side="left", padx=2)
-    ctk.CTkLabel(stat_row2, text=tl('Crit') + ':').pack(side="left")
-    widgets['CritStatus'] = ctk.CTkCheckBox(stat_row2, text="", width=20, checkbox_width=18, checkbox_height=18)
-    widgets['CritStatus'].select()
-    widgets['CritStatus'].pack(side="left", padx=2)
-
-    def view_stats_cmd():
-        enemy_index = re.sub(r'[^0-9]', '', str(widgets['EnemyInput'].get()))
-        ally_index = re.sub(r'[^0-9]', '', str(widgets['AllyInput'].get()))
-        base_damage = re.sub(r'[^0-9]', '', str(widgets['DamageInput'].get()))
-        school_id = school_id_to_names[widgets['SchoolInput'].get()]
+    def view_stats_callback(sender, app_data):
+        enemy_index = re.sub(r'[^0-9]', '', str(dpg.get_value('EnemyInput')))
+        ally_index = re.sub(r'[^0-9]', '', str(dpg.get_value('AllyInput')))
+        base_damage = re.sub(r'[^0-9]', '', str(dpg.get_value('DamageInput')))
+        school_id: int = school_id_to_names[dpg.get_value('SchoolInput')]
         send_queue.put(GUICommand(GUICommandType.SelectEnemy, (
             int(enemy_index) if enemy_index else 1,
             int(ally_index) if ally_index else 1,
             base_damage, school_id,
-            bool(widgets['CritStatus'].get()),
-            bool(widgets['ForceSchoolStatus'].get())
+            dpg.get_value('CritStatus'),
+            dpg.get_value('ForceSchoolStatus')
         )))
 
-    btn(stat_row2, tl('View Stats'), view_stats_cmd).pack(side="left", padx=2)
-    btn(stat_row2, tl('Copy Stats'), lambda: send_queue.put(GUICommand(GUICommandType.Copy, GUIKeys.copy_stats))).pack(side="left", padx=2)
+    def swap_members_callback(sender, app_data):
+        enemy_val = dpg.get_value('EnemyInput')
+        ally_val = dpg.get_value('AllyInput')
+        dpg.set_value('EnemyInput', ally_val)
+        dpg.set_value('AllyInput', enemy_val)
 
-    widgets['stat_viewer'] = ctk.CTkTextbox(tab_stats, height=100, state="disabled")
-    widgets['stat_viewer'].pack(fill="both", expand=True, padx=5, pady=2)
-    widgets['stat_viewer'].configure(state="normal")
-    widgets['stat_viewer'].insert("1.0", tl('No client has been selected.'))
-    widgets['stat_viewer'].configure(state="disabled")
+    def pet_world_callback(sender, app_data):
+        if app_data != wizard_city_dance_game_path[-1]:
+            assign_pet_level(app_data)
 
-    stat_row3 = ctk.CTkFrame(tab_stats, fg_color="transparent")
-    stat_row3.pack(fill="x", padx=5, pady=2)
-    def swap_members():
-        e = widgets['EnemyInput'].get()
-        a = widgets['AllyInput'].get()
-        widgets['EnemyInput'].set(a)
-        widgets['AllyInput'].set(e)
-    btn(stat_row3, tl('Swap Members'), swap_members).pack(side="left", padx=2)
-    ctk.CTkLabel(stat_row3, text=tl('Force School Damage') + ':').pack(side="left", padx=(10, 0))
-    widgets['ForceSchoolStatus'] = ctk.CTkCheckBox(stat_row3, text="", width=20, checkbox_width=18, checkbox_height=18)
-    widgets['ForceSchoolStatus'].pack(side="left", padx=2)
+    # File dialog callbacks
+    def _import_file(content_tag):
+        def callback(sender, app_data):
+            if app_data and 'file_path_name' in app_data:
+                filepath = app_data['file_path_name']
+                try:
+                    with open(filepath) as f:
+                        dpg.set_value(content_tag, f.read())
+                except Exception:
+                    pass
+        return callback
 
-    # ==================== Flythrough Tab ====================
-    ctk.CTkLabel(tab_flythrough, text=dev_notice, wraplength=550).pack(anchor="w", padx=5, pady=(5, 2))
-    widgets['flythrough_creator'] = ctk.CTkTextbox(tab_flythrough, height=120)
-    widgets['flythrough_creator'].pack(fill="both", expand=True, padx=5, pady=2)
+    def _export_file(content_tag):
+        def callback(sender, app_data):
+            if app_data and 'file_path_name' in app_data:
+                filepath = app_data['file_path_name']
+                try:
+                    with open(filepath, 'w') as f:
+                        f.write(dpg.get_value(content_tag))
+                except Exception:
+                    pass
+        return callback
 
-    fly_btns = ctk.CTkFrame(tab_flythrough, fg_color="transparent")
-    fly_btns.pack(fill="x", padx=5, pady=2)
+    # File dialogs
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_import_file('flythrough_creator'), tag="flythrough_import_dialog", width=500, height=400):
+        dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_export_file('flythrough_creator'), tag="flythrough_export_dialog", width=500, height=400, default_filename="flythrough.txt"):
+        dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_import_file('bot_creator'), tag="bot_import_dialog", width=500, height=400):
+        dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_export_file('bot_creator'), tag="bot_export_dialog", width=500, height=400, default_filename="bot.txt"):
+        dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_import_file('combat_config'), tag="combat_import_dialog", width=500, height=400):
+        dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_export_file('combat_config'), tag="combat_export_dialog", width=500, height=400, default_filename="playstyle.txt"):
+        dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
 
-    def import_flythrough():
-        path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt")])
-        if path:
-            with open(path) as f:
-                widgets['flythrough_creator'].delete("1.0", "end")
-                widgets['flythrough_creator'].insert("1.0", f.read())
+    # Custom title bar theme
+    with dpg.theme() as titlebar_theme:
+        with dpg.theme_component(dpg.mvChildWindow):
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (30, 30, 30, 255))
 
-    def export_flythrough():
-        path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text Files", "*.txt")])
-        if path:
-            with open(path, 'w') as f:
-                f.write(widgets['flythrough_creator'].get("1.0", "end-1c"))
+    # Dragging state for custom title bar
+    _drag_state = {"dragging": False, "offset_x": 0, "offset_y": 0}
 
-    btn(fly_btns, tl('Import Flythrough'), import_flythrough).pack(side="left", padx=2)
-    btn(fly_btns, tl('Export Flythrough'), export_flythrough).pack(side="left", padx=2)
-    btn(fly_btns, tl('Execute Flythrough'),
-        lambda: send_queue.put(GUICommand(GUICommandType.ExecuteFlythrough, widgets['flythrough_creator'].get("1.0", "end-1c")))).pack(side="left", padx=2)
-    btn(fly_btns, tl('Kill Flythrough'),
-        lambda: send_queue.put(GUICommand(GUICommandType.KillFlythrough))).pack(side="left", padx=2)
+    # Main window
+    with dpg.window(tag="primary_window"):
+        # Custom title bar
+        def _close_app(sender, app_data):
+            send_queue.put(GUICommand(GUICommandType.AttemptedClose))
 
-    # ==================== Bot Tab ====================
-    ctk.CTkLabel(tab_bot, text=dev_notice, wraplength=550).pack(anchor="w", padx=5, pady=(5, 2))
-    widgets['bot_creator'] = ctk.CTkTextbox(tab_bot, height=120)
-    widgets['bot_creator'].pack(fill="both", expand=True, padx=5, pady=2)
+        with dpg.theme() as close_btn_theme:
+            with dpg.theme_component(dpg.mvButton):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (180, 30, 30, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (220, 50, 50, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (150, 20, 20, 255))
 
-    bot_btns = ctk.CTkFrame(tab_bot, fg_color="transparent")
-    bot_btns.pack(fill="x", padx=5, pady=2)
+        with dpg.child_window(height=30, border=False, tag="titlebar"):
+            with dpg.table(header_row=False, borders_innerH=False, borders_outerH=False, borders_innerV=False, borders_outerV=False):
+                dpg.add_table_column(width_stretch=True)
+                dpg.add_table_column(init_width_or_weight=30, width_fixed=True)
+                with dpg.table_row():
+                    dpg.add_text(f"  {tool_name} v{tool_version}")
+                    close_btn = dpg.add_button(label="X", callback=_close_app, width=30, height=22)
+                    dpg.bind_item_theme(close_btn, close_btn_theme)
+        dpg.bind_item_theme("titlebar", titlebar_theme)
 
-    def import_bot():
-        path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt")])
-        if path:
-            with open(path) as f:
-                widgets['bot_creator'].delete("1.0", "end")
-                widgets['bot_creator'].insert("1.0", f.read())
+        # Mouse drag handler for title bar
+        with dpg.handler_registry():
+            def _on_mouse_down(sender, app_data):
+                mouse_pos = dpg.get_mouse_pos(local=False)
+                if mouse_pos[1] < 30:
+                    vp_pos = dpg.get_viewport_pos()
+                    _drag_state["dragging"] = True
+                    _drag_state["offset_x"] = mouse_pos[0] - vp_pos[0]
+                    _drag_state["offset_y"] = mouse_pos[1] - vp_pos[1]
 
-    def export_bot():
-        path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text Files", "*.txt")])
-        if path:
-            with open(path, 'w') as f:
-                f.write(widgets['bot_creator'].get("1.0", "end-1c"))
+            def _on_mouse_release(sender, app_data):
+                _drag_state["dragging"] = False
 
-    btn(bot_btns, 'Import Bot', import_bot).pack(side="left", padx=2)
-    btn(bot_btns, 'Export Bot', export_bot).pack(side="left", padx=2)
-    btn(bot_btns, tl('Run Bot'),
-        lambda: send_queue.put(GUICommand(GUICommandType.ExecuteBot, widgets['bot_creator'].get("1.0", "end-1c")))).pack(side="left", padx=2)
-    btn(bot_btns, tl('Kill Bot'),
-        lambda: send_queue.put(GUICommand(GUICommandType.KillBot))).pack(side="left", padx=2)
+            def _on_mouse_move(sender, app_data):
+                if _drag_state["dragging"]:
+                    mouse_pos = dpg.get_mouse_pos(local=False)
+                    dpg.set_viewport_pos([
+                        mouse_pos[0] - _drag_state["offset_x"],
+                        mouse_pos[1] - _drag_state["offset_y"]
+                    ])
 
-    # ==================== Combat Tab ====================
-    ctk.CTkLabel(tab_combat, text=dev_notice, wraplength=550).pack(anchor="w", padx=5, pady=(5, 2))
-    widgets['combat_config'] = ctk.CTkTextbox(tab_combat, height=120)
-    widgets['combat_config'].pack(fill="both", expand=True, padx=5, pady=2)
+            dpg.add_mouse_down_handler(button=dpg.mvMouseButton_Left, callback=_on_mouse_down)
+            dpg.add_mouse_release_handler(button=dpg.mvMouseButton_Left, callback=_on_mouse_release)
+            dpg.add_mouse_move_handler(callback=_on_mouse_move)
 
-    combat_btns = ctk.CTkFrame(tab_combat, fg_color="transparent")
-    combat_btns.pack(fill="x", padx=5, pady=2)
+        dpg.add_text(tl('Deimos will always be a free tool. If you paid for this, you got scammed!'))
 
-    def import_combat():
-        path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt")])
-        if path:
-            with open(path) as f:
-                widgets['combat_config'].delete("1.0", "end")
-                widgets['combat_config'].insert("1.0", f.read())
+        with dpg.tab_bar():
+            # ==================== Hotkeys Tab ====================
+            with dpg.tab(label=tl('Hotkeys')):
+                with dpg.group(horizontal=True):
+                    # Toggles frame
+                    with dpg.child_window(width=140, height=230, border=True):
+                        dpg.add_text(tl('Toggles'))
+                        dpg.add_separator()
+                        toggles = [
+                            (tl('Speedhack'), GUIKeys.toggle_speedhack),
+                            (tl('Combat'), GUIKeys.toggle_combat),
+                            (tl('Dialogue'), GUIKeys.toggle_dialogue),
+                            (tl('Sigil'), GUIKeys.toggle_sigil),
+                            (tl('Questing'), GUIKeys.toggle_questing),
+                            (tl('Auto Pet'), GUIKeys.toggle_auto_pet),
+                            (tl('Auto Potion'), GUIKeys.toggle_auto_potion),
+                        ]
+                        for name, key in toggles:
+                            with dpg.group(horizontal=True):
+                                dpg.add_checkbox(tag=f'{name}Status', default_value=False, enabled=False)
+                                dpg.add_button(label=name, callback=toggle_callback(key), width=-1)
+                                dpg.bind_item_theme(dpg.last_item(), button_theme)
 
-    def export_combat():
-        path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text Files", "*.txt")])
-        if path:
-            with open(path, 'w') as f:
-                f.write(widgets['combat_config'].get("1.0", "end-1c"))
+                    # Hotkeys + Mass Hotkeys stacked
+                    with dpg.child_window(width=130, height=230, border=True):
+                        dpg.add_text(tl('Hotkeys'))
+                        dpg.add_separator()
+                        dpg.add_button(label=tl('Quest TP'), callback=teleport_callback(GUIKeys.hotkey_quest_tp), width=-1)
+                        dpg.bind_item_theme(dpg.last_item(), button_theme)
+                        dpg.add_button(label=tl('Freecam'), callback=toggle_callback(GUIKeys.toggle_freecam), width=-1)
+                        dpg.bind_item_theme(dpg.last_item(), button_theme)
+                        dpg.add_button(label=tl('Freecam TP'), callback=teleport_callback(GUIKeys.hotkey_freecam_tp), width=-1)
+                        dpg.bind_item_theme(dpg.last_item(), button_theme)
+                        dpg.add_spacer(height=4)
+                        dpg.add_text(tl('Mass Hotkeys'))
+                        dpg.add_separator()
+                        dpg.add_button(label=tl('Mass TP'), callback=teleport_callback(GUIKeys.mass_hotkey_mass_tp), width=-1)
+                        dpg.bind_item_theme(dpg.last_item(), button_theme)
+                        dpg.add_button(label=tl('XYZ Sync'), callback=xyz_sync_callback, width=-1)
+                        dpg.bind_item_theme(dpg.last_item(), button_theme)
+                        dpg.add_button(label=tl('X Press'), callback=x_press_callback, width=-1)
+                        dpg.bind_item_theme(dpg.last_item(), button_theme)
 
-    btn(combat_btns, 'Import Playstyle', import_combat).pack(side="left", padx=2)
-    btn(combat_btns, 'Export Playstyle', export_combat).pack(side="left", padx=2)
-    btn(combat_btns, tl('Set Playstyles'),
-        lambda: send_queue.put(GUICommand(GUICommandType.SetPlaystyles, widgets['combat_config'].get("1.0", "end-1c")))).pack(side="left", padx=2)
+                    # Tool info panel
+                    import webbrowser
+                    with dpg.child_window(width=-1, height=230, border=True, tag="tool_info_panel"):
+                        # Use a single-column table to center all content
+                        with dpg.table(header_row=False, borders_innerH=False, borders_outerH=False,
+                                       borders_innerV=False, borders_outerV=False):
+                            dpg.add_table_column(width_stretch=True)
+                            with dpg.table_row():
+                                dpg.add_spacer(height=15)
+                            with dpg.table_row():
+                                with dpg.group(horizontal=True):
+                                    dpg.add_spacer()
+                                    try:
+                                        _logo_width, _logo_height, _logo_channels, _logo_data = dpg.load_image("Deimos-logo.png")
+                                        with dpg.texture_registry():
+                                            dpg.add_static_texture(width=_logo_width, height=_logo_height, default_value=_logo_data, tag="logo_texture")
+                                        dpg.add_image("logo_texture", tag="logo_image")
+                                    except Exception:
+                                        dpg.add_text("(logo)")
+                                    dpg.add_spacer()
+                            with dpg.table_row():
+                                dpg.add_spacer(height=6)
+                            with dpg.table_row():
+                                with dpg.group(horizontal=True):
+                                    dpg.add_spacer()
+                                    dpg.add_text(f"{tool_name} v{tool_version}")
+                                    dpg.add_spacer()
+                            with dpg.table_row():
+                                dpg.add_spacer(height=2)
+                            with dpg.table_row():
+                                with dpg.group(horizontal=True):
+                                    dpg.add_spacer()
+                                    def _open_discord(sender, app_data):
+                                        webbrowser.open("https://discord.gg/59UrPJwYDm")
+                                    dpg.add_button(label="discord.gg/59UrPJwYDm", callback=_open_discord, tag="discord_link")
+                                    with dpg.theme() as link_theme:
+                                        with dpg.theme_component(dpg.mvButton):
+                                            dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 0, 0, 0))
+                                            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 50, 80, 255))
+                                            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (0, 0, 0, 0))
+                                            dpg.add_theme_color(dpg.mvThemeCol_Text, (100, 149, 237, 255))
+                                    dpg.bind_item_theme("discord_link", link_theme)
+                                    dpg.add_spacer()
 
-    # ==================== Misc Tab ====================
-    ctk.CTkLabel(tab_misc, text=dev_notice, wraplength=550).pack(anchor="w", padx=5, pady=(5, 2))
-    misc_row1 = ctk.CTkFrame(tab_misc, fg_color="transparent")
-    misc_row1.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(misc_row1, text=tl('Scale') + ':').pack(side="left")
-    widgets['scale'] = ctk.CTkEntry(misc_row1, width=70)
-    widgets['scale'].pack(side="left", padx=2)
-    btn(misc_row1, tl('Set Scale'),
-        lambda: send_queue.put(GUICommand(GUICommandType.SetScale, widgets['scale'].get()))).pack(side="left", padx=2)
+            # ==================== Camera Tab ====================
+            with dpg.tab(label=tl('Camera')):
+                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+                dpg.add_separator()
+                with dpg.group(horizontal=True):
+                    dpg.add_text('X:'); dpg.add_input_text(tag='CamXInput', width=80)
+                    dpg.add_text('Y:'); dpg.add_input_text(tag='CamYInput', width=80)
+                    dpg.add_text('Z:'); dpg.add_input_text(tag='CamZInput', width=80)
+                    dpg.add_button(label=tl('Set Camera Position'), callback=set_cam_pos_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                with dpg.group(horizontal=True):
+                    dpg.add_text(tl('Yaw') + ':'); dpg.add_input_text(tag='CamYawInput', width=80)
+                    dpg.add_text(tl('Roll') + ':'); dpg.add_input_text(tag='CamRollInput', width=80)
+                    dpg.add_text(tl('Pitch') + ':'); dpg.add_input_text(tag='CamPitchInput', width=80)
+                with dpg.group(horizontal=True):
+                    dpg.add_text(tl('Entity') + ':'); dpg.add_input_text(tag='CamEntityInput', width=150)
+                    dpg.add_button(label=tl('Anchor'), callback=anchor_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Toggle Camera Collision'), callback=toggle_callback(GUIKeys.toggle_camera_collision))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                with dpg.group(horizontal=True):
+                    dpg.add_text(tl('Distance') + ':'); dpg.add_input_text(tag='CamDistanceInput', width=80)
+                    dpg.add_text(tl('Min') + ':'); dpg.add_input_text(tag='CamMinInput', width=80)
+                    dpg.add_text(tl('Max') + ':'); dpg.add_input_text(tag='CamMaxInput', width=80)
+                    dpg.add_button(label=tl('Set Distance'), callback=set_distance_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label=tl('Copy Camera Position'), callback=copy_callback(GUIKeys.copy_camera_position))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Copy Camera Rotation'), callback=copy_callback(GUIKeys.copy_camera_rotation))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
 
-    pet_worlds = ['WizardCity', 'Krokotopia', 'Marleybone', 'Mooshu', 'Dragonspyre']
-    misc_row2 = ctk.CTkFrame(tab_misc, fg_color="transparent")
-    misc_row2.pack(fill="x", padx=5, pady=2)
-    ctk.CTkLabel(misc_row2, text='Select a pet world:').pack(side="left")
+            # ==================== Dev Utils Tab ====================
+            with dpg.tab(label=tl('Dev Utils')):
+                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+                dpg.add_separator()
+                # TP Utils
+                dpg.add_text(tl('TP Utils'))
+                with dpg.group(horizontal=True):
+                    dpg.add_text('X:'); dpg.add_input_text(tag='XInput', width=55)
+                    dpg.add_text('Y:'); dpg.add_input_text(tag='YInput', width=55)
+                    dpg.add_text('Z:'); dpg.add_input_text(tag='ZInput', width=60)
+                    dpg.add_text(tl('Yaw') + ':'); dpg.add_input_text(tag='YawInput', width=55)
+                    dpg.add_button(label=tl('Custom TP'), callback=custom_tp_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                with dpg.group(horizontal=True):
+                    dpg.add_text(tl('Entity Name') + ':'); dpg.add_input_text(tag='EntityTPInput', width=250)
+                    dpg.add_button(label=tl('Entity TP'), callback=entity_tp_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                dpg.add_separator()
 
-    def on_pet_world_change(choice):
-        if choice != wizard_city_dance_game_path[-1]:
-            assign_pet_level(choice)
+                # Dev Utils
+                dpg.add_text(tl('Dev Utils'))
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label=tl('Available Entities'), callback=copy_callback(GUIKeys.copy_entity_list))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Available Paths'), callback=copy_callback(GUIKeys.copy_ui_tree))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                with dpg.group(horizontal=True):
+                    dpg.add_text(tl('Zone Name') + ':'); dpg.add_input_text(tag='ZoneInput', width=120)
+                    dpg.add_button(label=tl('Go To Zone'), callback=go_to_zone_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Mass Go To Zone'), callback=mass_go_to_zone_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                worlds = ['WizardCity', 'Krokotopia', 'Marleybone', 'MooShu', 'DragonSpire', 'Grizzleheim', 'Celestia', 'Wysteria', 'Zafaria', 'Avalon', 'Azteca', 'Khrysalis', 'Polaris', 'Mirage', 'Empyrea', 'Karamelle', 'Lemuria']
+                with dpg.group(horizontal=True):
+                    dpg.add_text(tl('World Name') + ':')
+                    dpg.add_combo(items=worlds, default_value='WizardCity', tag='WorldInput', width=120)
+                    dpg.add_button(label=tl('Go To World'), callback=go_to_world_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Mass Go To World'), callback=mass_go_to_world_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label=tl('Go To Bazaar'), callback=go_to_bazaar_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Mass Go To Bazaar'), callback=mass_go_to_bazaar_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Refill Potions'), callback=refill_potions_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Mass Refill Potions'), callback=mass_refill_potions_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
 
-    widgets['PetWorldInput'] = ctk.CTkComboBox(misc_row2, values=pet_worlds, width=120, state="readonly",
-                                                command=on_pet_world_change)
-    widgets['PetWorldInput'].set('WizardCity')
-    widgets['PetWorldInput'].pack(side="left", padx=2)
+            # ==================== Stat Viewer Tab ====================
+            with dpg.tab(label=tl('Stats')):
+                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+                dpg.add_separator()
+                indices = [str(i + 1) for i in range(12)]
+                with dpg.group(horizontal=True):
+                    dpg.add_text(tl('Caster/Target Indices') + ':')
+                    dpg.add_combo(items=indices, default_value='1', tag='EnemyInput', width=100)
+                    dpg.add_combo(items=indices, default_value='1', tag='AllyInput', width=100)
+                schools = ['Fire', 'Ice', 'Storm', 'Myth', 'Life', 'Death', 'Balance', 'Star', 'Sun', 'Moon', 'Shadow']
+                with dpg.group(horizontal=True):
+                    dpg.add_text(tl('Dmg') + ':'); dpg.add_input_text(tag='DamageInput', width=60, default_value='')
+                    dpg.add_text(tl('School') + ':'); dpg.add_combo(items=schools, default_value='Fire', tag='SchoolInput', width=80)
+                    dpg.add_text(tl('Crit') + ':'); dpg.add_checkbox(tag='CritStatus', default_value=True)
+                    dpg.add_button(label=tl('View Stats'), callback=view_stats_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Copy Stats'), callback=copy_callback(GUIKeys.copy_stats))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                dpg.add_input_text(tag='stat_viewer', default_value=tl('No client has been selected.'), multiline=True, width=-1, height=120, readonly=True)
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label=tl('Swap Members'), callback=swap_members_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_text(tl('Force School Damage') + ':')
+                    dpg.add_checkbox(tag='ForceSchoolStatus')
 
-    # ==================== Console Tab ====================
-    ctk.CTkLabel(tab_console, text=tl('Be sure to include your logs when asking for support.')).pack(anchor="w", padx=5, pady=(5, 2))
-    widgets['-CONSOLE-'] = ctk.CTkTextbox(tab_console, height=120, state="disabled")
-    widgets['-CONSOLE-'].pack(fill="both", expand=True, padx=5, pady=2)
+            # ==================== Flythrough Tab ====================
+            with dpg.tab(label=tl('Flythrough')):
+                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+                dpg.add_separator()
+                dpg.add_input_text(tag='flythrough_creator', multiline=True, width=-1, height=150)
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label=tl('Import Flythrough'), callback=lambda: dpg.show_item("flythrough_import_dialog"))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Export Flythrough'), callback=lambda: dpg.show_item("flythrough_export_dialog"))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Execute Flythrough'), callback=execute_flythrough_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Kill Flythrough'), callback=kill_flythrough_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
 
-    console_btns = ctk.CTkFrame(tab_console, fg_color="transparent")
-    console_btns.pack(fill="x", padx=5, pady=2)
-    btn(console_btns, tl('Collapse / Expand Logs'),
-        lambda: send_queue.put(GUICommand(GUICommandType.ToggleOption, GUIKeys.toggle_show_expanded_logs))).pack(side="left", padx=2)
-    btn(console_btns, tl('Copy Logs'),
-        lambda: send_queue.put(GUICommand(GUICommandType.Copy, GUIKeys.copy_logs))).pack(side="left", padx=2)
+            # ==================== Bot Tab ====================
+            with dpg.tab(label=tl('Bot')):
+                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+                dpg.add_separator()
+                dpg.add_input_text(tag='bot_creator', multiline=True, width=-1, height=150)
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label='Import Bot', callback=lambda: dpg.show_item("bot_import_dialog"))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label='Export Bot', callback=lambda: dpg.show_item("bot_export_dialog"))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Run Bot'), callback=run_bot_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Kill Bot'), callback=kill_bot_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
 
-    # ==================== Client Info Bar ====================
-    info_bar = ctk.CTkFrame(root, fg_color="transparent")
-    info_bar.pack(fill="x", padx=10, pady=(0, 8))
+            # ==================== Combat Tab ====================
+            with dpg.tab(label=tl('Combat')):
+                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+                dpg.add_separator()
+                dpg.add_input_text(tag='combat_config', multiline=True, width=-1, height=150)
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label='Import Playstyle', callback=lambda: dpg.show_item("combat_import_dialog"))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label='Export Playstyle', callback=lambda: dpg.show_item("combat_export_dialog"))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Set Playstyles'), callback=set_playstyles_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
 
-    # Use grid for right-aligned copy buttons
-    info_bar.columnconfigure(0, weight=1)
-    info_bar.columnconfigure(1, weight=0)
+            # ==================== Misc Tab ====================
+            with dpg.tab(label=tl('Misc')):
+                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+                dpg.add_separator()
+                with dpg.group(horizontal=True):
+                    dpg.add_text(tl('Scale') + ':'); dpg.add_input_text(tag='scale', width=80)
+                    dpg.add_button(label=tl('Set Scale'), callback=set_scale_callback)
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                pet_worlds = ['WizardCity', 'Krokotopia', 'Marleybone', 'Mooshu', 'Dragonspyre']
+                with dpg.group(horizontal=True):
+                    dpg.add_text('Select a pet world:')
+                    dpg.add_combo(items=pet_worlds, default_value='WizardCity', tag='PetWorldInput', width=120, callback=pet_world_callback)
 
-    widgets['Title'] = ctk.CTkLabel(info_bar, text=tl('Client') + ': ', anchor="w")
-    widgets['Title'].grid(row=0, column=0, sticky="w", columnspan=2)
+            # ==================== Console Tab ====================
+            with dpg.tab(label=tl('Console')):
+                dpg.add_text(tl('Be sure to include your logs when asking for support.'))
+                dpg.add_separator()
+                dpg.add_input_text(tag='-CONSOLE-', multiline=True, width=-1, height=150, readonly=True)
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label=tl('Collapse / Expand Logs'), callback=toggle_callback(GUIKeys.toggle_show_expanded_logs))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('Copy Logs'), callback=copy_callback(GUIKeys.copy_logs))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
 
-    widgets['Zone'] = ctk.CTkLabel(info_bar, text=tl('Zone') + ': ', anchor="w")
-    widgets['Zone'].grid(row=1, column=0, sticky="w")
-    btn(info_bar, "Copy", lambda: send_queue.put(GUICommand(GUICommandType.Copy, GUIKeys.copy_zone)),
-        width=50, height=22).grid(row=1, column=1, sticky="e", padx=(5, 0))
+        # Client info at bottom
+        dpg.add_separator()
+        with dpg.table(header_row=False, borders_innerH=False, borders_outerH=False, borders_innerV=False, borders_outerV=False):
+            dpg.add_table_column(init_width_or_weight=0, width_stretch=True)
+            dpg.add_table_column(init_width_or_weight=0, width_fixed=True)
+            with dpg.table_row():
+                dpg.add_text(tl('Client') + ': ', tag='Title')
+                dpg.add_spacer()
+            with dpg.table_row():
+                dpg.add_text(tl('Zone') + ': ', tag='Zone')
+                dpg.add_button(label="Copy##zone", callback=copy_callback(GUIKeys.copy_zone), small=True)
+                dpg.bind_item_theme(dpg.last_item(), button_theme)
+            with dpg.table_row():
+                dpg.add_text("Position (XYZ): ", tag='xyz')
+                dpg.add_button(label="Copy##pos", callback=copy_callback(GUIKeys.copy_position), small=True)
+                dpg.bind_item_theme(dpg.last_item(), button_theme)
+            with dpg.table_row():
+                dpg.add_text("Orientation (PRY): ", tag='pry')
+                dpg.add_button(label="Copy##rot", callback=copy_callback(GUIKeys.copy_rotation), small=True)
+                dpg.bind_item_theme(dpg.last_item(), button_theme)
 
-    widgets['xyz'] = ctk.CTkLabel(info_bar, text="Position (XYZ): ", anchor="w")
-    widgets['xyz'].grid(row=2, column=0, sticky="w")
-    btn(info_bar, "Copy", lambda: send_queue.put(GUICommand(GUICommandType.Copy, GUIKeys.copy_position)),
-        width=50, height=22).grid(row=2, column=1, sticky="e", padx=(5, 0))
-
-    widgets['pry'] = ctk.CTkLabel(info_bar, text="Orientation (PRY): ", anchor="w")
-    widgets['pry'].grid(row=3, column=0, sticky="w")
-    btn(info_bar, "Copy", lambda: send_queue.put(GUICommand(GUICommandType.Copy, GUIKeys.copy_rotation)),
-        width=50, height=22).grid(row=3, column=1, sticky="e", padx=(5, 0))
-
-    # ===================== Console Sink Setup =====================
-    global console_sink
-    global console_psg
-    console_psg = TkSink(widgets['-CONSOLE-'])
+    console_psg = DpgSink('-CONSOLE-')
     console_sink = logger.add(console_psg, colorize=True)
 
-    # ===================== License Popup =====================
-    license_popup = ctk.CTkToplevel(root)
-    license_popup.title(tl('License Agreement'))
-    license_popup.geometry("500x130")
-    license_popup.attributes("-topmost", True)
-    license_popup.resizable(False, False)
-    ctk.CTkLabel(license_popup,
-                 text=tl('Deimos will always be free and open-source.\nBy using Deimos, you agree to the GPL v3 license agreement.\nIf you bought this, you got scammed!'),
-                 wraplength=470).pack(padx=15, pady=(15, 5))
-    ctk.CTkButton(license_popup, text="OK", command=license_popup.destroy).pack(pady=5)
-    root.after(5000, lambda: license_popup.destroy() if license_popup.winfo_exists() else None)
+    dpg.setup_dearpygui()
+    dpg.show_viewport()
+    dpg.set_primary_window("primary_window", True)
 
-    # ===================== Queue Polling Loop =====================
-    def poll_queue():
+    running = True
+
+    while dpg.is_dearpygui_running() and running:
+        # Auto-close license popup after ~5 seconds (300 frames at 60fps)
+        if license_start_frame[0] == 0:
+            license_start_frame[0] = dpg.get_frame_count()
+        if dpg.does_item_exist(license_popup_tag) and dpg.get_frame_count() - license_start_frame[0] > 300:
+            close_license()
+
+        # Process commands from backend
         try:
             while True:
                 com = recv_queue.get_nowait()
                 match com.com_type:
                     case GUICommandType.Close:
-                        root.destroy()
-                        return
+                        running = False
 
                     case GUICommandType.CloseFromBackend:
                         send_queue.put(GUICommand(GUICommandType.AttemptedClose))
@@ -918,40 +932,27 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                     case GUICommandType.UpdateWindow:
                         tag = com.data[0]
                         value = com.data[1]
-                        # Check toggle status checkboxes
-                        if tag in toggle_vars:
-                            toggle_vars[tag].set(value == 'Enabled')
-                        elif tag in widgets:
-                            widget = widgets[tag]
-                            if isinstance(widget, ctk.CTkLabel):
-                                widget.configure(text=value)
-                            elif isinstance(widget, ctk.CTkEntry):
-                                widget.delete(0, "end")
-                                widget.insert(0, value)
-                            elif isinstance(widget, ctk.CTkComboBox):
-                                widget.set(value)
-                            elif isinstance(widget, ctk.CTkTextbox):
-                                widget.configure(state="normal")
-                                widget.delete("1.0", "end")
-                                widget.insert("1.0", value)
-                                widget.configure(state="disabled")
+                        if dpg.does_item_exist(tag):
+                            item_type = dpg.get_item_type(tag)
+                            if "Checkbox" in item_type or "mvCheckbox" in item_type:
+                                dpg.set_value(tag, value == 'Enabled')
+                            else:
+                                dpg.set_value(tag, value)
 
                     case GUICommandType.UpdateWindowValues:
                         tag = com.data[0]
                         values = com.data[1]
-                        if tag in widgets:
-                            widget = widgets[tag]
-                            if isinstance(widget, ctk.CTkComboBox):
-                                widget.configure(values=[str(v) for v in values])
+                        if dpg.does_item_exist(tag):
+                            dpg.configure_item(tag, items=values)
 
                     case GUICommandType.UpdateConsole:
                         console_psg.toggle_show_expanded_logs()
 
                     case GUICommandType.ShowUITreePopup:
-                        show_ui_tree_popup(root, com.data)
+                        show_ui_tree_popup(com.data)
 
                     case GUICommandType.ShowEntityListPopup:
-                        show_entity_list_popup(root, com.data)
+                        show_entity_list_popup(com.data)
 
                     case GUICommandType.CopyConsole:
                         console_psg.copy()
@@ -959,16 +960,13 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         except queue.Empty:
             pass
 
-        root.after(10, poll_queue)
+        dpg.render_dearpygui_frame()
 
-    root.after(10, poll_queue)
-
-    # Handle window close
-    def on_closing():
+    # User closed the viewport (X button) — signal backend to unhook gracefully
+    if not running:
+        # Backend told us to close via GUICommandType.Close
+        send_queue.put(GUICommand(GUICommandType.Close))
+    else:
+        # User closed the window themselves
         send_queue.put(GUICommand(GUICommandType.AttemptedClose))
-
-    root.protocol("WM_DELETE_WINDOW", on_closing)
-
-    # Size the window after all widgets are placed
-    root.update_idletasks()
-    root.mainloop()
+    dpg.destroy_context()
