@@ -572,7 +572,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             with dpg.tab(label=tl('Hotkeys')):
                 with dpg.group(horizontal=True):
                     # Toggles frame
-                    with dpg.child_window(width=220, autosize_y=True, border=True):
+                    with dpg.child_window(width=220, height=230, border=True):
                         dpg.add_text(tl('Toggles'))
                         dpg.add_separator()
                         toggles = [
@@ -590,8 +590,8 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                                 dpg.bind_item_theme(dpg.last_item(), button_theme)
                                 dpg.add_text("Disabled", tag=f'{name}Status')
 
-                    # Hotkeys frame
-                    with dpg.child_window(width=130, autosize_y=True, border=True):
+                    # Hotkeys + Mass Hotkeys stacked
+                    with dpg.child_window(width=130, height=230, border=True):
                         dpg.add_text(tl('Hotkeys'))
                         dpg.add_separator()
                         dpg.add_button(label=tl('Quest TP'), callback=teleport_callback(GUIKeys.hotkey_quest_tp), width=-1)
@@ -600,9 +600,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
                         dpg.add_button(label=tl('Freecam TP'), callback=teleport_callback(GUIKeys.hotkey_freecam_tp), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
-
-                    # Mass Hotkeys frame
-                    with dpg.child_window(width=120, autosize_y=True, border=True):
+                        dpg.add_spacer(height=4)
                         dpg.add_text(tl('Mass Hotkeys'))
                         dpg.add_separator()
                         dpg.add_button(label=tl('Mass TP'), callback=teleport_callback(GUIKeys.mass_hotkey_mass_tp), width=-1)
@@ -613,7 +611,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
 
                     # Utils frame
-                    with dpg.child_window(width=-1, autosize_y=True, border=True):
+                    with dpg.child_window(width=130, height=230, border=True):
                         dpg.add_text(tl('Utils'))
                         dpg.add_separator()
                         dpg.add_button(label=tl('Copy Zone'), callback=copy_callback(GUIKeys.copy_zone), width=-1)
