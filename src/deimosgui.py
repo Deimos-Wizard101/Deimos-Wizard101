@@ -353,22 +353,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     _vp_width = int(620 * _scale)
     _vp_height = int(450 * _scale)
 
-    if _scale != 1.0:
-        _font_size = int(13 * _scale)
-        _font_paths = [
-            "C:/Windows/Fonts/segoeui.ttf",
-            "C:/Windows/Fonts/arial.ttf",
-            "C:/Windows/Fonts/tahoma.ttf",
-        ]
-        for _fp in _font_paths:
-            try:
-                with dpg.font_registry():
-                    _default_font = dpg.add_font(_fp, _font_size)
-                dpg.bind_font(_default_font)
-                break
-            except Exception:
-                continue
-
     dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=_vp_width, height=_vp_height, always_on_top=gui_on_top, resizable=False)
 
     # Theme setup
@@ -614,60 +598,42 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         dpg.add_button(label=tl('X Press'), callback=x_press_callback, width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
 
-                    # Tool info panel
+                    # Tool info panel — fixed width, content centered via indent
                     import webbrowser
-                    with dpg.child_window(width=-1, height=230, border=True, tag="tool_info_panel"):
-                        # 3-column table: stretch | content | stretch — forces centering
-                        with dpg.table(header_row=False, borders_innerH=False, borders_outerH=False,
-                                       borders_innerV=False, borders_outerV=False, pad_outerX=False):
-                            dpg.add_table_column(width_stretch=True)
-                            dpg.add_table_column(width_fixed=True)
-                            dpg.add_table_column(width_stretch=True)
+                    _panel_w = 180
+                    _panel_inner = _panel_w - 16  # account for child_window padding
+                    with dpg.child_window(width=_panel_w, height=230, border=True, tag="tool_info_panel"):
+                        dpg.add_spacer(height=15)
 
-                            with dpg.table_row():
-                                dpg.add_spacer()
-                                dpg.add_spacer(height=15)
-                                dpg.add_spacer()
+                        try:
+                            _logo_w, _logo_h, _, _logo_data = dpg.load_image("Deimos-logo.png")
+                            with dpg.texture_registry():
+                                dpg.add_static_texture(width=_logo_w, height=_logo_h, default_value=_logo_data, tag="logo_texture")
+                            _logo_indent = max(0, (_panel_inner - _logo_w) // 2)
+                            dpg.add_image("logo_texture", tag="logo_image", indent=_logo_indent)
+                        except Exception:
+                            dpg.add_text("(logo)")
 
-                            with dpg.table_row():
-                                dpg.add_spacer()
-                                try:
-                                    _logo_w, _logo_h, _, _logo_data = dpg.load_image("Deimos-logo.png")
-                                    with dpg.texture_registry():
-                                        dpg.add_static_texture(width=_logo_w, height=_logo_h, default_value=_logo_data, tag="logo_texture")
-                                    dpg.add_image("logo_texture", tag="logo_image")
-                                except Exception:
-                                    dpg.add_text("(logo)")
-                                dpg.add_spacer()
+                        dpg.add_spacer(height=6)
 
-                            with dpg.table_row():
-                                dpg.add_spacer()
-                                dpg.add_spacer(height=6)
-                                dpg.add_spacer()
+                        _version_text = f"{tool_name} v{tool_version}"
+                        _version_indent = max(0, (_panel_inner - len(_version_text) * 7) // 2)
+                        dpg.add_text(_version_text, indent=_version_indent)
 
-                            with dpg.table_row():
-                                dpg.add_spacer()
-                                dpg.add_text(f"{tool_name} v{tool_version}")
-                                dpg.add_spacer()
+                        dpg.add_spacer(height=2)
 
-                            with dpg.table_row():
-                                dpg.add_spacer()
-                                dpg.add_spacer(height=2)
-                                dpg.add_spacer()
-
-                            with dpg.table_row():
-                                dpg.add_spacer()
-                                def _open_discord(_s, _a):
-                                    webbrowser.open("https://discord.gg/59UrPJwYDm")
-                                dpg.add_button(label="discord.gg/59UrPJwYDm", callback=_open_discord, tag="discord_link")
-                                with dpg.theme() as link_theme:
-                                    with dpg.theme_component(dpg.mvButton):
-                                        dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 0, 0, 0))
-                                        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 50, 80, 255))
-                                        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (0, 0, 0, 0))
-                                        dpg.add_theme_color(dpg.mvThemeCol_Text, (100, 149, 237, 255))
-                                dpg.bind_item_theme("discord_link", link_theme)
-                                dpg.add_spacer()
+                        _discord_label = "discord.gg/59UrPJwYDm"
+                        _discord_indent = max(0, (_panel_inner - len(_discord_label) * 7 - 16) // 2)
+                        def _open_discord(_s, _a):
+                            webbrowser.open("https://discord.gg/59UrPJwYDm")
+                        dpg.add_button(label=_discord_label, callback=_open_discord, tag="discord_link", indent=_discord_indent)
+                        with dpg.theme() as link_theme:
+                            with dpg.theme_component(dpg.mvButton):
+                                dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 0, 0, 0))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 50, 80, 255))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (0, 0, 0, 0))
+                                dpg.add_theme_color(dpg.mvThemeCol_Text, (100, 149, 237, 255))
+                        dpg.bind_item_theme("discord_link", link_theme)
 
             # ==================== Camera Tab ====================
             with dpg.tab(label=tl('Camera')):
@@ -870,6 +836,9 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     dpg.setup_dearpygui()
     dpg.show_viewport()
     dpg.set_primary_window("primary_window", True)
+
+    if _scale != 1.0:
+        dpg.set_global_font_scale(_scale)
 
     running = True
 
