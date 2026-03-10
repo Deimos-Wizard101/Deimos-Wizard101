@@ -246,9 +246,10 @@ class GUICommand:
 
 def _make_btn(parent, text, command, btn_color="#4a019e", text_color="white", **kwargs):
     """Helper to create a styled button."""
+    height = kwargs.pop('height', 28)
     return ctk.CTkButton(parent, text=text, command=command,
                          fg_color=btn_color, text_color=text_color,
-                         hover_color=_lighten(btn_color), height=28, **kwargs)
+                         hover_color=_lighten(btn_color), height=height, **kwargs)
 
 
 def _lighten(hex_color, amount=30):
