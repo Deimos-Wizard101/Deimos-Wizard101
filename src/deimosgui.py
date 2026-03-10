@@ -365,7 +365,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         tl = gettext.gettext
 
     dpg.create_context()
-    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=500, height=450, always_on_top=gui_on_top, resizable=False)
+    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=580, height=450, always_on_top=gui_on_top, resizable=False)
 
     # Theme setup
     with dpg.theme() as global_theme:
@@ -588,7 +588,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                             with dpg.group(horizontal=True):
                                 dpg.add_button(label=name, callback=toggle_callback(key), width=100)
                                 dpg.bind_item_theme(dpg.last_item(), button_theme)
-                                dpg.add_text("Disabled", tag=f'{name}Status')
+                                dpg.add_checkbox(tag=f'{name}Status', default_value=False, enabled=False)
 
                     # Hotkeys + Mass Hotkeys stacked
                     with dpg.child_window(width=130, height=230, border=True):
@@ -608,17 +608,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         dpg.add_button(label=tl('XYZ Sync'), callback=xyz_sync_callback, width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
                         dpg.add_button(label=tl('X Press'), callback=x_press_callback, width=-1)
-                        dpg.bind_item_theme(dpg.last_item(), button_theme)
-
-                    # Utils frame
-                    with dpg.child_window(width=130, height=230, border=True):
-                        dpg.add_text(tl('Utils'))
-                        dpg.add_separator()
-                        dpg.add_button(label=tl('Copy Zone'), callback=copy_callback(GUIKeys.copy_zone), width=-1)
-                        dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('Copy Position'), callback=copy_callback(GUIKeys.copy_position), width=-1)
-                        dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('Copy Rotation'), callback=copy_callback(GUIKeys.copy_rotation), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
 
             # ==================== Camera Tab ====================
@@ -798,9 +787,18 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         # Client info at bottom
         dpg.add_separator()
         dpg.add_text(tl('Client') + ': ', tag='Title')
-        dpg.add_text(tl('Zone') + ': ', tag='Zone')
-        dpg.add_text("Position (XYZ): ", tag='xyz')
-        dpg.add_text("Orientation (PRY): ", tag='pry')
+        with dpg.group(horizontal=True):
+            dpg.add_text(tl('Zone') + ': ', tag='Zone')
+            dpg.add_button(label="Copy", callback=copy_callback(GUIKeys.copy_zone), small=True)
+            dpg.bind_item_theme(dpg.last_item(), button_theme)
+        with dpg.group(horizontal=True):
+            dpg.add_text("Position (XYZ): ", tag='xyz')
+            dpg.add_button(label="Copy", callback=copy_callback(GUIKeys.copy_position), small=True)
+            dpg.bind_item_theme(dpg.last_item(), button_theme)
+        with dpg.group(horizontal=True):
+            dpg.add_text("Orientation (PRY): ", tag='pry')
+            dpg.add_button(label="Copy", callback=copy_callback(GUIKeys.copy_rotation), small=True)
+            dpg.bind_item_theme(dpg.last_item(), button_theme)
 
     console_psg = DpgSink('-CONSOLE-')
     console_sink = logger.add(console_psg, colorize=True)
@@ -834,12 +832,8 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         value = com.data[1]
                         if dpg.does_item_exist(tag):
                             item_type = dpg.get_item_type(tag)
-                            if "Text" in item_type or "mvText" in item_type:
-                                dpg.set_value(tag, value)
-                            elif "Combo" in item_type or "mvCombo" in item_type:
-                                dpg.set_value(tag, value)
-                            elif "InputText" in item_type or "mvInputText" in item_type:
-                                dpg.set_value(tag, value)
+                            if "Checkbox" in item_type or "mvCheckbox" in item_type:
+                                dpg.set_value(tag, value == 'Enabled')
                             else:
                                 dpg.set_value(tag, value)
 
