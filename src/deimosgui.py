@@ -1,7 +1,9 @@
 from enum import Enum, auto
 import gettext
+import os
 import queue
 import re
+import sys
 import dearpygui.dearpygui as dpg
 import pyperclip
 from src.combat_objects import school_id_to_names
@@ -9,9 +11,15 @@ from src.paths import wizard_city_dance_game_path
 from src.utils import assign_pet_level
 from threading import Thread
 
-import re
 from loguru import logger
 import ctypes
+
+
+def _resource_path(filename: str) -> str:
+    """Resolve path for bundled resources (PyInstaller) or source directory."""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, filename)
+    return filename
 
 global console_sink
 
@@ -353,7 +361,14 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     _vp_width = int(550 * _scale)
     _vp_height = int(450 * _scale)
 
-    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=_vp_width, height=_vp_height, always_on_top=gui_on_top, resizable=False)
+    # Set AppUserModelID so Windows uses our icon in taskbar/process list
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"deimos.{tool_name}")
+    except Exception:
+        pass
+
+    _ico_path = _resource_path("Deimos-logo.ico")
+    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=_vp_width, height=_vp_height, always_on_top=gui_on_top, resizable=False, small_icon=_ico_path, large_icon=_ico_path)
 
     # Theme setup
     with dpg.theme() as global_theme:
@@ -607,7 +622,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
                         _info_center_items = []  # (item_tag, approx_width) — centered in render loop
                         try:
-                            _logo_w, _logo_h, _, _logo_data = dpg.load_image("Deimos-logo.png")
+                            _logo_w, _logo_h, _, _logo_data = dpg.load_image(_resource_path("Deimos-logo.png"))
                             with dpg.texture_registry():
                                 dpg.add_static_texture(width=_logo_w, height=_logo_h, default_value=_logo_data, tag="logo_texture")
                             dpg.add_image("logo_texture", tag="logo_image")
