@@ -365,7 +365,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         tl = gettext.gettext
 
     dpg.create_context()
-    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=900, height=650, always_on_top=gui_on_top)
+    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=780, height=550, always_on_top=gui_on_top, resizable=False)
 
     # Theme setup
     with dpg.theme() as global_theme:
@@ -572,7 +572,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             with dpg.tab(label=tl('Hotkeys')):
                 with dpg.group(horizontal=True):
                     # Toggles frame
-                    with dpg.child_window(width=250, autosize_y=True):
+                    with dpg.child_window(width=220, autosize_y=True, border=True):
                         dpg.add_text(tl('Toggles'))
                         dpg.add_separator()
                         toggles = [
@@ -586,41 +586,41 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         ]
                         for name, key in toggles:
                             with dpg.group(horizontal=True):
-                                dpg.add_button(label=name, callback=toggle_callback(key))
+                                dpg.add_button(label=name, callback=toggle_callback(key), width=100)
                                 dpg.bind_item_theme(dpg.last_item(), button_theme)
                                 dpg.add_text("Disabled", tag=f'{name}Status')
 
                     # Hotkeys frame
-                    with dpg.child_window(width=180, autosize_y=True):
+                    with dpg.child_window(width=130, autosize_y=True, border=True):
                         dpg.add_text(tl('Hotkeys'))
                         dpg.add_separator()
-                        dpg.add_button(label=tl('Quest TP'), callback=teleport_callback(GUIKeys.hotkey_quest_tp))
+                        dpg.add_button(label=tl('Quest TP'), callback=teleport_callback(GUIKeys.hotkey_quest_tp), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('Freecam'), callback=toggle_callback(GUIKeys.toggle_freecam))
+                        dpg.add_button(label=tl('Freecam'), callback=toggle_callback(GUIKeys.toggle_freecam), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('Freecam TP'), callback=teleport_callback(GUIKeys.hotkey_freecam_tp))
+                        dpg.add_button(label=tl('Freecam TP'), callback=teleport_callback(GUIKeys.hotkey_freecam_tp), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
 
                     # Mass Hotkeys frame
-                    with dpg.child_window(width=150, autosize_y=True):
+                    with dpg.child_window(width=120, autosize_y=True, border=True):
                         dpg.add_text(tl('Mass Hotkeys'))
                         dpg.add_separator()
-                        dpg.add_button(label=tl('Mass TP'), callback=teleport_callback(GUIKeys.mass_hotkey_mass_tp))
+                        dpg.add_button(label=tl('Mass TP'), callback=teleport_callback(GUIKeys.mass_hotkey_mass_tp), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('XYZ Sync'), callback=xyz_sync_callback)
+                        dpg.add_button(label=tl('XYZ Sync'), callback=xyz_sync_callback, width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('X Press'), callback=x_press_callback)
+                        dpg.add_button(label=tl('X Press'), callback=x_press_callback, width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
 
                     # Utils frame
-                    with dpg.child_window(width=180, autosize_y=True):
+                    with dpg.child_window(width=-1, autosize_y=True, border=True):
                         dpg.add_text(tl('Utils'))
                         dpg.add_separator()
-                        dpg.add_button(label=tl('Copy Zone'), callback=copy_callback(GUIKeys.copy_zone))
+                        dpg.add_button(label=tl('Copy Zone'), callback=copy_callback(GUIKeys.copy_zone), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('Copy Position'), callback=copy_callback(GUIKeys.copy_position))
+                        dpg.add_button(label=tl('Copy Position'), callback=copy_callback(GUIKeys.copy_position), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('Copy Rotation'), callback=copy_callback(GUIKeys.copy_rotation))
+                        dpg.add_button(label=tl('Copy Rotation'), callback=copy_callback(GUIKeys.copy_rotation), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
 
             # ==================== Camera Tab ====================
@@ -868,6 +868,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
         dpg.render_dearpygui_frame()
 
-    # Closing
-    send_queue.put(GUICommand(GUICommandType.Close))
+    # User closed the viewport (X button) — signal backend to unhook gracefully
+    if not running:
+        # Backend told us to close via GUICommandType.Close
+        send_queue.put(GUICommand(GUICommandType.Close))
+    else:
+        # User closed the window themselves
+        send_queue.put(GUICommand(GUICommandType.AttemptedClose))
     dpg.destroy_context()
