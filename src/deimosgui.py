@@ -1,5 +1,4 @@
 from enum import Enum, auto
-import gettext
 import os
 import queue
 import re
@@ -8,6 +7,7 @@ import dearpygui.dearpygui as dpg
 import pyperclip
 from src.combat_objects import school_id_to_names
 from src.paths import wizard_city_dance_game_path
+from src.lang import load_lang
 from src.utils import assign_pet_level
 from threading import Thread
 
@@ -337,13 +337,7 @@ def show_entity_list_popup(entity_list_content):
 
 
 def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode, gui_scale=1.0):
-    if langcode != 'en':
-        translate = gettext.translation("messages", "locale", languages=[langcode])
-        tl = translate.gettext
-    else:
-        gettext.bindtextdomain('messages', 'locale')
-        gettext.textdomain('messages')
-        tl = gettext.gettext
+    tl = load_lang(langcode)
 
     # Set per-monitor DPI awareness so Windows doesn't bitmap-scale the titlebar
     try:
@@ -399,8 +393,8 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         if dpg.does_item_exist(license_popup_tag):
             dpg.delete_item(license_popup_tag)
 
-    with dpg.window(label=tl('License Agreement'), tag=license_popup_tag, modal=True, no_close=False, on_close=close_license, width=500, height=120):
-        dpg.add_text(tl('Deimos will always be free and open-source.\nBy using Deimos, you agree to the GPL v3 license agreement.\nIf you bought this, you got scammed!'))
+    with dpg.window(label=tl('license_title'), tag=license_popup_tag, modal=True, no_close=False, on_close=close_license, width=500, height=120):
+        dpg.add_text(tl('license_text'))
         dpg.add_button(label="OK", callback=close_license)
 
     # Callbacks
@@ -568,26 +562,26 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
     # Main window
     with dpg.window(tag="primary_window"):
-        dpg.add_text(tl('Deimos will always be a free tool. If you paid for this, you got scammed!'))
+        dpg.add_text(tl('free_tool'))
 
         with dpg.tab_bar():
             # ==================== Hotkeys Tab ====================
-            with dpg.tab(label=tl('Hotkeys')):
+            with dpg.tab(label=tl('hotkeys')):
                 with dpg.group(horizontal=True):
                     # Toggles frame
                     _hotkey_h = int(230 * _scale)
                     _hotkey_w = [int(140 * _scale), int(130 * _scale)]
                     with dpg.child_window(width=_hotkey_w[0], height=_hotkey_h, border=True):
-                        dpg.add_text(tl('Toggles'))
+                        dpg.add_text(tl('toggles'))
                         dpg.add_separator()
                         toggles = [
-                            (tl('Speedhack'), GUIKeys.toggle_speedhack),
-                            (tl('Combat'), GUIKeys.toggle_combat),
-                            (tl('Dialogue'), GUIKeys.toggle_dialogue),
-                            (tl('Sigil'), GUIKeys.toggle_sigil),
-                            (tl('Questing'), GUIKeys.toggle_questing),
-                            (tl('Auto Pet'), GUIKeys.toggle_auto_pet),
-                            (tl('Auto Potion'), GUIKeys.toggle_auto_potion),
+                            (tl('speedhack'), GUIKeys.toggle_speedhack),
+                            (tl('combat_toggle'), GUIKeys.toggle_combat),
+                            (tl('dialogue'), GUIKeys.toggle_dialogue),
+                            (tl('sigil'), GUIKeys.toggle_sigil),
+                            (tl('questing'), GUIKeys.toggle_questing),
+                            (tl('auto_pet'), GUIKeys.toggle_auto_pet),
+                            (tl('auto_potion'), GUIKeys.toggle_auto_potion),
                         ]
                         for name, key in toggles:
                             with dpg.group(horizontal=True):
@@ -597,22 +591,22 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
                     # Hotkeys + Mass Hotkeys stacked
                     with dpg.child_window(width=_hotkey_w[1], height=_hotkey_h, border=True):
-                        dpg.add_text(tl('Hotkeys'))
+                        dpg.add_text(tl('hotkeys_label'))
                         dpg.add_separator()
-                        dpg.add_button(label=tl('Quest TP'), callback=teleport_callback(GUIKeys.hotkey_quest_tp), width=-1)
+                        dpg.add_button(label=tl('quest_tp'), callback=teleport_callback(GUIKeys.hotkey_quest_tp), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('Freecam'), callback=toggle_callback(GUIKeys.toggle_freecam), width=-1)
+                        dpg.add_button(label=tl('freecam'), callback=toggle_callback(GUIKeys.toggle_freecam), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('Freecam TP'), callback=teleport_callback(GUIKeys.hotkey_freecam_tp), width=-1)
+                        dpg.add_button(label=tl('freecam_tp'), callback=teleport_callback(GUIKeys.hotkey_freecam_tp), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
                         dpg.add_spacer(height=4)
-                        dpg.add_text(tl('Mass Hotkeys'))
+                        dpg.add_text(tl('mass_hotkeys'))
                         dpg.add_separator()
-                        dpg.add_button(label=tl('Mass TP'), callback=teleport_callback(GUIKeys.mass_hotkey_mass_tp), width=-1)
+                        dpg.add_button(label=tl('mass_tp'), callback=teleport_callback(GUIKeys.mass_hotkey_mass_tp), width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('XYZ Sync'), callback=xyz_sync_callback, width=-1)
+                        dpg.add_button(label=tl('xyz_sync'), callback=xyz_sync_callback, width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
-                        dpg.add_button(label=tl('X Press'), callback=x_press_callback, width=-1)
+                        dpg.add_button(label=tl('x_press'), callback=x_press_callback, width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
 
                     # Tool info panel — fixed width, content centered via indent
@@ -652,177 +646,177 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         dpg.bind_item_theme("discord_link", link_theme)
 
             # ==================== Camera Tab ====================
-            with dpg.tab(label=tl('Camera')):
-                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+            with dpg.tab(label=tl('camera')):
+                dpg.add_text(tl('advanced_warning'))
                 dpg.add_separator()
                 with dpg.group(horizontal=True):
                     dpg.add_text('X:'); dpg.add_input_text(tag='CamXInput', width=80)
                     dpg.add_text('Y:'); dpg.add_input_text(tag='CamYInput', width=80)
                     dpg.add_text('Z:'); dpg.add_input_text(tag='CamZInput', width=80)
-                    dpg.add_button(label=tl('Set Camera Position'), callback=set_cam_pos_callback)
+                    dpg.add_button(label=tl('set_camera_position'), callback=set_cam_pos_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
                 with dpg.group(horizontal=True):
-                    dpg.add_text(tl('Yaw') + ':'); dpg.add_input_text(tag='CamYawInput', width=80)
-                    dpg.add_text(tl('Roll') + ':'); dpg.add_input_text(tag='CamRollInput', width=80)
-                    dpg.add_text(tl('Pitch') + ':'); dpg.add_input_text(tag='CamPitchInput', width=80)
+                    dpg.add_text(tl('yaw') + ':'); dpg.add_input_text(tag='CamYawInput', width=80)
+                    dpg.add_text(tl('roll') + ':'); dpg.add_input_text(tag='CamRollInput', width=80)
+                    dpg.add_text(tl('pitch') + ':'); dpg.add_input_text(tag='CamPitchInput', width=80)
                 with dpg.group(horizontal=True):
-                    dpg.add_text(tl('Entity') + ':'); dpg.add_input_text(tag='CamEntityInput', width=150)
-                    dpg.add_button(label=tl('Anchor'), callback=anchor_callback)
+                    dpg.add_text(tl('entity') + ':'); dpg.add_input_text(tag='CamEntityInput', width=150)
+                    dpg.add_button(label=tl('anchor'), callback=anchor_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Toggle Camera Collision'), callback=toggle_callback(GUIKeys.toggle_camera_collision))
-                    dpg.bind_item_theme(dpg.last_item(), button_theme)
-                with dpg.group(horizontal=True):
-                    dpg.add_text(tl('Distance') + ':'); dpg.add_input_text(tag='CamDistanceInput', width=80)
-                    dpg.add_text(tl('Min') + ':'); dpg.add_input_text(tag='CamMinInput', width=80)
-                    dpg.add_text(tl('Max') + ':'); dpg.add_input_text(tag='CamMaxInput', width=80)
-                    dpg.add_button(label=tl('Set Distance'), callback=set_distance_callback)
+                    dpg.add_button(label=tl('toggle_camera_collision'), callback=toggle_callback(GUIKeys.toggle_camera_collision))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label=tl('Copy Camera Position'), callback=copy_callback(GUIKeys.copy_camera_position))
+                    dpg.add_text(tl('distance') + ':'); dpg.add_input_text(tag='CamDistanceInput', width=80)
+                    dpg.add_text(tl('min') + ':'); dpg.add_input_text(tag='CamMinInput', width=80)
+                    dpg.add_text(tl('max') + ':'); dpg.add_input_text(tag='CamMaxInput', width=80)
+                    dpg.add_button(label=tl('set_distance'), callback=set_distance_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Copy Camera Rotation'), callback=copy_callback(GUIKeys.copy_camera_rotation))
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label=tl('copy_camera_position'), callback=copy_callback(GUIKeys.copy_camera_position))
+                    dpg.bind_item_theme(dpg.last_item(), button_theme)
+                    dpg.add_button(label=tl('copy_camera_rotation'), callback=copy_callback(GUIKeys.copy_camera_rotation))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
 
             # ==================== Dev Utils Tab ====================
-            with dpg.tab(label=tl('Dev Utils')):
-                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+            with dpg.tab(label=tl('dev_utils')):
+                dpg.add_text(tl('advanced_warning'))
                 dpg.add_separator()
                 # TP Utils
-                dpg.add_text(tl('TP Utils'))
+                dpg.add_text(tl('tp_utils'))
                 with dpg.group(horizontal=True):
                     dpg.add_text('X:'); dpg.add_input_text(tag='XInput', width=55)
                     dpg.add_text('Y:'); dpg.add_input_text(tag='YInput', width=55)
                     dpg.add_text('Z:'); dpg.add_input_text(tag='ZInput', width=60)
-                    dpg.add_text(tl('Yaw') + ':'); dpg.add_input_text(tag='YawInput', width=55)
-                    dpg.add_button(label=tl('Custom TP'), callback=custom_tp_callback)
+                    dpg.add_text(tl('yaw') + ':'); dpg.add_input_text(tag='YawInput', width=55)
+                    dpg.add_button(label=tl('custom_tp'), callback=custom_tp_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
                 with dpg.group(horizontal=True):
-                    dpg.add_text(tl('Entity Name') + ':'); dpg.add_input_text(tag='EntityTPInput', width=250)
-                    dpg.add_button(label=tl('Entity TP'), callback=entity_tp_callback)
+                    dpg.add_text(tl('entity_name') + ':'); dpg.add_input_text(tag='EntityTPInput', width=250)
+                    dpg.add_button(label=tl('entity_tp'), callback=entity_tp_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
                 dpg.add_separator()
 
                 # Dev Utils
-                dpg.add_text(tl('Dev Utils'))
+                dpg.add_text(tl('dev_utils_label'))
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label=tl('Available Entities'), callback=copy_callback(GUIKeys.copy_entity_list))
+                    dpg.add_button(label=tl('available_entities'), callback=copy_callback(GUIKeys.copy_entity_list))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Available Paths'), callback=copy_callback(GUIKeys.copy_ui_tree))
+                    dpg.add_button(label=tl('available_paths'), callback=copy_callback(GUIKeys.copy_ui_tree))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
                 with dpg.group(horizontal=True):
-                    dpg.add_text(tl('Zone Name') + ':'); dpg.add_input_text(tag='ZoneInput', width=120)
-                    dpg.add_button(label=tl('Go To Zone'), callback=go_to_zone_callback)
+                    dpg.add_text(tl('zone_name') + ':'); dpg.add_input_text(tag='ZoneInput', width=120)
+                    dpg.add_button(label=tl('go_to_zone'), callback=go_to_zone_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Mass Go To Zone'), callback=mass_go_to_zone_callback)
+                    dpg.add_button(label=tl('mass_go_to_zone'), callback=mass_go_to_zone_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
                 worlds = ['WizardCity', 'Krokotopia', 'Marleybone', 'MooShu', 'DragonSpire', 'Grizzleheim', 'Celestia', 'Wysteria', 'Zafaria', 'Avalon', 'Azteca', 'Khrysalis', 'Polaris', 'Mirage', 'Empyrea', 'Karamelle', 'Lemuria']
                 with dpg.group(horizontal=True):
-                    dpg.add_text(tl('World Name') + ':')
+                    dpg.add_text(tl('world_name') + ':')
                     dpg.add_combo(items=worlds, default_value='WizardCity', tag='WorldInput', width=120)
-                    dpg.add_button(label=tl('Go To World'), callback=go_to_world_callback)
+                    dpg.add_button(label=tl('go_to_world'), callback=go_to_world_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Mass Go To World'), callback=mass_go_to_world_callback)
+                    dpg.add_button(label=tl('mass_go_to_world'), callback=mass_go_to_world_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label=tl('Go To Bazaar'), callback=go_to_bazaar_callback)
+                    dpg.add_button(label=tl('go_to_bazaar'), callback=go_to_bazaar_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Mass Go To Bazaar'), callback=mass_go_to_bazaar_callback)
+                    dpg.add_button(label=tl('mass_go_to_bazaar'), callback=mass_go_to_bazaar_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Refill Potions'), callback=refill_potions_callback)
+                    dpg.add_button(label=tl('refill_potions'), callback=refill_potions_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Mass Refill Potions'), callback=mass_refill_potions_callback)
+                    dpg.add_button(label=tl('mass_refill_potions'), callback=mass_refill_potions_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
 
             # ==================== Stat Viewer Tab ====================
-            with dpg.tab(label=tl('Stats')):
-                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+            with dpg.tab(label=tl('stats')):
+                dpg.add_text(tl('advanced_warning'))
                 dpg.add_separator()
                 indices = [str(i + 1) for i in range(12)]
                 with dpg.group(horizontal=True):
-                    dpg.add_text(tl('Caster/Target Indices') + ':')
+                    dpg.add_text(tl('caster_target_indices') + ':')
                     dpg.add_combo(items=indices, default_value='1', tag='EnemyInput', width=100)
                     dpg.add_combo(items=indices, default_value='1', tag='AllyInput', width=100)
                 schools = ['Fire', 'Ice', 'Storm', 'Myth', 'Life', 'Death', 'Balance', 'Star', 'Sun', 'Moon', 'Shadow']
                 with dpg.group(horizontal=True):
-                    dpg.add_text(tl('Dmg') + ':'); dpg.add_input_text(tag='DamageInput', width=60, default_value='')
-                    dpg.add_text(tl('School') + ':'); dpg.add_combo(items=schools, default_value='Fire', tag='SchoolInput', width=80)
-                    dpg.add_text(tl('Crit') + ':'); dpg.add_checkbox(tag='CritStatus', default_value=True)
-                    dpg.add_button(label=tl('View Stats'), callback=view_stats_callback)
+                    dpg.add_text(tl('dmg') + ':'); dpg.add_input_text(tag='DamageInput', width=60, default_value='')
+                    dpg.add_text(tl('school') + ':'); dpg.add_combo(items=schools, default_value='Fire', tag='SchoolInput', width=80)
+                    dpg.add_text(tl('crit') + ':'); dpg.add_checkbox(tag='CritStatus', default_value=True)
+                    dpg.add_button(label=tl('view_stats'), callback=view_stats_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Copy Stats'), callback=copy_callback(GUIKeys.copy_stats))
+                    dpg.add_button(label=tl('copy_stats'), callback=copy_callback(GUIKeys.copy_stats))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                dpg.add_input_text(tag='stat_viewer', default_value=tl('No client has been selected.'), multiline=True, width=-1, height=120, readonly=True)
+                dpg.add_input_text(tag='stat_viewer', default_value=tl('no_client_selected'), multiline=True, width=-1, height=120, readonly=True)
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label=tl('Swap Members'), callback=swap_members_callback)
+                    dpg.add_button(label=tl('swap_members'), callback=swap_members_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_text(tl('Force School Damage') + ':')
+                    dpg.add_text(tl('force_school_damage') + ':')
                     dpg.add_checkbox(tag='ForceSchoolStatus')
 
             # ==================== Flythrough Tab ====================
-            with dpg.tab(label=tl('Flythrough')):
-                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+            with dpg.tab(label=tl('flythrough')):
+                dpg.add_text(tl('advanced_warning'))
                 dpg.add_separator()
                 dpg.add_input_text(tag='flythrough_creator', multiline=True, width=-1, height=150)
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label=tl('Import Flythrough'), callback=lambda: dpg.show_item("flythrough_import_dialog"))
+                    dpg.add_button(label=tl('import_flythrough'), callback=lambda: dpg.show_item("flythrough_import_dialog"))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Export Flythrough'), callback=lambda: dpg.show_item("flythrough_export_dialog"))
+                    dpg.add_button(label=tl('export_flythrough'), callback=lambda: dpg.show_item("flythrough_export_dialog"))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Execute Flythrough'), callback=execute_flythrough_callback)
+                    dpg.add_button(label=tl('execute_flythrough'), callback=execute_flythrough_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Kill Flythrough'), callback=kill_flythrough_callback)
+                    dpg.add_button(label=tl('kill_flythrough'), callback=kill_flythrough_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
 
             # ==================== Bot Tab ====================
-            with dpg.tab(label=tl('Bot')):
-                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+            with dpg.tab(label=tl('bot')):
+                dpg.add_text(tl('advanced_warning'))
                 dpg.add_separator()
                 dpg.add_input_text(tag='bot_creator', multiline=True, width=-1, height=150)
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label='Import Bot', callback=lambda: dpg.show_item("bot_import_dialog"))
+                    dpg.add_button(label=tl('import_bot'), callback=lambda: dpg.show_item("bot_import_dialog"))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label='Export Bot', callback=lambda: dpg.show_item("bot_export_dialog"))
+                    dpg.add_button(label=tl('export_bot'), callback=lambda: dpg.show_item("bot_export_dialog"))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Run Bot'), callback=run_bot_callback)
+                    dpg.add_button(label=tl('run_bot'), callback=run_bot_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Kill Bot'), callback=kill_bot_callback)
+                    dpg.add_button(label=tl('kill_bot'), callback=kill_bot_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
 
             # ==================== Combat Tab ====================
-            with dpg.tab(label=tl('Combat')):
-                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+            with dpg.tab(label=tl('combat')):
+                dpg.add_text(tl('advanced_warning'))
                 dpg.add_separator()
                 dpg.add_input_text(tag='combat_config', multiline=True, width=-1, height=150)
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label='Import Playstyle', callback=lambda: dpg.show_item("combat_import_dialog"))
+                    dpg.add_button(label=tl('import_playstyle'), callback=lambda: dpg.show_item("combat_import_dialog"))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label='Export Playstyle', callback=lambda: dpg.show_item("combat_export_dialog"))
+                    dpg.add_button(label=tl('export_playstyle'), callback=lambda: dpg.show_item("combat_export_dialog"))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Set Playstyles'), callback=set_playstyles_callback)
+                    dpg.add_button(label=tl('set_playstyles'), callback=set_playstyles_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
 
             # ==================== Misc Tab ====================
-            with dpg.tab(label=tl('Misc')):
-                dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
+            with dpg.tab(label=tl('misc')):
+                dpg.add_text(tl('advanced_warning'))
                 dpg.add_separator()
                 with dpg.group(horizontal=True):
-                    dpg.add_text(tl('Scale') + ':'); dpg.add_input_text(tag='scale', width=80)
-                    dpg.add_button(label=tl('Set Scale'), callback=set_scale_callback)
+                    dpg.add_text(tl('scale') + ':'); dpg.add_input_text(tag='scale', width=80)
+                    dpg.add_button(label=tl('set_scale'), callback=set_scale_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
                 pet_worlds = ['WizardCity', 'Krokotopia', 'Marleybone', 'Mooshu', 'Dragonspyre']
                 with dpg.group(horizontal=True):
-                    dpg.add_text('Select a pet world:')
+                    dpg.add_text(tl('select_pet_world'))
                     dpg.add_combo(items=pet_worlds, default_value='WizardCity', tag='PetWorldInput', width=120, callback=pet_world_callback)
 
             # ==================== Console Tab ====================
-            with dpg.tab(label=tl('Console')):
-                dpg.add_text(tl('Be sure to include your logs when asking for support.'))
+            with dpg.tab(label=tl('console')):
+                dpg.add_text(tl('console_support'))
                 dpg.add_separator()
                 dpg.add_input_text(tag='-CONSOLE-', multiline=True, width=-1, height=150, readonly=True)
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label=tl('Collapse / Expand Logs'), callback=toggle_callback(GUIKeys.toggle_show_expanded_logs))
+                    dpg.add_button(label=tl('collapse_expand_logs'), callback=toggle_callback(GUIKeys.toggle_show_expanded_logs))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                    dpg.add_button(label=tl('Copy Logs'), callback=copy_callback(GUIKeys.copy_logs))
+                    dpg.add_button(label=tl('copy_logs'), callback=copy_callback(GUIKeys.copy_logs))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
 
         # Client info at bottom
@@ -831,10 +825,10 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             dpg.add_table_column(init_width_or_weight=0, width_stretch=True)
             dpg.add_table_column(init_width_or_weight=0, width_fixed=True)
             with dpg.table_row():
-                dpg.add_text(tl('Client') + ': ', tag='Title')
+                dpg.add_text(tl('client') + ': ', tag='Title')
                 dpg.add_spacer()
             with dpg.table_row():
-                dpg.add_text(tl('Zone') + ': ', tag='Zone')
+                dpg.add_text(tl('zone') + ': ', tag='Zone')
                 dpg.add_button(label="Copy##zone", callback=copy_callback(GUIKeys.copy_zone), small=True)
                 dpg.bind_item_theme(dpg.last_item(), button_theme)
             with dpg.table_row():
