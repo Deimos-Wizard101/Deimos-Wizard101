@@ -1334,6 +1334,8 @@ async def main():
 								raise deimosgui.ToolClosedException
 							os._exit(0) # "Fuck you, you're getting terminated homeboy" - Slack
 						case deimosgui.GUICommandType.AttemptedClose:
+							if not walker.clients:
+								os._exit(0)
 							raise deimosgui.ToolClosedException
 						case deimosgui.GUICommandType.ToggleOption:
 							if not walker.clients:
