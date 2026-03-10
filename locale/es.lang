@@ -1,0 +1,116 @@
+# Archivo de idioma español de Deimos
+
+# License
+license_title=Acuerdo de Licencia
+license_text=Deimos siempre será gratuito y de código abierto.\nAl usar Deimos, aceptas el acuerdo de licencia GPL v3.\n¡Si pagaste por esto, te estafaron!
+
+# Main banner
+free_tool=Deimos siempre será una herramienta gratuita. ¡Si pagaste por esto, te estafaron!
+
+# Tab names
+hotkeys=Atajos
+camera=Cámara
+dev_utils=Utilidades Dev
+stats=Estadísticas
+flythrough=Recorrido
+bot=Bot
+combat=Combate
+misc=Misc
+console=Consola
+
+# Toggles
+toggles=Interruptores
+speedhack=Speedhack
+combat_toggle=Combate
+dialogue=Diálogo
+sigil=Sigilo
+questing=Misiones
+auto_pet=Mascota automática
+auto_potion=Poción automática
+
+# Hotkeys
+hotkeys_label=Atajos
+quest_tp=TP de misión
+freecam=Cámara libre
+freecam_tp=TP de cámara libre
+mass_hotkeys=Atajos masivos
+mass_tp=TP masivo
+xyz_sync=Sincronización XYZ
+x_press=Presionar X
+
+# Camera
+set_camera_position=Establecer posición de cámara
+yaw=Yaw
+roll=Roll
+pitch=Pitch
+entity=Entidad
+anchor=Ancla
+toggle_camera_collision=Alternar colisión de cámara
+distance=Distancia
+min=Mín
+max=Máx
+set_distance=Establecer distancia
+copy_camera_position=Copiar posición de cámara
+copy_camera_rotation=Copiar rotación de cámara
+
+# Dev Utils
+advanced_warning=Las utilidades de abajo son para usuarios avanzados y no se proporcionará soporte para ellas.
+tp_utils=Utilidades TP
+custom_tp=TP personalizado
+entity_name=Nombre de entidad
+entity_tp=TP de entidad
+dev_utils_label=Utilidades Dev
+available_entities=Entidades disponibles
+available_paths=Rutas disponibles
+zone_name=Nombre de zona
+go_to_zone=Ir a zona
+mass_go_to_zone=Ir a zona en masa
+world_name=Nombre del mundo
+go_to_world=Ir a mundo
+mass_go_to_world=Ir a mundo en masa
+go_to_bazaar=Ir al Bazar
+mass_go_to_bazaar=Ir al Bazar en masa
+refill_potions=Rellenar pociones
+mass_refill_potions=Rellenar pociones en masa
+
+# Stats
+caster_target_indices=Índices de lanzador/objetivo
+dmg=Daño
+school=Escuela
+crit=Crítico
+view_stats=Ver estadísticas
+copy_stats=Copiar estadísticas
+no_client_selected=Ningún cliente ha sido seleccionado.
+swap_members=Intercambiar miembros
+force_school_damage=Forzar daño de escuela
+
+# Flythrough
+import_flythrough=Importar recorrido
+export_flythrough=Exportar recorrido
+execute_flythrough=Ejecutar recorrido
+kill_flythrough=Detener recorrido
+
+# Bot
+import_bot=Importar bot
+export_bot=Exportar bot
+run_bot=Ejecutar bot
+kill_bot=Detener bot
+
+# Combat
+import_playstyle=Importar estilo de juego
+export_playstyle=Exportar estilo de juego
+set_playstyles=Establecer estilos de juego
+
+# Misc
+scale=Escala
+set_scale=Establecer escala
+select_pet_world=Selecciona un mundo de mascotas:
+
+# Console
+console_support=Asegúrate de incluir tus registros al pedir soporte.
+collapse_expand_logs=Contraer / Expandir registros
+copy_logs=Copiar registros
+
+# Client info
+client=Cliente
+zone=Zona
