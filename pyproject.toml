@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "deimos-wizard101"
-version = "3.10.0"
+version = "3.13.0"
 description = "A Wizard101 automation tool"
 license = "GPL-3.0-only"
 requires-python = ">=3.13"
