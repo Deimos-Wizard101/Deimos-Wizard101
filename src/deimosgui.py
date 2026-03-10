@@ -365,7 +365,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         tl = gettext.gettext
 
     dpg.create_context()
-    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=620, height=450, always_on_top=gui_on_top, resizable=False, decorated=False)
+    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=620, height=450, always_on_top=gui_on_top, resizable=False)
 
     # Theme setup
     with dpg.theme() as global_theme:
@@ -563,61 +563,8 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     with dpg.file_dialog(directory_selector=False, show=False, callback=_export_file('combat_config'), tag="combat_export_dialog", width=500, height=400, default_filename="playstyle.txt"):
         dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
 
-    # Custom title bar theme
-    with dpg.theme() as titlebar_theme:
-        with dpg.theme_component(dpg.mvChildWindow):
-            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (30, 30, 30, 255))
-
-    # Dragging state for custom title bar
-    _drag_state = {"dragging": False, "offset_x": 0, "offset_y": 0}
-
     # Main window
     with dpg.window(tag="primary_window"):
-        # Custom title bar
-        def _close_app(sender, app_data):
-            send_queue.put(GUICommand(GUICommandType.AttemptedClose))
-
-        with dpg.theme() as close_btn_theme:
-            with dpg.theme_component(dpg.mvButton):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (180, 30, 30, 255))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (220, 50, 50, 255))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (150, 20, 20, 255))
-
-        with dpg.child_window(height=30, border=False, tag="titlebar"):
-            with dpg.table(header_row=False, borders_innerH=False, borders_outerH=False, borders_innerV=False, borders_outerV=False):
-                dpg.add_table_column(width_stretch=True)
-                dpg.add_table_column(init_width_or_weight=30, width_fixed=True)
-                with dpg.table_row():
-                    dpg.add_text(f"  {tool_name} v{tool_version}")
-                    close_btn = dpg.add_button(label="X", callback=_close_app, width=30, height=22)
-                    dpg.bind_item_theme(close_btn, close_btn_theme)
-        dpg.bind_item_theme("titlebar", titlebar_theme)
-
-        # Mouse drag handler for title bar
-        with dpg.handler_registry():
-            def _on_mouse_down(sender, app_data):
-                mouse_pos = dpg.get_mouse_pos(local=False)
-                if mouse_pos[1] < 30:
-                    vp_pos = dpg.get_viewport_pos()
-                    _drag_state["dragging"] = True
-                    _drag_state["offset_x"] = mouse_pos[0] - vp_pos[0]
-                    _drag_state["offset_y"] = mouse_pos[1] - vp_pos[1]
-
-            def _on_mouse_release(sender, app_data):
-                _drag_state["dragging"] = False
-
-            def _on_mouse_move(sender, app_data):
-                if _drag_state["dragging"]:
-                    mouse_pos = dpg.get_mouse_pos(local=False)
-                    dpg.set_viewport_pos([
-                        mouse_pos[0] - _drag_state["offset_x"],
-                        mouse_pos[1] - _drag_state["offset_y"]
-                    ])
-
-            dpg.add_mouse_down_handler(button=dpg.mvMouseButton_Left, callback=_on_mouse_down)
-            dpg.add_mouse_release_handler(button=dpg.mvMouseButton_Left, callback=_on_mouse_release)
-            dpg.add_mouse_move_handler(callback=_on_mouse_move)
-
         dpg.add_text(tl('Deimos will always be a free tool. If you paid for this, you got scammed!'))
 
         with dpg.tab_bar():
