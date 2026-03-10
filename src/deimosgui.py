@@ -365,7 +365,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         tl = gettext.gettext
 
     dpg.create_context()
-    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=580, height=450, always_on_top=gui_on_top, resizable=False)
+    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=620, height=450, always_on_top=gui_on_top, resizable=False, decorated=False)
 
     # Theme setup
     with dpg.theme() as global_theme:
@@ -563,8 +563,61 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     with dpg.file_dialog(directory_selector=False, show=False, callback=_export_file('combat_config'), tag="combat_export_dialog", width=500, height=400, default_filename="playstyle.txt"):
         dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
 
+    # Custom title bar theme
+    with dpg.theme() as titlebar_theme:
+        with dpg.theme_component(dpg.mvChildWindow):
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (30, 30, 30, 255))
+
+    # Dragging state for custom title bar
+    _drag_state = {"dragging": False, "offset_x": 0, "offset_y": 0}
+
     # Main window
     with dpg.window(tag="primary_window"):
+        # Custom title bar
+        def _close_app(sender, app_data):
+            send_queue.put(GUICommand(GUICommandType.AttemptedClose))
+
+        with dpg.theme() as close_btn_theme:
+            with dpg.theme_component(dpg.mvButton):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (180, 30, 30, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (220, 50, 50, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (150, 20, 20, 255))
+
+        with dpg.child_window(height=30, border=False, tag="titlebar"):
+            with dpg.table(header_row=False, borders_innerH=False, borders_outerH=False, borders_innerV=False, borders_outerV=False):
+                dpg.add_table_column(width_stretch=True)
+                dpg.add_table_column(init_width_or_weight=30, width_fixed=True)
+                with dpg.table_row():
+                    dpg.add_text(f"  {tool_name} v{tool_version}")
+                    close_btn = dpg.add_button(label="X", callback=_close_app, width=30, height=22)
+                    dpg.bind_item_theme(close_btn, close_btn_theme)
+        dpg.bind_item_theme("titlebar", titlebar_theme)
+
+        # Mouse drag handler for title bar
+        with dpg.handler_registry():
+            def _on_mouse_down(sender, app_data):
+                mouse_pos = dpg.get_mouse_pos(local=False)
+                if mouse_pos[1] < 30:
+                    vp_pos = dpg.get_viewport_pos()
+                    _drag_state["dragging"] = True
+                    _drag_state["offset_x"] = mouse_pos[0] - vp_pos[0]
+                    _drag_state["offset_y"] = mouse_pos[1] - vp_pos[1]
+
+            def _on_mouse_release(sender, app_data):
+                _drag_state["dragging"] = False
+
+            def _on_mouse_move(sender, app_data):
+                if _drag_state["dragging"]:
+                    mouse_pos = dpg.get_mouse_pos(local=False)
+                    dpg.set_viewport_pos([
+                        mouse_pos[0] - _drag_state["offset_x"],
+                        mouse_pos[1] - _drag_state["offset_y"]
+                    ])
+
+            dpg.add_mouse_down_handler(button=dpg.mvMouseButton_Left, callback=_on_mouse_down)
+            dpg.add_mouse_release_handler(button=dpg.mvMouseButton_Left, callback=_on_mouse_release)
+            dpg.add_mouse_move_handler(callback=_on_mouse_move)
+
         dpg.add_text(tl('Deimos will always be a free tool. If you paid for this, you got scammed!'))
 
         with dpg.tab_bar():
@@ -611,17 +664,32 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
 
                     # Tool info panel
-                    with dpg.child_window(width=-1, height=230, border=True):
+                    with dpg.child_window(width=-1, height=230, border=True, tag="tool_info_panel"):
                         dpg.add_spacer(height=20)
                         # Load and display logo
-                        _logo_width, _logo_height, _logo_channels, _logo_data = dpg.load_image("Deimos-logo.ico")
-                        with dpg.texture_registry():
-                            dpg.add_static_texture(width=_logo_width, height=_logo_height, default_value=_logo_data, tag="logo_texture")
-                        dpg.add_image("logo_texture", indent=(_logo_width // 2))
+                        try:
+                            _logo_width, _logo_height, _logo_channels, _logo_data = dpg.load_image("Deimos-logo.ico")
+                            with dpg.texture_registry():
+                                dpg.add_static_texture(width=_logo_width, height=_logo_height, default_value=_logo_data, tag="logo_texture")
+                            dpg.add_image("logo_texture", tag="logo_image")
+                        except Exception:
+                            pass
                         dpg.add_spacer(height=8)
-                        dpg.add_text(f"{tool_name} v{tool_version}", indent=40)
+                        dpg.add_text(f"{tool_name} v{tool_version}", tag="tool_version_text")
                         dpg.add_spacer(height=4)
-                        dpg.add_text("Discord: discord.gg/deimos", indent=20)
+
+                        import webbrowser
+                        def _open_discord(sender, app_data):
+                            webbrowser.open("https://discord.gg/deimos")
+
+                        dpg.add_button(label="Discord: discord.gg/deimos", callback=_open_discord, tag="discord_link")
+                        with dpg.theme() as link_theme:
+                            with dpg.theme_component(dpg.mvButton):
+                                dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 0, 0, 0))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 50, 80, 255))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (0, 0, 0, 0))
+                                dpg.add_theme_color(dpg.mvThemeCol_Text, (100, 149, 237, 255))
+                        dpg.bind_item_theme("discord_link", link_theme)
 
             # ==================== Camera Tab ====================
             with dpg.tab(label=tl('Camera')):
@@ -706,7 +774,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
 
             # ==================== Stat Viewer Tab ====================
-            with dpg.tab(label=tl('Stat Viewer')):
+            with dpg.tab(label=tl('Stats')):
                 dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
                 dpg.add_separator()
                 indices = [str(i + 1) for i in range(12)]
@@ -826,8 +894,24 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     dpg.set_primary_window("primary_window", True)
 
     running = True
+    _centered = False
 
     while dpg.is_dearpygui_running() and running:
+        # Center tool info panel items after layout is computed
+        if not _centered and dpg.get_frame_count() > 5:
+            _centered = True
+            try:
+                panel_width = dpg.get_item_width("tool_info_panel")
+                if panel_width and panel_width > 0:
+                    for item_tag in ["logo_image", "tool_version_text", "discord_link"]:
+                        if dpg.does_item_exist(item_tag):
+                            item_width = dpg.get_item_width(item_tag)
+                            if item_width and item_width > 0:
+                                indent = max(0, (panel_width - item_width) // 2 - 8)
+                                dpg.set_item_indent(item_tag, indent)
+            except Exception:
+                pass
+
         # Auto-close license popup after ~5 seconds (300 frames at 60fps)
         if license_start_frame[0] == 0:
             license_start_frame[0] = dpg.get_frame_count()
