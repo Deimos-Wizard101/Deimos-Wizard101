@@ -337,6 +337,15 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         gettext.textdomain('messages')
         tl = gettext.gettext
 
+    # Set per-monitor DPI awareness so Windows doesn't bitmap-scale the titlebar
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
     dpg.create_context()
 
     # Apply GUI scale from config (default 1.0, set in Deimos-config.ini under [gui] scale=)
@@ -552,7 +561,8 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                 with dpg.group(horizontal=True):
                     # Toggles frame
                     _hotkey_h = int(230 * _scale)
-                    with dpg.child_window(width=140, height=_hotkey_h, border=True):
+                    _hotkey_w = [int(140 * _scale), int(130 * _scale)]
+                    with dpg.child_window(width=_hotkey_w[0], height=_hotkey_h, border=True):
                         dpg.add_text(tl('Toggles'))
                         dpg.add_separator()
                         toggles = [
@@ -571,7 +581,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                                 dpg.bind_item_theme(dpg.last_item(), button_theme)
 
                     # Hotkeys + Mass Hotkeys stacked
-                    with dpg.child_window(width=130, height=_hotkey_h, border=True):
+                    with dpg.child_window(width=_hotkey_w[1], height=_hotkey_h, border=True):
                         dpg.add_text(tl('Hotkeys'))
                         dpg.add_separator()
                         dpg.add_button(label=tl('Quest TP'), callback=teleport_callback(GUIKeys.hotkey_quest_tp), width=-1)
