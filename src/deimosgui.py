@@ -552,7 +552,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             with dpg.tab(label=tl('Hotkeys')):
                 with dpg.group(horizontal=True):
                     # Toggles frame
-                    with dpg.child_window(width=_s(140), height=_s(230), border=True):
+                    with dpg.child_window(width=_s(140), height=-1, border=True):
                         dpg.add_text(tl('Toggles'))
                         dpg.add_separator()
                         toggles = [
@@ -571,7 +571,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                                 dpg.bind_item_theme(dpg.last_item(), button_theme)
 
                     # Hotkeys + Mass Hotkeys stacked
-                    with dpg.child_window(width=_s(130), height=_s(230), border=True):
+                    with dpg.child_window(width=_s(130), height=-1, border=True):
                         dpg.add_text(tl('Hotkeys'))
                         dpg.add_separator()
                         dpg.add_button(label=tl('Quest TP'), callback=teleport_callback(GUIKeys.hotkey_quest_tp), width=-1)
@@ -592,33 +592,32 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
                     # Tool info panel — fixed width, content centered via indent
                     import webbrowser
-                    _panel_w = _s(180)
-                    _panel_inner = _panel_w - 16  # account for child_window padding
-                    with dpg.child_window(width=_panel_w, height=_s(230), border=True, tag="tool_info_panel"):
+                    with dpg.child_window(width=-1, height=-1, border=False, tag="tool_info_panel"):
                         dpg.add_spacer(height=15)
 
+                        _info_center_items = []  # (item_tag, approx_width) — centered in render loop
                         try:
                             _logo_w, _logo_h, _, _logo_data = dpg.load_image("Deimos-logo.png")
                             with dpg.texture_registry():
                                 dpg.add_static_texture(width=_logo_w, height=_logo_h, default_value=_logo_data, tag="logo_texture")
-                            _logo_indent = max(0, (_panel_inner - _logo_w) // 2)
-                            dpg.add_image("logo_texture", tag="logo_image", indent=_logo_indent)
+                            dpg.add_image("logo_texture", tag="logo_image")
+                            _info_center_items.append(("logo_image", _logo_w))
                         except Exception:
                             dpg.add_text("(logo)")
 
                         dpg.add_spacer(height=6)
 
                         _version_text = f"{tool_name} v{tool_version}"
-                        _version_indent = max(0, (_panel_inner - len(_version_text) * 7) // 2)
-                        dpg.add_text(_version_text, indent=_version_indent)
+                        _version_tag = dpg.add_text(_version_text)
+                        _info_center_items.append((_version_tag, len(_version_text) * 7))
 
                         dpg.add_spacer(height=2)
 
                         _discord_label = "discord.gg/59UrPJwYDm"
-                        _discord_indent = max(0, (_panel_inner - len(_discord_label) * 7 - 16) // 2)
                         def _open_discord(_s, _a):
                             webbrowser.open("https://discord.gg/59UrPJwYDm")
-                        dpg.add_button(label=_discord_label, callback=_open_discord, tag="discord_link", indent=_discord_indent)
+                        dpg.add_button(label=_discord_label, callback=_open_discord, tag="discord_link")
+                        _info_center_items.append(("discord_link", len(_discord_label) * 7 + 16))
                         with dpg.theme() as link_theme:
                             with dpg.theme_component(dpg.mvButton):
                                 dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 0, 0, 0))
@@ -833,8 +832,21 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         dpg.set_global_font_scale(_scale)
 
     running = True
+    _info_centered = False
 
     while dpg.is_dearpygui_running() and running:
+        # Center tool info items once layout has settled
+        if not _info_centered and dpg.get_frame_count() > 10:
+            _info_centered = True
+            try:
+                panel_w = dpg.get_item_rect_size("tool_info_panel")[0]
+                if panel_w > 0:
+                    for item, item_w in _info_center_items:
+                        indent = max(0, int((panel_w - item_w) / 2) - 8)
+                        dpg.set_item_indent(item, indent)
+            except Exception:
+                pass
+
         # Auto-close license popup after ~5 seconds (300 frames at 60fps)
         if license_start_frame[0] == 0:
             license_start_frame[0] = dpg.get_frame_count()
