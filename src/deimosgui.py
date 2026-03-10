@@ -668,7 +668,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         dpg.add_spacer(height=20)
                         # Load and display logo
                         try:
-                            _logo_width, _logo_height, _logo_channels, _logo_data = dpg.load_image("Deimos-logo.ico")
+                            _logo_width, _logo_height, _logo_channels, _logo_data = dpg.load_image("Deimos-logo.png")
                             with dpg.texture_registry():
                                 dpg.add_static_texture(width=_logo_width, height=_logo_height, default_value=_logo_data, tag="logo_texture")
                             dpg.add_image("logo_texture", tag="logo_image")
