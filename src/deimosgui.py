@@ -337,20 +337,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         gettext.textdomain('messages')
         tl = gettext.gettext
 
-    # Set DPI awareness before creating viewport to prevent scaling issues
-    try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # PROCESS_SYSTEM_DPI_AWARE
-    except Exception:
-        try:
-            ctypes.windll.user32.SetProcessDPIAware()
-        except Exception:
-            pass
-
     dpg.create_context()
 
     # Apply GUI scale from config (default 1.0, set in Deimos-config.ini under [gui] scale=)
     _scale = float(gui_scale) if gui_scale else 1.0
-    _vp_width = int(620 * _scale)
+    _vp_width = int(500 * _scale)
     _vp_height = int(450 * _scale)
 
     dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=_vp_width, height=_vp_height, always_on_top=gui_on_top, resizable=False)
