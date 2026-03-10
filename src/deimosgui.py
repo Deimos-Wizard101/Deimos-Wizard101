@@ -341,8 +341,9 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
     # Apply GUI scale from config (default 1.0, set in Deimos-config.ini under [gui] scale=)
     _scale = float(gui_scale) if gui_scale else 1.0
-    _vp_width = int(500 * _scale)
+    _vp_width = int(535 * _scale)
     _vp_height = int(450 * _scale)
+    _s = lambda v: int(v * _scale)  # scale helper
 
     dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=_vp_width, height=_vp_height, always_on_top=gui_on_top, resizable=False)
 
@@ -551,7 +552,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             with dpg.tab(label=tl('Hotkeys')):
                 with dpg.group(horizontal=True):
                     # Toggles frame
-                    with dpg.child_window(width=140, height=230, border=True):
+                    with dpg.child_window(width=_s(140), height=_s(230), border=True):
                         dpg.add_text(tl('Toggles'))
                         dpg.add_separator()
                         toggles = [
@@ -570,7 +571,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                                 dpg.bind_item_theme(dpg.last_item(), button_theme)
 
                     # Hotkeys + Mass Hotkeys stacked
-                    with dpg.child_window(width=130, height=230, border=True):
+                    with dpg.child_window(width=_s(130), height=_s(230), border=True):
                         dpg.add_text(tl('Hotkeys'))
                         dpg.add_separator()
                         dpg.add_button(label=tl('Quest TP'), callback=teleport_callback(GUIKeys.hotkey_quest_tp), width=-1)
@@ -591,9 +592,9 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
                     # Tool info panel — fixed width, content centered via indent
                     import webbrowser
-                    _panel_w = 180
+                    _panel_w = _s(180)
                     _panel_inner = _panel_w - 16  # account for child_window padding
-                    with dpg.child_window(width=_panel_w, height=230, border=True, tag="tool_info_panel"):
+                    with dpg.child_window(width=_panel_w, height=_s(230), border=True, tag="tool_info_panel"):
                         dpg.add_spacer(height=15)
 
                         try:
