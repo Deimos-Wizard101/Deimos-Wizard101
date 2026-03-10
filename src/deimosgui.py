@@ -6,10 +6,9 @@ import dearpygui.dearpygui as dpg
 import pyperclip
 from src.combat_objects import school_id_to_names
 from src.paths import wizard_city_dance_game_path
-from src.utils import assign_pet_level, get_ui_tree_text
+from src.utils import assign_pet_level
 from threading import Thread
 
-import sys
 import re
 from loguru import logger
 import ctypes
@@ -241,32 +240,6 @@ class GUICommand:
         self.data = data
 
 
-# Tags for widgets we need to read/update
-_TAGS = {}
-
-def _tag(name):
-    """Get or create a dpg tag string."""
-    return name
-
-
-def _make_button_callback(send_queue, event_key):
-    """Create a simple callback that sends a GUICommand on button click."""
-    def callback(sender, app_data):
-        send_queue.put(GUICommand(GUICommandType.ToggleOption, event_key))
-    return callback
-
-
-def _make_copy_callback(send_queue, event_key):
-    def callback(sender, app_data):
-        send_queue.put(GUICommand(GUICommandType.Copy, event_key))
-    return callback
-
-
-def _make_teleport_callback(send_queue, event_key):
-    def callback(sender, app_data):
-        send_queue.put(GUICommand(GUICommandType.Teleport, event_key))
-    return callback
-
 
 def show_ui_tree_popup(ui_tree_content):
     ui_tree_list = ui_tree_content.splitlines()
@@ -363,6 +336,15 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         gettext.bindtextdomain('messages', 'locale')
         gettext.textdomain('messages')
         tl = gettext.gettext
+
+    # Set DPI awareness before creating viewport to prevent scaling issues
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # PROCESS_SYSTEM_DPI_AWARE
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
 
     dpg.create_context()
     dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=620, height=450, always_on_top=gui_on_top, resizable=False)
@@ -550,17 +532,17 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         return callback
 
     # File dialogs
-    with dpg.file_dialog(directory_selector=False, show=False, callback=_import_file('flythrough_creator'), tag="flythrough_import_dialog", width=500, height=400):
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_import_file('flythrough_creator'), tag="flythrough_import_dialog", width=350, height=280):
         dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
-    with dpg.file_dialog(directory_selector=False, show=False, callback=_export_file('flythrough_creator'), tag="flythrough_export_dialog", width=500, height=400, default_filename="flythrough.txt"):
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_export_file('flythrough_creator'), tag="flythrough_export_dialog", width=350, height=280, default_filename="flythrough.txt"):
         dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
-    with dpg.file_dialog(directory_selector=False, show=False, callback=_import_file('bot_creator'), tag="bot_import_dialog", width=500, height=400):
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_import_file('bot_creator'), tag="bot_import_dialog", width=350, height=280):
         dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
-    with dpg.file_dialog(directory_selector=False, show=False, callback=_export_file('bot_creator'), tag="bot_export_dialog", width=500, height=400, default_filename="bot.txt"):
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_export_file('bot_creator'), tag="bot_export_dialog", width=350, height=280, default_filename="bot.txt"):
         dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
-    with dpg.file_dialog(directory_selector=False, show=False, callback=_import_file('combat_config'), tag="combat_import_dialog", width=500, height=400):
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_import_file('combat_config'), tag="combat_import_dialog", width=350, height=280):
         dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
-    with dpg.file_dialog(directory_selector=False, show=False, callback=_export_file('combat_config'), tag="combat_export_dialog", width=500, height=400, default_filename="playstyle.txt"):
+    with dpg.file_dialog(directory_selector=False, show=False, callback=_export_file('combat_config'), tag="combat_export_dialog", width=350, height=280, default_filename="playstyle.txt"):
         dpg.add_file_extension(".txt", color=(255, 255, 255, 255))
 
     # Main window
@@ -613,46 +595,43 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                     # Tool info panel
                     import webbrowser
                     with dpg.child_window(width=-1, height=230, border=True, tag="tool_info_panel"):
-                        # Use a single-column table to center all content
-                        with dpg.table(header_row=False, borders_innerH=False, borders_outerH=False,
-                                       borders_innerV=False, borders_outerV=False):
-                            dpg.add_table_column(width_stretch=True)
-                            with dpg.table_row():
-                                dpg.add_spacer(height=15)
-                            with dpg.table_row():
-                                with dpg.group(horizontal=True):
-                                    dpg.add_spacer()
-                                    try:
-                                        _logo_width, _logo_height, _logo_channels, _logo_data = dpg.load_image("Deimos-logo.png")
-                                        with dpg.texture_registry():
-                                            dpg.add_static_texture(width=_logo_width, height=_logo_height, default_value=_logo_data, tag="logo_texture")
-                                        dpg.add_image("logo_texture", tag="logo_image")
-                                    except Exception:
-                                        dpg.add_text("(logo)")
-                                    dpg.add_spacer()
-                            with dpg.table_row():
-                                dpg.add_spacer(height=6)
-                            with dpg.table_row():
-                                with dpg.group(horizontal=True):
-                                    dpg.add_spacer()
-                                    dpg.add_text(f"{tool_name} v{tool_version}")
-                                    dpg.add_spacer()
-                            with dpg.table_row():
-                                dpg.add_spacer(height=2)
-                            with dpg.table_row():
-                                with dpg.group(horizontal=True):
-                                    dpg.add_spacer()
-                                    def _open_discord(sender, app_data):
-                                        webbrowser.open("https://discord.gg/59UrPJwYDm")
-                                    dpg.add_button(label="discord.gg/59UrPJwYDm", callback=_open_discord, tag="discord_link")
-                                    with dpg.theme() as link_theme:
-                                        with dpg.theme_component(dpg.mvButton):
-                                            dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 0, 0, 0))
-                                            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 50, 80, 255))
-                                            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (0, 0, 0, 0))
-                                            dpg.add_theme_color(dpg.mvThemeCol_Text, (100, 149, 237, 255))
-                                    dpg.bind_item_theme("discord_link", link_theme)
-                                    dpg.add_spacer()
+                        # We'll center items after the first frame using set_item_indent
+                        _info_items_to_center = []
+
+                        dpg.add_spacer(height=15)
+
+                        try:
+                            _logo_width, _logo_height, _logo_channels, _logo_data = dpg.load_image("Deimos-logo.png")
+                            with dpg.texture_registry():
+                                dpg.add_static_texture(width=_logo_width, height=_logo_height, default_value=_logo_data, tag="logo_texture")
+                            _logo_item = dpg.add_image("logo_texture", tag="logo_image")
+                            _info_items_to_center.append((_logo_item, _logo_width))
+                        except Exception:
+                            _logo_item = dpg.add_text("(logo)")
+                            _info_items_to_center.append((_logo_item, 40))
+
+                        dpg.add_spacer(height=6)
+
+                        _version_text = f"{tool_name} v{tool_version}"
+                        _version_item = dpg.add_text(_version_text)
+                        # Approximate text width: ~7px per char
+                        _info_items_to_center.append((_version_item, len(_version_text) * 7))
+
+                        dpg.add_spacer(height=2)
+
+                        def _open_discord(sender, app_data):
+                            webbrowser.open("https://discord.gg/59UrPJwYDm")
+                        _discord_label = "discord.gg/59UrPJwYDm"
+                        dpg.add_button(label=_discord_label, callback=_open_discord, tag="discord_link")
+                        with dpg.theme() as link_theme:
+                            with dpg.theme_component(dpg.mvButton):
+                                dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 0, 0, 0))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 50, 80, 255))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (0, 0, 0, 0))
+                                dpg.add_theme_color(dpg.mvThemeCol_Text, (100, 149, 237, 255))
+                        dpg.bind_item_theme("discord_link", link_theme)
+                        # Button is wider due to padding (~16px extra)
+                        _info_items_to_center.append(("discord_link", len(_discord_label) * 7 + 16))
 
             # ==================== Camera Tab ====================
             with dpg.tab(label=tl('Camera')):
@@ -857,6 +836,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     dpg.set_primary_window("primary_window", True)
 
     running = True
+    _centered = False
 
     while dpg.is_dearpygui_running() and running:
         # Auto-close license popup after ~5 seconds (300 frames at 60fps)
@@ -864,6 +844,20 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             license_start_frame[0] = dpg.get_frame_count()
         if dpg.does_item_exist(license_popup_tag) and dpg.get_frame_count() - license_start_frame[0] > 300:
             close_license()
+
+        # Center tool info items after layout settles (frame 10+)
+        if not _centered and dpg.get_frame_count() > 10:
+            _centered = True
+            try:
+                panel_width = dpg.get_item_width("tool_info_panel")
+                if panel_width and panel_width > 0:
+                    # Account for child_window padding (~16px total)
+                    usable = panel_width - 16
+                    for item, item_width in _info_items_to_center:
+                        indent = max(0, (usable - item_width) // 2)
+                        dpg.set_item_indent(item, indent)
+            except Exception:
+                pass
 
         # Process commands from backend
         try:
