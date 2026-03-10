@@ -12,7 +12,7 @@ dependencies = [
     "loguru>=0.7.2",
     "pypresence>=4.3.0",
     "pyperclip>=1.9.0",
-    "pysimplegui==4.60.5",
+    "dearpygui>=2.0.0",
     "pywin32>=306; sys_platform == 'win32'",
     "pyyaml>=6.0.1",
     "requests>=2.32.3",
@@ -31,7 +31,6 @@ packages = ["src"]
 members = ["libs/wizwalker", "libs/wizsprinter"]
 
 [tool.uv.sources]
-pysimplegui = { path = "wheels/PySimpleGUI-4.60.5-py3-none-any.whl" }
 wizwalker = { workspace = true }
 wizsprinter = { workspace = true }
 
