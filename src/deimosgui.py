@@ -365,7 +365,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         tl = gettext.gettext
 
     dpg.create_context()
-    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=780, height=550, always_on_top=gui_on_top, resizable=False)
+    dpg.create_viewport(title=f'{tool_name} GUI v{tool_version}', width=500, height=450, always_on_top=gui_on_top, resizable=False)
 
     # Theme setup
     with dpg.theme() as global_theme:
@@ -721,7 +721,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
                     dpg.add_button(label=tl('Copy Stats'), callback=copy_callback(GUIKeys.copy_stats))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
-                dpg.add_input_text(tag='stat_viewer', default_value=tl('No client has been selected.'), multiline=True, width=-1, height=200, readonly=True)
+                dpg.add_input_text(tag='stat_viewer', default_value=tl('No client has been selected.'), multiline=True, width=-1, height=120, readonly=True)
                 with dpg.group(horizontal=True):
                     dpg.add_button(label=tl('Swap Members'), callback=swap_members_callback)
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
@@ -732,7 +732,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             with dpg.tab(label=tl('Flythrough')):
                 dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
                 dpg.add_separator()
-                dpg.add_input_text(tag='flythrough_creator', multiline=True, width=-1, height=250)
+                dpg.add_input_text(tag='flythrough_creator', multiline=True, width=-1, height=150)
                 with dpg.group(horizontal=True):
                     dpg.add_button(label=tl('Import Flythrough'), callback=lambda: dpg.show_item("flythrough_import_dialog"))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
@@ -747,7 +747,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             with dpg.tab(label=tl('Bot')):
                 dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
                 dpg.add_separator()
-                dpg.add_input_text(tag='bot_creator', multiline=True, width=-1, height=250)
+                dpg.add_input_text(tag='bot_creator', multiline=True, width=-1, height=150)
                 with dpg.group(horizontal=True):
                     dpg.add_button(label='Import Bot', callback=lambda: dpg.show_item("bot_import_dialog"))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
@@ -762,7 +762,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             with dpg.tab(label=tl('Combat')):
                 dpg.add_text(tl('The utils below are for advanced users and no support will be given on them.'))
                 dpg.add_separator()
-                dpg.add_input_text(tag='combat_config', multiline=True, width=-1, height=250)
+                dpg.add_input_text(tag='combat_config', multiline=True, width=-1, height=150)
                 with dpg.group(horizontal=True):
                     dpg.add_button(label='Import Playstyle', callback=lambda: dpg.show_item("combat_import_dialog"))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
@@ -788,7 +788,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             with dpg.tab(label=tl('Console')):
                 dpg.add_text(tl('Be sure to include your logs when asking for support.'))
                 dpg.add_separator()
-                dpg.add_input_text(tag='-CONSOLE-', multiline=True, width=-1, height=280, readonly=True)
+                dpg.add_input_text(tag='-CONSOLE-', multiline=True, width=-1, height=150, readonly=True)
                 with dpg.group(horizontal=True):
                     dpg.add_button(label=tl('Collapse / Expand Logs'), callback=toggle_callback(GUIKeys.toggle_show_expanded_logs))
                     dpg.bind_item_theme(dpg.last_item(), button_theme)
