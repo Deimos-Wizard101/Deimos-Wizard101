@@ -572,7 +572,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             with dpg.tab(label=tl('Hotkeys')):
                 with dpg.group(horizontal=True):
                     # Toggles frame
-                    with dpg.child_window(width=220, height=230, border=True):
+                    with dpg.child_window(width=140, height=230, border=True):
                         dpg.add_text(tl('Toggles'))
                         dpg.add_separator()
                         toggles = [
@@ -586,9 +586,9 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         ]
                         for name, key in toggles:
                             with dpg.group(horizontal=True):
-                                dpg.add_button(label=name, callback=toggle_callback(key), width=100)
-                                dpg.bind_item_theme(dpg.last_item(), button_theme)
                                 dpg.add_checkbox(tag=f'{name}Status', default_value=False, enabled=False)
+                                dpg.add_button(label=name, callback=toggle_callback(key), width=-1)
+                                dpg.bind_item_theme(dpg.last_item(), button_theme)
 
                     # Hotkeys + Mass Hotkeys stacked
                     with dpg.child_window(width=130, height=230, border=True):
@@ -609,6 +609,19 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
                         dpg.add_button(label=tl('X Press'), callback=x_press_callback, width=-1)
                         dpg.bind_item_theme(dpg.last_item(), button_theme)
+
+                    # Tool info panel
+                    with dpg.child_window(width=-1, height=230, border=True):
+                        dpg.add_spacer(height=20)
+                        # Load and display logo
+                        _logo_width, _logo_height, _logo_channels, _logo_data = dpg.load_image("Deimos-logo.ico")
+                        with dpg.texture_registry():
+                            dpg.add_static_texture(width=_logo_width, height=_logo_height, default_value=_logo_data, tag="logo_texture")
+                        dpg.add_image("logo_texture", indent=(_logo_width // 2))
+                        dpg.add_spacer(height=8)
+                        dpg.add_text(f"{tool_name} v{tool_version}", indent=40)
+                        dpg.add_spacer(height=4)
+                        dpg.add_text("Discord: discord.gg/deimos", indent=20)
 
             # ==================== Camera Tab ====================
             with dpg.tab(label=tl('Camera')):
@@ -786,19 +799,24 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
         # Client info at bottom
         dpg.add_separator()
-        dpg.add_text(tl('Client') + ': ', tag='Title')
-        with dpg.group(horizontal=True):
-            dpg.add_text(tl('Zone') + ': ', tag='Zone')
-            dpg.add_button(label="Copy", callback=copy_callback(GUIKeys.copy_zone), small=True)
-            dpg.bind_item_theme(dpg.last_item(), button_theme)
-        with dpg.group(horizontal=True):
-            dpg.add_text("Position (XYZ): ", tag='xyz')
-            dpg.add_button(label="Copy", callback=copy_callback(GUIKeys.copy_position), small=True)
-            dpg.bind_item_theme(dpg.last_item(), button_theme)
-        with dpg.group(horizontal=True):
-            dpg.add_text("Orientation (PRY): ", tag='pry')
-            dpg.add_button(label="Copy", callback=copy_callback(GUIKeys.copy_rotation), small=True)
-            dpg.bind_item_theme(dpg.last_item(), button_theme)
+        with dpg.table(header_row=False, borders_innerH=False, borders_outerH=False, borders_innerV=False, borders_outerV=False):
+            dpg.add_table_column(init_width_or_weight=0, width_stretch=True)
+            dpg.add_table_column(init_width_or_weight=0, width_fixed=True)
+            with dpg.table_row():
+                dpg.add_text(tl('Client') + ': ', tag='Title')
+                dpg.add_spacer()
+            with dpg.table_row():
+                dpg.add_text(tl('Zone') + ': ', tag='Zone')
+                dpg.add_button(label="Copy##zone", callback=copy_callback(GUIKeys.copy_zone), small=True)
+                dpg.bind_item_theme(dpg.last_item(), button_theme)
+            with dpg.table_row():
+                dpg.add_text("Position (XYZ): ", tag='xyz')
+                dpg.add_button(label="Copy##pos", callback=copy_callback(GUIKeys.copy_position), small=True)
+                dpg.bind_item_theme(dpg.last_item(), button_theme)
+            with dpg.table_row():
+                dpg.add_text("Orientation (PRY): ", tag='pry')
+                dpg.add_button(label="Copy##rot", callback=copy_callback(GUIKeys.copy_rotation), small=True)
+                dpg.bind_item_theme(dpg.last_item(), button_theme)
 
     console_psg = DpgSink('-CONSOLE-')
     console_sink = logger.add(console_psg, colorize=True)
