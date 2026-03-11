@@ -1255,22 +1255,12 @@ async def main():
 				return
 			raise wizwalker.errors.MemoryReadError(f"{error} (Occurred in zone: {current_zone})") from error
 
-		# if show_gui:
+		# GUI is started on the main thread; queues are set up before main() runs
 		global gui_send_queue
 		global bot_task
 		global flythrough_task
 		global gui_thread
-		global gui_send_queue
 		global recv_queue
-		gui_send_queue = queue.Queue()
-		recv_queue = queue.Queue()
-		# swap queue order because sending from window means receiving from here
-		gui_thread = threading.Thread(
-			target=deimosgui.manage_gui,
-			args=(recv_queue, gui_send_queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, gui_langcode, gui_scale)
-		)
-		gui_thread.daemon = True
-		gui_thread.start()
 		enemy_stats = []
 		current_pos = None
 		current_rotation = None
@@ -2212,8 +2202,16 @@ if __name__ == "__main__":
 	# handle_tool_updating()
 
 	current_log = logger.add(f"logs/{tool_name} - {generate_timestamp()}.log", encoding='utf-8', enqueue=True, backtrace=True)
-	asyncio.run(main())
-	# global gui_send_queue
-	# gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.Close))
-	# gui_task.cancel()
+
+	# Set up GUI queues before starting anything
+	gui_send_queue = queue.Queue()
+	recv_queue = queue.Queue()
+
+	# Run async backend in a background thread so the GUI can run on the main thread (required by Qt)
+	backend_thread = threading.Thread(target=lambda: asyncio.run(main()), daemon=True)
+	backend_thread.start()
+
+	# Run GUI on the main thread (swap queue order: sending from window = receiving from backend)
+	deimosgui.manage_gui(recv_queue, gui_send_queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, gui_langcode, gui_scale)
+
 	logger.remove(current_log)

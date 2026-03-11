@@ -351,21 +351,13 @@ def _show_entity_list_popup(parent, entity_list_content):
 def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode, gui_scale=1.0):
     tl = load_lang(langcode)
 
-    # Set per-monitor DPI awareness so Windows doesn't bitmap-scale the titlebar
-    try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
-    except Exception:
-        try:
-            ctypes.windll.user32.SetProcessDPIAware()
-        except Exception:
-            pass
-
     # Set AppUserModelID so Windows uses our icon in taskbar/process list
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"deimos.{tool_name}")
     except Exception:
         pass
 
+    # Qt6 handles DPI awareness natively — no need to call SetProcessDpiAwareness
     app = QApplication(sys.argv)
 
     _scale = float(gui_scale) if gui_scale else 1.0
