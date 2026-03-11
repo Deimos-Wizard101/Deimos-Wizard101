@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit, QComboBox, QGroupBox, QFrame, QDialog, QListWidget,
     QFileDialog, QSizePolicy, QSpacerItem,
 )
-from PyQt6.QtCore import QTimer, Qt, QSize
+from PyQt6.QtCore import QTimer, Qt, QSize, QMetaObject, Q_ARG, pyqtSlot
 from PyQt6.QtGui import QPixmap, QIcon, QFont
 
 
@@ -158,6 +158,26 @@ class GUICommand:
         self.data = data
 
 
+class ConsoleTextEdit(QPlainTextEdit):
+    """QPlainTextEdit subclass with thread-safe slots for log appending."""
+
+    @pyqtSlot(str)
+    def _append_log(self, text):
+        current = self.toPlainText()
+        if current:
+            self.setPlainText(current + text)
+        else:
+            self.setPlainText(text)
+        scrollbar = self.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+    @pyqtSlot(str)
+    def _set_log(self, text):
+        self.setPlainText(text)
+        scrollbar = self.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+
 class PyQtSink:
     def __init__(self, console_widget: QPlainTextEdit):
         self.console_widget = console_widget
@@ -218,14 +238,9 @@ class PyQtSink:
 
         try:
             message_to_write = clean_message if self.show_expanded_logs else truncated_message
-            current = self.console_widget.toPlainText()
-            if current:
-                self.console_widget.setPlainText(current + message_to_write)
-            else:
-                self.console_widget.setPlainText(message_to_write)
-            # Auto-scroll to bottom
-            scrollbar = self.console_widget.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
+            # Thread-safe: marshal to GUI thread via QMetaObject.invokeMethod
+            QMetaObject.invokeMethod(self.console_widget, "_append_log",
+                Qt.ConnectionType.QueuedConnection, Q_ARG(str, message_to_write))
         except Exception:
             pass
 
@@ -235,9 +250,8 @@ class PyQtSink:
             for clean, trunc, level in self.buffer:
                 message_to_write = clean if self.show_expanded_logs else trunc
                 text += message_to_write
-            self.console_widget.setPlainText(text)
-            scrollbar = self.console_widget.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
+            QMetaObject.invokeMethod(self.console_widget, "_set_log",
+                Qt.ConnectionType.QueuedConnection, Q_ARG(str, text))
         except Exception:
             pass
 
@@ -1054,7 +1068,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     console_layout.setContentsMargins(4, 4, 4, 4)
     console_layout.addWidget(QLabel(tl('console_support')))
 
-    console_text = QPlainTextEdit()
+    console_text = ConsoleTextEdit()
     console_text.setReadOnly(True)
     console_text.setFixedHeight(150)
     widget_tags['-CONSOLE-'] = console_text
