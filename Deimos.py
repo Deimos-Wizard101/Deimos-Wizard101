@@ -42,8 +42,8 @@ from wizwalker.extensions.wizsprinter.sprinty_combat import SprintyCombat
 from src.config_combat import StrCombatConfigProvider, delegate_combat_configs, default_config
 from typing import List
 
-from src import deimosgui
-from src.deimosgui import GUIKeys
+from src import pyqt_gui as deimosgui
+from src.pyqt_gui import GUIKeys
 from src.tokenizer import tokenize
 from src.deimoslang import vm
 
