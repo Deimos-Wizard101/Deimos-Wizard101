@@ -1106,41 +1106,45 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     # ==================== Client Info Footer ====================
     main_layout.addWidget(QFrame(frameShape=QFrame.Shape.HLine))
 
-    footer_grid = QGridLayout()
-    footer_grid.setContentsMargins(0, 0, 0, 0)
+    footer_vbox = QVBoxLayout()
+    footer_vbox.setContentsMargins(0, 0, 0, 0)
+    footer_vbox.setSpacing(1)
+
+    def _footer_row(label_widget, *buttons):
+        row = QHBoxLayout()
+        row.addWidget(label_widget)
+        row.addStretch()
+        for btn in buttons:
+            row.addWidget(btn)
+        return row
 
     title_label = QLabel(tl('client') + ': ')
     widget_tags['Title'] = title_label
-    footer_grid.addWidget(title_label, 0, 0)
     entities_btn = styled_btn(tl('available_entities'), copy_callback(GUIKeys.copy_entity_list))
     entities_btn.setFixedHeight(20)
-    footer_grid.addWidget(entities_btn, 0, 1)
     paths_btn = styled_btn(tl('available_paths'), copy_callback(GUIKeys.copy_ui_tree))
     paths_btn.setFixedHeight(20)
-    footer_grid.addWidget(paths_btn, 0, 2)
+    footer_vbox.addLayout(_footer_row(title_label, entities_btn, paths_btn))
 
     zone_label = QLabel(tl('zone') + ': ')
     widget_tags['Zone'] = zone_label
-    footer_grid.addWidget(zone_label, 1, 0)
     zone_copy = styled_btn("Copy", copy_callback(GUIKeys.copy_zone))
     zone_copy.setFixedSize(50, 20)
-    footer_grid.addWidget(zone_copy, 1, 2)
+    footer_vbox.addLayout(_footer_row(zone_label, zone_copy))
 
     xyz_label = QLabel("Position (XYZ): ")
     widget_tags['xyz'] = xyz_label
-    footer_grid.addWidget(xyz_label, 2, 0)
     pos_copy = styled_btn("Copy", copy_callback(GUIKeys.copy_position))
     pos_copy.setFixedSize(50, 20)
-    footer_grid.addWidget(pos_copy, 2, 2)
+    footer_vbox.addLayout(_footer_row(xyz_label, pos_copy))
 
     pry_label = QLabel("Orientation (PRY): ")
     widget_tags['pry'] = pry_label
-    footer_grid.addWidget(pry_label, 3, 0)
     rot_copy = styled_btn("Copy", copy_callback(GUIKeys.copy_rotation))
     rot_copy.setFixedSize(50, 20)
-    footer_grid.addWidget(rot_copy, 3, 2)
+    footer_vbox.addLayout(_footer_row(pry_label, rot_copy))
 
-    main_layout.addLayout(footer_grid)
+    main_layout.addLayout(footer_vbox)
 
     # ==================== Console Sink ====================
     global console_sink
