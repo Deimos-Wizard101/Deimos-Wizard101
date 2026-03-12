@@ -1246,8 +1246,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     timer.start(16)
 
     window.show()
-    # Lock width to the natural content/tab-bar width after layout settles
-    window.setFixedWidth(window.sizeHint().width())
+    # Lock width to the tab bar width + margins so content fits snugly
+    tab_bar_width = tabs.tabBar().sizeHint().width()
+    margins = main_layout.contentsMargins()
+    frame_width = window.frameGeometry().width() - window.geometry().width()
+    window.setFixedWidth(tab_bar_width + margins.left() + margins.right() + frame_width)
     app.exec()
 
     # After app exits, signal backend
