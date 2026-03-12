@@ -421,7 +421,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
     window = QMainWindow()
     window.setWindowTitle(f'{tool_name} GUI v{tool_version}')
-    window.setFixedSize(_vp_width, _vp_height)
+    window.setFixedHeight(_vp_height)
 
     if gui_on_top:
         window.setWindowFlags(window.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
@@ -1247,6 +1247,8 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     timer.start(16)
 
     window.show()
+    # Lock width to the natural content/tab-bar width after layout settles
+    window.setFixedWidth(window.sizeHint().width())
     app.exec()
 
     # After app exits, signal backend
