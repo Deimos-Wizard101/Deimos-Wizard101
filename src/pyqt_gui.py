@@ -438,6 +438,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     main_layout.addWidget(QLabel(tl('free_tool')))
 
     tabs = QTabWidget()
+    tabs.setStyleSheet("QTabWidget::pane { margin-top: 6px; }")
     main_layout.addWidget(tabs)
 
     # Widget tag registry for backend updates
