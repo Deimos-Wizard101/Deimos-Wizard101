@@ -1566,6 +1566,29 @@ async def main():
 									await camera.write_zoom_resolution(min_input)
 								if com.data["Max"]:
 									await camera.write_max_distance(max_input)
+						case deimosgui.GUICommandType.PopulateCamera:
+							if not walker.clients:
+								logger.info("This GUI option requires hooks to be active, skipping.")
+								continue
+							if foreground_client:
+								camera = await foreground_client.game_client.selected_camera_controller()
+								camera_pos = await camera.position()
+								camera_pitch, camera_roll, camera_yaw = await camera.orientation()
+								elastic_camera = await foreground_client.game_client.elastic_camera_controller()
+								current_zoom = await elastic_camera.distance()
+								current_min = await elastic_camera.min_distance()
+								current_max = await elastic_camera.max_distance()
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamXInput', f'{camera_pos.x:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamYInput', f'{camera_pos.y:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamZInput', f'{camera_pos.z:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamYawInput', f'{camera_yaw:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamRollInput', f'{camera_roll:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamPitchInput', f'{camera_pitch:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamEntityInput', 'Player Object')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamDistanceInput', f'{current_zoom:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamMinInput', f'{current_min:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamMaxInput', f'{current_max:.2f}')))
+								logger.debug('Populated camera fields with current values.')
 						case deimosgui.GUICommandType.GoToZone:
 							if not walker.clients:
 								logger.info("This GUI option requires hooks to be active, skipping.")

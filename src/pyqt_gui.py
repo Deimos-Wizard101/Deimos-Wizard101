@@ -89,6 +89,8 @@ class GUICommandType(Enum):
 
     SetScale = auto()
 
+    PopulateCamera = auto()
+
     # deimos -> window
     UpdateWindow = auto()
     UpdateWindowValues = auto()
@@ -645,11 +647,19 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
     cam_layout.addLayout(mid_row)
 
-    # --- Copy button ---
-    copy_row = QHBoxLayout()
-    copy_row.addWidget(styled_btn(tl('copy_camera_position'), copy_callback(GUIKeys.copy_camera_position)))
-    copy_row.addStretch()
-    cam_layout.addLayout(copy_row)
+    # --- Utils group ---
+    cam_utils_group = QGroupBox("Utils")
+    cam_utils_lay = QHBoxLayout(cam_utils_group)
+    cam_utils_lay.setContentsMargins(6, 4, 6, 4)
+    cam_utils_lay.setSpacing(3)
+
+    def populate_camera_callback():
+        send_queue.put(GUICommand(GUICommandType.PopulateCamera))
+
+    cam_utils_lay.addWidget(styled_btn("Populate", populate_camera_callback))
+    cam_utils_lay.addWidget(styled_btn(tl('copy_camera_position'), copy_callback(GUIKeys.copy_camera_position)))
+    cam_utils_lay.addStretch()
+    cam_layout.addWidget(cam_utils_group)
 
     cam_layout.addStretch()
     tabs.addTab(camera_tab, tl('camera'))

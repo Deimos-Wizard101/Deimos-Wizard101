@@ -51,6 +51,7 @@ min=Min
 max=Max
 set_distance=Set Dist
 copy_camera_position=Copy Cam Pos
+populate_camera=Populate
 
 # Dev Utils
 advanced_warning=The utils below are for advanced users and no support will be given on them.
