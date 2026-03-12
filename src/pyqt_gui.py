@@ -612,9 +612,10 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     anchor_lay.setContentsMargins(6, 4, 6, 4)
     cam_entity_input = QLineEdit()
     cam_entity_input.setPlaceholderText(tl('entity'))
+    cam_entity_input.setMinimumWidth(80)
     cam_inputs['CamEntityInput'] = cam_entity_input
     widget_tags['CamEntityInput'] = cam_entity_input
-    anchor_lay.addWidget(cam_entity_input)
+    anchor_lay.addWidget(cam_entity_input, 1)
 
     def anchor_callback():
         send_queue.put(GUICommand(GUICommandType.AnchorCam, cam_entity_input.text()))
@@ -628,7 +629,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     for placeholder, tag in [(tl('distance'), 'CamDistanceInput'), (tl('min'), 'CamMinInput'), (tl('max'), 'CamMaxInput')]:
         inp = QLineEdit()
         inp.setPlaceholderText(placeholder)
-        inp.setFixedWidth(55)
+        inp.setFixedWidth(65)
         cam_inputs[tag] = inp
         widget_tags[tag] = inp
         dist_lay.addWidget(inp)
