@@ -570,18 +570,26 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     camera_tab = QWidget()
     cam_layout = QVBoxLayout(camera_tab)
     cam_layout.setContentsMargins(4, 4, 4, 4)
+    cam_layout.setSpacing(4)
     cam_layout.addWidget(QLabel(tl('advanced_warning')))
 
     cam_inputs = {}
-    # Row 1: X Y Z + Set Camera Position
-    row1 = QHBoxLayout()
-    for lbl_text, tag in [('X:', 'CamXInput'), ('Y:', 'CamYInput'), ('Z:', 'CamZInput')]:
-        row1.addWidget(QLabel(lbl_text))
+
+    # --- Position group: XYZ + Yaw/Roll/Pitch in a compact grid ---
+    pos_group = QGroupBox(tl('set_camera_position'))
+    pos_grid = QGridLayout(pos_group)
+    pos_grid.setContentsMargins(6, 4, 6, 4)
+    pos_grid.setHorizontalSpacing(4)
+    pos_grid.setVerticalSpacing(2)
+
+    for col, (placeholder, tag) in enumerate([('X', 'CamXInput'), ('Y', 'CamYInput'), ('Z', 'CamZInput'),
+                                               (tl('yaw'), 'CamYawInput'), (tl('roll'), 'CamRollInput'), (tl('pitch'), 'CamPitchInput')]):
         inp = QLineEdit()
-        inp.setFixedWidth(80)
+        inp.setPlaceholderText(placeholder)
+        inp.setFixedWidth(70)
         cam_inputs[tag] = inp
         widget_tags[tag] = inp
-        row1.addWidget(inp)
+        pos_grid.addWidget(inp, 0, col)
 
     def set_cam_pos_callback():
         inputs = [cam_inputs['CamXInput'].text(), cam_inputs['CamYInput'].text(), cam_inputs['CamZInput'].text(),
@@ -592,47 +600,38 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                 'Yaw': inputs[3], 'Roll': inputs[4], 'Pitch': inputs[5],
             }))
 
-    row1.addWidget(styled_btn(tl('set_camera_position'), set_cam_pos_callback))
-    row1.addStretch()
-    cam_layout.addLayout(row1)
+    pos_grid.addWidget(styled_btn(tl('set_camera_position'), set_cam_pos_callback), 0, 6)
+    cam_layout.addWidget(pos_group)
 
-    # Row 2: Yaw Roll Pitch
-    row2 = QHBoxLayout()
-    for lbl_text, tag in [(tl('yaw') + ':', 'CamYawInput'), (tl('roll') + ':', 'CamRollInput'), (tl('pitch') + ':', 'CamPitchInput')]:
-        row2.addWidget(QLabel(lbl_text))
-        inp = QLineEdit()
-        inp.setFixedWidth(80)
-        cam_inputs[tag] = inp
-        widget_tags[tag] = inp
-        row2.addWidget(inp)
-    row2.addStretch()
-    cam_layout.addLayout(row2)
+    # --- Anchor + Distance in one row using two side-by-side groups ---
+    mid_row = QHBoxLayout()
+    mid_row.setSpacing(4)
 
-    # Row 3: Entity + Anchor + Toggle Camera Collision
-    row3 = QHBoxLayout()
-    row3.addWidget(QLabel(tl('entity') + ':'))
+    anchor_group = QGroupBox(tl('anchor'))
+    anchor_lay = QHBoxLayout(anchor_group)
+    anchor_lay.setContentsMargins(6, 4, 6, 4)
     cam_entity_input = QLineEdit()
-    cam_entity_input.setFixedWidth(150)
+    cam_entity_input.setPlaceholderText(tl('entity'))
     cam_inputs['CamEntityInput'] = cam_entity_input
     widget_tags['CamEntityInput'] = cam_entity_input
-    row3.addWidget(cam_entity_input)
+    anchor_lay.addWidget(cam_entity_input)
 
     def anchor_callback():
         send_queue.put(GUICommand(GUICommandType.AnchorCam, cam_entity_input.text()))
-    row3.addWidget(styled_btn(tl('anchor'), anchor_callback))
-    row3.addWidget(styled_btn(tl('toggle_camera_collision'), toggle_callback(GUIKeys.toggle_camera_collision)))
-    row3.addStretch()
-    cam_layout.addLayout(row3)
+    anchor_lay.addWidget(styled_btn(tl('anchor'), anchor_callback))
+    anchor_lay.addWidget(styled_btn(tl('toggle_camera_collision'), toggle_callback(GUIKeys.toggle_camera_collision)))
+    mid_row.addWidget(anchor_group)
 
-    # Row 4: Distance Min Max + Set Distance
-    row4 = QHBoxLayout()
-    for lbl_text, tag in [(tl('distance') + ':', 'CamDistanceInput'), (tl('min') + ':', 'CamMinInput'), (tl('max') + ':', 'CamMaxInput')]:
-        row4.addWidget(QLabel(lbl_text))
+    dist_group = QGroupBox(tl('set_distance'))
+    dist_lay = QHBoxLayout(dist_group)
+    dist_lay.setContentsMargins(6, 4, 6, 4)
+    for placeholder, tag in [(tl('distance'), 'CamDistanceInput'), (tl('min'), 'CamMinInput'), (tl('max'), 'CamMaxInput')]:
         inp = QLineEdit()
-        inp.setFixedWidth(80)
+        inp.setPlaceholderText(placeholder)
+        inp.setFixedWidth(55)
         cam_inputs[tag] = inp
         widget_tags[tag] = inp
-        row4.addWidget(inp)
+        dist_lay.addWidget(inp)
 
     def set_distance_callback():
         inputs = [cam_inputs['CamDistanceInput'].text(), cam_inputs['CamMinInput'].text(), cam_inputs['CamMaxInput'].text()]
@@ -640,16 +639,17 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             send_queue.put(GUICommand(GUICommandType.SetCamDistance, {
                 "Distance": inputs[0], "Min": inputs[1], "Max": inputs[2],
             }))
-    row4.addWidget(styled_btn(tl('set_distance'), set_distance_callback))
-    row4.addStretch()
-    cam_layout.addLayout(row4)
+    dist_lay.addWidget(styled_btn(tl('set_distance'), set_distance_callback))
+    mid_row.addWidget(dist_group)
 
-    # Row 5: Copy buttons
-    row5 = QHBoxLayout()
-    row5.addWidget(styled_btn(tl('copy_camera_position'), copy_callback(GUIKeys.copy_camera_position)))
-    row5.addWidget(styled_btn(tl('copy_camera_rotation'), copy_callback(GUIKeys.copy_camera_rotation)))
-    row5.addStretch()
-    cam_layout.addLayout(row5)
+    cam_layout.addLayout(mid_row)
+
+    # --- Copy buttons ---
+    copy_row = QHBoxLayout()
+    copy_row.addWidget(styled_btn(tl('copy_camera_position'), copy_callback(GUIKeys.copy_camera_position)))
+    copy_row.addWidget(styled_btn(tl('copy_camera_rotation'), copy_callback(GUIKeys.copy_camera_rotation)))
+    copy_row.addStretch()
+    cam_layout.addLayout(copy_row)
 
     cam_layout.addStretch()
     tabs.addTab(camera_tab, tl('camera'))
@@ -658,20 +658,27 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     dev_tab = QWidget()
     dev_layout = QVBoxLayout(dev_tab)
     dev_layout.setContentsMargins(4, 4, 4, 4)
+    dev_layout.setSpacing(4)
     dev_layout.addWidget(QLabel(tl('advanced_warning')))
 
     dev_inputs = {}
 
-    # TP Utils
-    dev_layout.addWidget(QLabel(tl('tp_utils')))
-    tp_row = QHBoxLayout()
-    for lbl_text, tag, w in [('X:', 'XInput', 55), ('Y:', 'YInput', 55), ('Z:', 'ZInput', 60), (tl('yaw') + ':', 'YawInput', 55)]:
-        tp_row.addWidget(QLabel(lbl_text))
+    # --- Teleport group ---
+    tp_group = QGroupBox(tl('tp_utils'))
+    tp_lay = QVBoxLayout(tp_group)
+    tp_lay.setContentsMargins(6, 4, 6, 4)
+    tp_lay.setSpacing(2)
+
+    # Coordinate TP: compact row with placeholder text instead of labels
+    coord_row = QHBoxLayout()
+    coord_row.setSpacing(3)
+    for placeholder, tag, w in [('X', 'XInput', 50), ('Y', 'YInput', 50), ('Z', 'ZInput', 50), (tl('yaw'), 'YawInput', 50)]:
         inp = QLineEdit()
+        inp.setPlaceholderText(placeholder)
         inp.setFixedWidth(w)
         dev_inputs[tag] = inp
         widget_tags[tag] = inp
-        tp_row.addWidget(inp)
+        coord_row.addWidget(inp)
 
     def custom_tp_callback():
         tp_vals = [dev_inputs['XInput'].text(), dev_inputs['YInput'].text(), dev_inputs['ZInput'].text(), dev_inputs['YawInput'].text()]
@@ -680,17 +687,18 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                 'X': tp_vals[0], 'Y': tp_vals[1], 'Z': tp_vals[2], 'Yaw': tp_vals[3],
             }))
 
-    tp_row.addWidget(styled_btn(tl('custom_tp'), custom_tp_callback))
-    tp_row.addStretch()
-    dev_layout.addLayout(tp_row)
+    coord_row.addWidget(styled_btn(tl('custom_tp'), custom_tp_callback))
+    coord_row.addStretch()
+    tp_lay.addLayout(coord_row)
 
+    # Entity TP
     ent_row = QHBoxLayout()
-    ent_row.addWidget(QLabel(tl('entity_name') + ':'))
+    ent_row.setSpacing(3)
     entity_tp_input = QLineEdit()
-    entity_tp_input.setFixedWidth(250)
+    entity_tp_input.setPlaceholderText(tl('entity_name'))
     dev_inputs['EntityTPInput'] = entity_tp_input
     widget_tags['EntityTPInput'] = entity_tp_input
-    ent_row.addWidget(entity_tp_input)
+    ent_row.addWidget(entity_tp_input, 1)
 
     def entity_tp_callback():
         val = entity_tp_input.text()
@@ -698,25 +706,26 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             send_queue.put(GUICommand(GUICommandType.EntityTeleport, val))
 
     ent_row.addWidget(styled_btn(tl('entity_tp'), entity_tp_callback))
-    ent_row.addStretch()
-    dev_layout.addLayout(ent_row)
+    tp_lay.addLayout(ent_row)
 
-    # Dev Utils section
-    dev_layout.addWidget(QLabel(tl('dev_utils_label')))
-    btn_row1 = QHBoxLayout()
-    btn_row1.addWidget(styled_btn(tl('available_entities'), copy_callback(GUIKeys.copy_entity_list)))
-    btn_row1.addWidget(styled_btn(tl('available_paths'), copy_callback(GUIKeys.copy_ui_tree)))
-    btn_row1.addStretch()
-    dev_layout.addLayout(btn_row1)
+    dev_layout.addWidget(tp_group)
 
-    # Zone
-    zone_row = QHBoxLayout()
-    zone_row.addWidget(QLabel(tl('zone_name') + ':'))
+    # --- Navigation group ---
+    nav_group = QGroupBox(tl('dev_utils_label'))
+    nav_lay = QVBoxLayout(nav_group)
+    nav_lay.setContentsMargins(6, 4, 6, 4)
+    nav_lay.setSpacing(2)
+
+    # Zone + World on the same row
+    zw_row = QHBoxLayout()
+    zw_row.setSpacing(3)
+
     zone_input = QLineEdit()
-    zone_input.setFixedWidth(120)
+    zone_input.setPlaceholderText(tl('zone_name'))
+    zone_input.setFixedWidth(100)
     dev_inputs['ZoneInput'] = zone_input
     widget_tags['ZoneInput'] = zone_input
-    zone_row.addWidget(zone_input)
+    zw_row.addWidget(zone_input)
 
     def go_to_zone_callback():
         val = zone_input.text()
@@ -728,22 +737,19 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         if val:
             send_queue.put(GUICommand(GUICommandType.GoToZone, (True, str(val))))
 
-    zone_row.addWidget(styled_btn(tl('go_to_zone'), go_to_zone_callback))
-    zone_row.addWidget(styled_btn(tl('mass_go_to_zone'), mass_go_to_zone_callback))
-    zone_row.addStretch()
-    dev_layout.addLayout(zone_row)
+    zw_row.addWidget(styled_btn(tl('go_to_zone'), go_to_zone_callback))
+    zw_row.addWidget(styled_btn(tl('mass_go_to_zone'), mass_go_to_zone_callback))
 
-    # World
+    zw_row.addSpacing(8)
+
     worlds = ['WizardCity', 'Krokotopia', 'Marleybone', 'MooShu', 'DragonSpire', 'Grizzleheim', 'Celestia', 'Wysteria', 'Zafaria', 'Avalon', 'Azteca', 'Khrysalis', 'Polaris', 'Mirage', 'Empyrea', 'Karamelle', 'Lemuria']
-    world_row = QHBoxLayout()
-    world_row.addWidget(QLabel(tl('world_name') + ':'))
     world_combo = QComboBox()
     world_combo.addItems(worlds)
     world_combo.setCurrentText('WizardCity')
-    world_combo.setFixedWidth(120)
+    world_combo.setFixedWidth(110)
     dev_inputs['WorldInput'] = world_combo
     widget_tags['WorldInput'] = world_combo
-    world_row.addWidget(world_combo)
+    zw_row.addWidget(world_combo)
 
     def go_to_world_callback():
         val = world_combo.currentText()
@@ -755,13 +761,14 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         if val:
             send_queue.put(GUICommand(GUICommandType.GoToWorld, (True, val)))
 
-    world_row.addWidget(styled_btn(tl('go_to_world'), go_to_world_callback))
-    world_row.addWidget(styled_btn(tl('mass_go_to_world'), mass_go_to_world_callback))
-    world_row.addStretch()
-    dev_layout.addLayout(world_row)
+    zw_row.addWidget(styled_btn(tl('go_to_world'), go_to_world_callback))
+    zw_row.addWidget(styled_btn(tl('mass_go_to_world'), mass_go_to_world_callback))
+    zw_row.addStretch()
+    nav_lay.addLayout(zw_row)
 
-    # Bazaar + Potions
-    nav_row = QHBoxLayout()
+    # Quick actions: Bazaar + Potions + Entity/UI buttons
+    actions_row = QHBoxLayout()
+    actions_row.setSpacing(3)
 
     def go_to_bazaar_callback():
         send_queue.put(GUICommand(GUICommandType.GoToBazaar, False))
@@ -775,12 +782,22 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     def mass_refill_potions_callback():
         send_queue.put(GUICommand(GUICommandType.RefillPotions, True))
 
-    nav_row.addWidget(styled_btn(tl('go_to_bazaar'), go_to_bazaar_callback))
-    nav_row.addWidget(styled_btn(tl('mass_go_to_bazaar'), mass_go_to_bazaar_callback))
-    nav_row.addWidget(styled_btn(tl('refill_potions'), refill_potions_callback))
-    nav_row.addWidget(styled_btn(tl('mass_refill_potions'), mass_refill_potions_callback))
-    nav_row.addStretch()
-    dev_layout.addLayout(nav_row)
+    actions_row.addWidget(styled_btn(tl('go_to_bazaar'), go_to_bazaar_callback))
+    actions_row.addWidget(styled_btn(tl('mass_go_to_bazaar'), mass_go_to_bazaar_callback))
+    actions_row.addWidget(styled_btn(tl('refill_potions'), refill_potions_callback))
+    actions_row.addWidget(styled_btn(tl('mass_refill_potions'), mass_refill_potions_callback))
+    actions_row.addStretch()
+    nav_lay.addLayout(actions_row)
+
+    # Entity list + UI tree buttons
+    inspect_row = QHBoxLayout()
+    inspect_row.setSpacing(3)
+    inspect_row.addWidget(styled_btn(tl('available_entities'), copy_callback(GUIKeys.copy_entity_list)))
+    inspect_row.addWidget(styled_btn(tl('available_paths'), copy_callback(GUIKeys.copy_ui_tree)))
+    inspect_row.addStretch()
+    nav_lay.addLayout(inspect_row)
+
+    dev_layout.addWidget(nav_group)
 
     dev_layout.addStretch()
     tabs.addTab(dev_tab, tl('dev_utils'))
