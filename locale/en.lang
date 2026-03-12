@@ -39,7 +39,7 @@ xyz_sync=XYZ Sync
 x_press=X Press
 
 # Camera
-set_camera_position=Set Position
+set_camera_position=Update
 yaw=Yaw
 roll=Roll
 pitch=Pitch
@@ -51,7 +51,6 @@ min=Min
 max=Max
 set_distance=Set Dist
 copy_camera_position=Copy Cam Pos
-copy_camera_rotation=Copy Cam Rot
 
 # Dev Utils
 advanced_warning=The utils below are for advanced users and no support will be given on them.

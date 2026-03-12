@@ -645,10 +645,9 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
     cam_layout.addLayout(mid_row)
 
-    # --- Copy buttons ---
+    # --- Copy button ---
     copy_row = QHBoxLayout()
     copy_row.addWidget(styled_btn(tl('copy_camera_position'), copy_callback(GUIKeys.copy_camera_position)))
-    copy_row.addWidget(styled_btn(tl('copy_camera_rotation'), copy_callback(GUIKeys.copy_camera_rotation)))
     copy_row.addStretch()
     cam_layout.addLayout(copy_row)
 
@@ -712,21 +711,19 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     dev_layout.addWidget(tp_group)
 
     # --- Navigation group ---
-    nav_group = QGroupBox(tl('dev_utils_label'))
+    nav_group = QGroupBox("Navigation")
     nav_lay = QVBoxLayout(nav_group)
     nav_lay.setContentsMargins(6, 4, 6, 4)
     nav_lay.setSpacing(2)
 
-    # Zone + World on the same row
-    zw_row = QHBoxLayout()
-    zw_row.setSpacing(3)
-
+    # Zone row
+    zone_row = QHBoxLayout()
+    zone_row.setSpacing(3)
     zone_input = QLineEdit()
     zone_input.setPlaceholderText(tl('zone_name'))
-    zone_input.setFixedWidth(100)
     dev_inputs['ZoneInput'] = zone_input
     widget_tags['ZoneInput'] = zone_input
-    zw_row.addWidget(zone_input)
+    zone_row.addWidget(zone_input, 1)
 
     def go_to_zone_callback():
         val = zone_input.text()
@@ -738,19 +735,20 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         if val:
             send_queue.put(GUICommand(GUICommandType.GoToZone, (True, str(val))))
 
-    zw_row.addWidget(styled_btn(tl('go_to_zone'), go_to_zone_callback))
-    zw_row.addWidget(styled_btn(tl('mass_go_to_zone'), mass_go_to_zone_callback))
+    zone_row.addWidget(styled_btn(tl('go_to_zone'), go_to_zone_callback))
+    zone_row.addWidget(styled_btn(tl('mass_go_to_zone'), mass_go_to_zone_callback))
+    nav_lay.addLayout(zone_row)
 
-    zw_row.addSpacing(8)
-
+    # World row
+    world_row = QHBoxLayout()
+    world_row.setSpacing(3)
     worlds = ['WizardCity', 'Krokotopia', 'Marleybone', 'MooShu', 'DragonSpire', 'Grizzleheim', 'Celestia', 'Wysteria', 'Zafaria', 'Avalon', 'Azteca', 'Khrysalis', 'Polaris', 'Mirage', 'Empyrea', 'Karamelle', 'Lemuria']
     world_combo = QComboBox()
     world_combo.addItems(worlds)
     world_combo.setCurrentText('WizardCity')
-    world_combo.setFixedWidth(110)
     dev_inputs['WorldInput'] = world_combo
     widget_tags['WorldInput'] = world_combo
-    zw_row.addWidget(world_combo)
+    world_row.addWidget(world_combo, 1)
 
     def go_to_world_callback():
         val = world_combo.currentText()
@@ -762,14 +760,13 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         if val:
             send_queue.put(GUICommand(GUICommandType.GoToWorld, (True, val)))
 
-    zw_row.addWidget(styled_btn(tl('go_to_world'), go_to_world_callback))
-    zw_row.addWidget(styled_btn(tl('mass_go_to_world'), mass_go_to_world_callback))
-    zw_row.addStretch()
-    nav_lay.addLayout(zw_row)
+    world_row.addWidget(styled_btn(tl('go_to_world'), go_to_world_callback))
+    world_row.addWidget(styled_btn(tl('mass_go_to_world'), mass_go_to_world_callback))
+    nav_lay.addLayout(world_row)
 
-    # Quick actions: Bazaar + Potions + Entity/UI buttons
-    actions_row = QHBoxLayout()
-    actions_row.setSpacing(3)
+    # Bazaar row
+    bazaar_row = QHBoxLayout()
+    bazaar_row.setSpacing(3)
 
     def go_to_bazaar_callback():
         send_queue.put(GUICommand(GUICommandType.GoToBazaar, False))
@@ -777,28 +774,38 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     def mass_go_to_bazaar_callback():
         send_queue.put(GUICommand(GUICommandType.GoToBazaar, True))
 
+    bazaar_row.addWidget(styled_btn(tl('go_to_bazaar'), go_to_bazaar_callback))
+    bazaar_row.addWidget(styled_btn(tl('mass_go_to_bazaar'), mass_go_to_bazaar_callback))
+    bazaar_row.addStretch()
+    nav_lay.addLayout(bazaar_row)
+
+    # Potions row
+    potion_row = QHBoxLayout()
+    potion_row.setSpacing(3)
+
     def refill_potions_callback():
         send_queue.put(GUICommand(GUICommandType.RefillPotions, False))
 
     def mass_refill_potions_callback():
         send_queue.put(GUICommand(GUICommandType.RefillPotions, True))
 
-    actions_row.addWidget(styled_btn(tl('go_to_bazaar'), go_to_bazaar_callback))
-    actions_row.addWidget(styled_btn(tl('mass_go_to_bazaar'), mass_go_to_bazaar_callback))
-    actions_row.addWidget(styled_btn(tl('refill_potions'), refill_potions_callback))
-    actions_row.addWidget(styled_btn(tl('mass_refill_potions'), mass_refill_potions_callback))
-    actions_row.addStretch()
-    nav_lay.addLayout(actions_row)
-
-    # Entity list + UI tree buttons
-    inspect_row = QHBoxLayout()
-    inspect_row.setSpacing(3)
-    inspect_row.addWidget(styled_btn(tl('available_entities'), copy_callback(GUIKeys.copy_entity_list)))
-    inspect_row.addWidget(styled_btn(tl('available_paths'), copy_callback(GUIKeys.copy_ui_tree)))
-    inspect_row.addStretch()
-    nav_lay.addLayout(inspect_row)
+    potion_row.addWidget(styled_btn(tl('refill_potions'), refill_potions_callback))
+    potion_row.addWidget(styled_btn(tl('mass_refill_potions'), mass_refill_potions_callback))
+    potion_row.addStretch()
+    nav_lay.addLayout(potion_row)
 
     dev_layout.addWidget(nav_group)
+
+    # --- Dev Utils group ---
+    inspect_group = QGroupBox(tl('dev_utils_label'))
+    inspect_lay = QHBoxLayout(inspect_group)
+    inspect_lay.setContentsMargins(6, 4, 6, 4)
+    inspect_lay.setSpacing(3)
+    inspect_lay.addWidget(styled_btn(tl('available_entities'), copy_callback(GUIKeys.copy_entity_list)))
+    inspect_lay.addWidget(styled_btn(tl('available_paths'), copy_callback(GUIKeys.copy_ui_tree)))
+    inspect_lay.addStretch()
+
+    dev_layout.addWidget(inspect_group)
 
     dev_layout.addStretch()
     tabs.addTab(dev_tab, tl('dev_utils'))
