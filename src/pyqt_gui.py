@@ -435,10 +435,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     main_layout.setContentsMargins(8, 8, 8, 8)
     main_layout.setSpacing(4)
 
-    main_layout.addWidget(QLabel(tl('free_tool')))
+    free_tool_label = QLabel(tl('free_tool'))
+    free_tool_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    main_layout.addWidget(free_tool_label)
 
     tabs = QTabWidget()
-    tabs.setStyleSheet("QTabWidget::pane { margin-top: 6px; }")
     main_layout.addWidget(tabs)
 
     # Widget tag registry for backend updates
