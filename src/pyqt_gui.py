@@ -327,11 +327,11 @@ def _show_ui_tree_popup(parent, ui_tree_content):
 
 
 def _show_entity_list_popup(parent, entity_list_content):
-    entity_list = entity_list_content.splitlines()
+    entity_list = [line for line in entity_list_content.splitlines() if line.strip()]
 
     dialog = QDialog(parent)
     dialog.setWindowTitle("Entity List")
-    dialog.resize(700, 500)
+    dialog.resize(450, 400)
     layout = QVBoxLayout(dialog)
 
     layout.addWidget(QLabel("Click the entity needed to copy the name and location to clipboard."))
@@ -537,11 +537,13 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     hk_vbox.addStretch()
     hotkeys_layout.addWidget(hotkeys_frame)
 
-    # Tool info panel
+    # Tool info panel — vertically centered to match adjacent frames
     info_widget = QWidget()
+    info_widget.setFixedHeight(_hotkey_h)
     info_layout = QVBoxLayout(info_widget)
-    info_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    info_layout.addSpacing(15)
+    info_layout.setContentsMargins(4, 4, 4, 4)
+
+    info_layout.addStretch()
 
     _logo_path = _resource_path("Deimos-logo.png")
     if os.path.exists(_logo_path):
