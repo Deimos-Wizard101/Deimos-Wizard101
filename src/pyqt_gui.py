@@ -806,19 +806,45 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
     dev_layout.addWidget(nav_group)
 
-    # --- Dev Utils group ---
-    inspect_group = QGroupBox(tl('dev_utils_label'))
-    inspect_lay = QHBoxLayout(inspect_group)
-    inspect_lay.setContentsMargins(6, 4, 6, 4)
-    inspect_lay.setSpacing(3)
-    inspect_lay.addWidget(styled_btn(tl('available_entities'), copy_callback(GUIKeys.copy_entity_list)))
-    inspect_lay.addWidget(styled_btn(tl('available_paths'), copy_callback(GUIKeys.copy_ui_tree)))
-    inspect_lay.addStretch()
+    # --- Misc. group (moved from Misc tab) ---
+    misc_group = QGroupBox(tl('misc'))
+    misc_lay = QHBoxLayout(misc_group)
+    misc_lay.setContentsMargins(6, 4, 6, 4)
+    misc_lay.setSpacing(3)
 
-    dev_layout.addWidget(inspect_group)
+    misc_lay.addWidget(QLabel(tl('scale') + ':'))
+    scale_input = QLineEdit()
+    scale_input.setFixedWidth(50)
+    widget_tags['scale'] = scale_input
+    misc_lay.addWidget(scale_input)
+
+    def set_scale_callback():
+        send_queue.put(GUICommand(GUICommandType.SetScale, scale_input.text()))
+
+    misc_lay.addWidget(styled_btn(tl('set_scale'), set_scale_callback))
+
+    misc_lay.addSpacing(8)
+
+    misc_lay.addWidget(QLabel(tl('select_pet_world')))
+    pet_worlds = ['WizardCity', 'Krokotopia', 'Marleybone', 'Mooshu', 'Dragonspyre']
+    pet_combo = QComboBox()
+    pet_combo.addItems(pet_worlds)
+    pet_combo.setCurrentText('WizardCity')
+    pet_combo.setFixedWidth(120)
+    widget_tags['PetWorldInput'] = pet_combo
+
+    def pet_world_callback(text):
+        if text != wizard_city_dance_game_path[-1]:
+            assign_pet_level(text)
+
+    pet_combo.currentTextChanged.connect(pet_world_callback)
+    misc_lay.addWidget(pet_combo)
+    misc_lay.addStretch()
+
+    dev_layout.addWidget(misc_group)
 
     dev_layout.addStretch()
-    tabs.addTab(dev_tab, tl('dev_utils'))
+    tabs.addTab(dev_tab, tl('utilities'))
 
     # ==================== Stats Tab ====================
     stats_tab = QWidget()
@@ -1056,47 +1082,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     combat_layout.addStretch()
     tabs.addTab(combat_tab, tl('combat'))
 
-    # ==================== Misc Tab ====================
-    misc_tab = QWidget()
-    misc_layout = QVBoxLayout(misc_tab)
-    misc_layout.setContentsMargins(4, 4, 4, 4)
-    misc_layout.addWidget(QLabel(tl('advanced_warning')))
-
-    scale_row = QHBoxLayout()
-    scale_row.addWidget(QLabel(tl('scale') + ':'))
-    scale_input = QLineEdit()
-    scale_input.setFixedWidth(80)
-    widget_tags['scale'] = scale_input
-    scale_row.addWidget(scale_input)
-
-    def set_scale_callback():
-        send_queue.put(GUICommand(GUICommandType.SetScale, scale_input.text()))
-
-    scale_row.addWidget(styled_btn(tl('set_scale'), set_scale_callback))
-    scale_row.addStretch()
-    misc_layout.addLayout(scale_row)
-
-    pet_worlds = ['WizardCity', 'Krokotopia', 'Marleybone', 'Mooshu', 'Dragonspyre']
-    pet_row = QHBoxLayout()
-    pet_row.addWidget(QLabel(tl('select_pet_world')))
-    pet_combo = QComboBox()
-    pet_combo.addItems(pet_worlds)
-    pet_combo.setCurrentText('WizardCity')
-    pet_combo.setFixedWidth(120)
-    widget_tags['PetWorldInput'] = pet_combo
-
-    def pet_world_callback(text):
-        if text != wizard_city_dance_game_path[-1]:
-            assign_pet_level(text)
-
-    pet_combo.currentTextChanged.connect(pet_world_callback)
-    pet_row.addWidget(pet_combo)
-    pet_row.addStretch()
-    misc_layout.addLayout(pet_row)
-
-    misc_layout.addStretch()
-    tabs.addTab(misc_tab, tl('misc'))
-
     # ==================== Console Tab ====================
     console_tab = QWidget()
     console_layout = QVBoxLayout(console_tab)
@@ -1127,27 +1112,33 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     title_label = QLabel(tl('client') + ': ')
     widget_tags['Title'] = title_label
     footer_grid.addWidget(title_label, 0, 0)
+    entities_btn = styled_btn(tl('available_entities'), copy_callback(GUIKeys.copy_entity_list))
+    entities_btn.setFixedHeight(20)
+    footer_grid.addWidget(entities_btn, 0, 1)
+    paths_btn = styled_btn(tl('available_paths'), copy_callback(GUIKeys.copy_ui_tree))
+    paths_btn.setFixedHeight(20)
+    footer_grid.addWidget(paths_btn, 0, 2)
 
     zone_label = QLabel(tl('zone') + ': ')
     widget_tags['Zone'] = zone_label
     footer_grid.addWidget(zone_label, 1, 0)
     zone_copy = styled_btn("Copy", copy_callback(GUIKeys.copy_zone))
     zone_copy.setFixedSize(50, 20)
-    footer_grid.addWidget(zone_copy, 1, 1)
+    footer_grid.addWidget(zone_copy, 1, 2)
 
     xyz_label = QLabel("Position (XYZ): ")
     widget_tags['xyz'] = xyz_label
     footer_grid.addWidget(xyz_label, 2, 0)
     pos_copy = styled_btn("Copy", copy_callback(GUIKeys.copy_position))
     pos_copy.setFixedSize(50, 20)
-    footer_grid.addWidget(pos_copy, 2, 1)
+    footer_grid.addWidget(pos_copy, 2, 2)
 
     pry_label = QLabel("Orientation (PRY): ")
     widget_tags['pry'] = pry_label
     footer_grid.addWidget(pry_label, 3, 0)
     rot_copy = styled_btn("Copy", copy_callback(GUIKeys.copy_rotation))
     rot_copy.setFixedSize(50, 20)
-    footer_grid.addWidget(rot_copy, 3, 1)
+    footer_grid.addWidget(rot_copy, 3, 2)
 
     main_layout.addLayout(footer_grid)
 
