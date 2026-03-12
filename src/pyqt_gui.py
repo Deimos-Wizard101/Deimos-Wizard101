@@ -377,7 +377,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     app = QApplication(sys.argv)
 
     _scale = float(gui_scale) if gui_scale else 1.0
-    _vp_width = int(550 * _scale)
     _vp_height = int(450 * _scale)
 
     # Button color
