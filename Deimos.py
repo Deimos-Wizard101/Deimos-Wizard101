@@ -148,7 +148,6 @@ def read_config(config_name : str):
 	global gui_text_color
 	global gui_button_color
 	global gui_langcode
-	global gui_scale
 	global gui_font
 	global gui_font_size
 	# show_gui = parser.getboolean('gui', 'show_gui', fallback=True)
@@ -157,9 +156,8 @@ def read_config(config_name : str):
 	gui_text_color = parser.get('gui', 'text_color', fallback='white')
 	gui_button_color = parser.get('gui', 'button_color', fallback='#4a019e')
 	gui_langcode = parser.get('gui', 'locale', fallback='en')
-	gui_scale = parser.getfloat('gui', 'scale', fallback=1.0)
-	gui_font = parser.get('gui', 'font', fallback='Bahnschrift')
-	gui_font_size = parser.getint('gui', 'font_size', fallback=14)
+	gui_font = parser.get('gui', 'font', fallback='Segoe UI')
+	gui_font_size = parser.getint('gui', 'font_size', fallback=9)
 
 
 	# Auto Sigil Settings
@@ -2235,6 +2233,6 @@ if __name__ == "__main__":
 	backend_thread.start()
 
 	# Run GUI on the main thread (swap queue order: sending from window = receiving from backend)
-	deimosgui.manage_gui(recv_queue, gui_send_queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, gui_langcode, gui_scale, gui_font, gui_font_size)
+	deimosgui.manage_gui(recv_queue, gui_send_queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, gui_langcode, gui_font, gui_font_size)
 
 	logger.remove(current_log)

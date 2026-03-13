@@ -363,7 +363,7 @@ def _show_entity_list_popup(parent, entity_list_content):
     dialog.show()
 
 
-def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode, gui_scale=1.0, gui_font='Bahnschrift', gui_font_size=14):
+def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode, gui_font='Segoe UI', gui_font_size=9):
     tl = load_lang(langcode)
 
     # Set AppUserModelID so Windows uses our icon in taskbar/process list
@@ -375,8 +375,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     # Qt6 handles DPI awareness natively — no need to call SetProcessDpiAwareness
     app = QApplication(sys.argv)
 
-    _scale = float(gui_scale) if gui_scale else 1.0
-    _vp_height = int(450 * _scale)
+    _vp_height = 450
 
     # Apply font
     font = QFont(gui_font, gui_font_size)
@@ -500,12 +499,12 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     hotkeys_layout = QHBoxLayout(hotkeys_tab)
     hotkeys_layout.setContentsMargins(4, 4, 4, 4)
 
-    _hotkey_h = int(230 * _scale)
+    _hotkey_h = 230
 
     # Toggles column
     toggles_frame = QFrame()
     toggles_frame.setStyleSheet(frame_style)
-    toggles_frame.setFixedWidth(int(140 * _scale))
+    toggles_frame.setFixedWidth(140)
     toggles_frame.setFixedHeight(_hotkey_h)
     toggles_vbox = QVBoxLayout(toggles_frame)
     toggles_vbox.setContentsMargins(4, 4, 4, 4)
@@ -538,7 +537,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     # Hotkeys + Mass Hotkeys column
     hotkeys_frame = QFrame()
     hotkeys_frame.setStyleSheet(frame_style)
-    hotkeys_frame.setFixedWidth(int(130 * _scale))
+    hotkeys_frame.setFixedWidth(130)
     hotkeys_frame.setFixedHeight(_hotkey_h)
     hk_vbox = QVBoxLayout(hotkeys_frame)
     hk_vbox.setContentsMargins(4, 4, 4, 4)
@@ -578,7 +577,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         logo_label = QLabel()
         pixmap = QPixmap(_logo_path)
         if not pixmap.isNull():
-            scaled = pixmap.scaledToHeight(int(80 * _scale), Qt.TransformationMode.SmoothTransformation)
+            scaled = pixmap.scaledToHeight(80, Qt.TransformationMode.SmoothTransformation)
             logo_label.setPixmap(scaled)
             logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             info_layout.addWidget(logo_label)
@@ -1184,13 +1183,18 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     # ==================== License Popup ====================
     license_dialog = QDialog(window)
     license_dialog.setWindowTitle(tl('license_title'))
-    license_dialog.setFixedSize(500, 120)
     license_dialog.setModal(True)
     ld_layout = QVBoxLayout(license_dialog)
-    ld_layout.addWidget(QLabel(tl('license_text')))
+    ld_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    license_label = QLabel(tl('license_text'))
+    license_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    license_label.setWordWrap(True)
+    ld_layout.addWidget(license_label)
     ok_btn = QPushButton("OK")
     ok_btn.clicked.connect(license_dialog.close)
-    ld_layout.addWidget(ok_btn)
+    ld_layout.addWidget(ok_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+    license_dialog.adjustSize()
+    license_dialog.setFixedSize(license_dialog.sizeHint())
     license_dialog.show()
     QTimer.singleShot(5000, license_dialog.close)
 
