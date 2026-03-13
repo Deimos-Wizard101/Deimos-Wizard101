@@ -111,6 +111,18 @@ console_support=Be sure to include your logs when asking for support.
 collapse_expand_logs=Collapse / Expand Logs
 copy_logs=Copy Logs
 
+# Tooltips
+tooltip_license=License
+tooltip_wiki_hotkeys=Wiki: Hotkeys
+tooltip_source_code=Source Code
+tooltip_discord=Discord
+tooltip_wiki_camera=Wiki: Camera
+tooltip_wiki_utilities=Wiki: Utilities
+tooltip_wiki_stats=Wiki: Stats
+tooltip_wiki_flythroughs=Wiki: Flythroughs
+tooltip_wiki_bots=Wiki: Bots
+tooltip_wiki_playstyles=Wiki: Playstyles
+
 # Client info
 client=Client
 zone=Zone

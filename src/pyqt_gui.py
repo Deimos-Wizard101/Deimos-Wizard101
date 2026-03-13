@@ -592,12 +592,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     version_label.setOpenExternalLinks(True)
     info_layout.addWidget(version_label)
 
-    discord_btn = QPushButton("discord.gg/59UrPJwYDm")
-    discord_btn.setStyleSheet(link_style)
-    discord_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    discord_btn.clicked.connect(lambda: webbrowser.open("https://discord.gg/59UrPJwYDm"))
-    info_layout.addWidget(discord_btn, alignment=Qt.AlignmentFlag.AlignCenter)
-
     # Repo links row
     _repo_base = f"https://github.com/{tool_author}/{tool_name}-Wizard101"
     _wiki_base = f"{_repo_base}/wiki"
@@ -620,6 +614,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     _license_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="m19 8 3 8a5 5 0 0 1-6 0zV7"/><path d="M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1"/><path d="m5 8 3 8a5 5 0 0 1-6 0zV7"/><path d="M7 21h10"/></svg>'
     _readme_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>'
     _source_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6a9 9 0 0 0-9 9V3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/></svg>'
+    _discord_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H4a2 2 0 0 0-2 2v16.286a.71.71 0 0 0 1.212.502l2.202-2.202A2 2 0 0 1 6.828 19H20a2 2 0 0 0 2-2v-4"/><path d="M16 3h6v6"/><path d="m16 9 6-6"/></svg>'
 
     def _svg_icon(svg_str):
         renderer = QSvgRenderer(svg_str.encode())
@@ -641,9 +636,10 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         return btn
 
     repo_links_row.addStretch()
-    repo_links_row.addWidget(_repo_icon_btn(_license_svg, "License", f"{_repo_base}/blob/main/LICENSE"))
-    repo_links_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Hotkeys", f"{_wiki_base}/Hotkeys"))
-    repo_links_row.addWidget(_repo_icon_btn(_source_svg, "Source Code", _repo_base))
+    repo_links_row.addWidget(_repo_icon_btn(_license_svg, tl('tooltip_license'), f"{_repo_base}/blob/main/LICENSE"))
+    repo_links_row.addWidget(_repo_icon_btn(_readme_svg, tl('tooltip_wiki_hotkeys'), f"{_wiki_base}/Hotkeys"))
+    repo_links_row.addWidget(_repo_icon_btn(_source_svg, tl('tooltip_source_code'), _repo_base))
+    repo_links_row.addWidget(_repo_icon_btn(_discord_svg, tl('tooltip_discord'), "https://discord.gg/59UrPJwYDm"))
     repo_links_row.addStretch()
     info_layout.addLayout(repo_links_row)
 
@@ -748,7 +744,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     cam_layout.addStretch()
     cam_wiki_row = QHBoxLayout()
     cam_wiki_row.addStretch()
-    cam_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Camera", f"{_wiki_base}/Camera"))
+    cam_wiki_row.addWidget(_repo_icon_btn(_readme_svg, tl('tooltip_wiki_camera'), f"{_wiki_base}/Camera"))
     cam_layout.addLayout(cam_wiki_row)
     tabs.addTab(camera_tab, tl('camera'))
 
@@ -934,7 +930,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     dev_layout.addStretch()
     dev_wiki_row = QHBoxLayout()
     dev_wiki_row.addStretch()
-    dev_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Utilities", f"{_wiki_base}/Utilities"))
+    dev_wiki_row.addWidget(_repo_icon_btn(_readme_svg, tl('tooltip_wiki_utilities'), f"{_wiki_base}/Utilities"))
     dev_layout.addLayout(dev_wiki_row)
     tabs.addTab(dev_tab, tl('utilities'))
 
@@ -1037,7 +1033,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     stats_layout.addStretch()
     stats_wiki_row = QHBoxLayout()
     stats_wiki_row.addStretch()
-    stats_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Stats", f"{_wiki_base}/Stats"))
+    stats_wiki_row.addWidget(_repo_icon_btn(_readme_svg, tl('tooltip_wiki_stats'), f"{_wiki_base}/Stats"))
     stats_layout.addLayout(stats_wiki_row)
     tabs.addTab(stats_tab, tl('stats'))
 
@@ -1088,7 +1084,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     fly_layout.addStretch()
     fly_wiki_row = QHBoxLayout()
     fly_wiki_row.addStretch()
-    fly_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Flythroughs", f"{_wiki_base}/Flythroughs"))
+    fly_wiki_row.addWidget(_repo_icon_btn(_readme_svg, tl('tooltip_wiki_flythroughs'), f"{_wiki_base}/Flythroughs"))
     fly_layout.addLayout(fly_wiki_row)
     tabs.addTab(flythrough_tab, tl('flythrough'))
 
@@ -1139,7 +1135,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     bot_layout.addStretch()
     bot_wiki_row = QHBoxLayout()
     bot_wiki_row.addStretch()
-    bot_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Bots", f"{_wiki_base}/Bots"))
+    bot_wiki_row.addWidget(_repo_icon_btn(_readme_svg, tl('tooltip_wiki_bots'), f"{_wiki_base}/Bots"))
     bot_layout.addLayout(bot_wiki_row)
     tabs.addTab(bot_tab, tl('bot'))
 
@@ -1186,7 +1182,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     combat_layout.addStretch()
     combat_wiki_row = QHBoxLayout()
     combat_wiki_row.addStretch()
-    combat_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Playstyles", f"{_wiki_base}/Playstyles"))
+    combat_wiki_row.addWidget(_repo_icon_btn(_readme_svg, tl('tooltip_wiki_playstyles'), f"{_wiki_base}/Playstyles"))
     combat_layout.addLayout(combat_wiki_row)
     tabs.addTab(combat_tab, tl('combat'))
 
