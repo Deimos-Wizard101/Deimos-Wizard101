@@ -493,7 +493,9 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     def _svg_label(svg_str):
         renderer = QSvgRenderer(svg_str.encode())
         size = renderer.defaultSize()
-        pixmap = QPixmap(size)
+        dpr = QApplication.instance().devicePixelRatio()
+        pixmap = QPixmap(int(size.width() * dpr), int(size.height() * dpr))
+        pixmap.setDevicePixelRatio(dpr)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         renderer.render(painter)
