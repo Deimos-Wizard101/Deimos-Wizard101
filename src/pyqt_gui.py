@@ -288,7 +288,7 @@ def _show_ui_tree_popup(parent, ui_tree_content):
 
     dialog = QDialog(parent)
     dialog.setWindowTitle("UI Tree")
-    dialog.resize(1050, 750)
+    dialog.resize(700, 500)
     layout = QVBoxLayout(dialog)
 
     layout.addWidget(QLabel("Click the path needed to copy it to clipboard."))
@@ -331,7 +331,7 @@ def _show_entity_list_popup(parent, entity_list_content):
 
     dialog = QDialog(parent)
     dialog.setWindowTitle("Entity List")
-    dialog.resize(675, 600)
+    dialog.resize(450, 400)
     layout = QVBoxLayout(dialog)
 
     layout.addWidget(QLabel("Click the entity needed to copy the name and location to clipboard."))
@@ -1248,7 +1248,8 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     ok_btn.clicked.connect(license_dialog.close)
     ld_layout.addWidget(ok_btn, alignment=Qt.AlignmentFlag.AlignCenter)
     license_dialog.adjustSize()
-    license_dialog.setFixedSize(license_dialog.sizeHint())
+    hint = license_dialog.sizeHint()
+    license_dialog.setFixedSize(int(hint.width() * 1.5), hint.height())
     license_dialog.show()
     QTimer.singleShot(5000, license_dialog.close)
 
