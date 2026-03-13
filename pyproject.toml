@@ -34,3 +34,6 @@ members = ["libs/wizwalker", "libs/wizsprinter"]
 pysimplegui = { path = "wheels/PySimpleGUI-4.60.5-py3-none-any.whl" }
 wizwalker = { workspace = true }
 wizsprinter = { workspace = true }
+
+[dependency-groups]
+dev = ["pyinstaller>=6.0"]
