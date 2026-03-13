@@ -481,6 +481,27 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         return lbl
 
+    _warning_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>'
+
+    def warning_label(text):
+        row = QHBoxLayout()
+        row.addWidget(_svg_label(_warning_svg))
+        row.addWidget(centered_label(text))
+        row.addWidget(_svg_label(_warning_svg))
+        return row
+
+    def _svg_label(svg_str):
+        renderer = QSvgRenderer(svg_str.encode())
+        pixmap = QPixmap(24, 24)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        lbl = QLabel()
+        lbl.setPixmap(pixmap)
+        lbl.setFixedSize(24, 24)
+        return lbl
+
     # ==================== Callbacks ====================
     def toggle_callback(event_key):
         def cb():
@@ -643,7 +664,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     repo_links_row.addWidget(_repo_icon_btn(_license_svg, "License", f"{_repo_base}/blob/main/LICENSE"))
     repo_links_row.addWidget(_repo_icon_btn(_readme_svg, "README", f"{_repo_base}/blob/main/README.md"))
     repo_links_row.addWidget(_repo_icon_btn(_source_svg, "Source Code", _repo_base))
-    repo_links_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Hotkeys", f"{_wiki_base}/Hotkeys"))
     repo_links_row.addStretch()
     info_layout.addLayout(repo_links_row)
 
@@ -657,11 +677,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     cam_layout = QVBoxLayout(camera_tab)
     cam_layout.setContentsMargins(4, 4, 4, 4)
     cam_layout.setSpacing(4)
-    cam_warn_row = QHBoxLayout()
-    cam_warn_row.addWidget(QLabel(tl('advanced_warning')))
-    cam_warn_row.addStretch()
-    cam_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Camera", f"{_wiki_base}/Camera"))
-    cam_layout.addLayout(cam_warn_row)
+    cam_layout.addLayout(warning_label(tl('advanced_warning')))
 
     cam_inputs = {}
 
@@ -749,6 +765,10 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     cam_utils_lay.addStretch()
     cam_layout.addWidget(cam_utils_group)
 
+    cam_wiki_row = QHBoxLayout()
+    cam_wiki_row.addStretch()
+    cam_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Camera", f"{_wiki_base}/Camera"))
+    cam_layout.addLayout(cam_wiki_row)
     cam_layout.addStretch()
     tabs.addTab(camera_tab, tl('camera'))
 
@@ -757,11 +777,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     dev_layout = QVBoxLayout(dev_tab)
     dev_layout.setContentsMargins(4, 4, 4, 4)
     dev_layout.setSpacing(4)
-    dev_warn_row = QHBoxLayout()
-    dev_warn_row.addWidget(QLabel(tl('advanced_warning')))
-    dev_warn_row.addStretch()
-    dev_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Utilities", f"{_wiki_base}/Utilities"))
-    dev_layout.addLayout(dev_warn_row)
+    dev_layout.addLayout(warning_label(tl('advanced_warning')))
 
     dev_inputs = {}
 
@@ -935,6 +951,10 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
     dev_layout.addWidget(misc_group)
 
+    dev_wiki_row = QHBoxLayout()
+    dev_wiki_row.addStretch()
+    dev_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Utilities", f"{_wiki_base}/Utilities"))
+    dev_layout.addLayout(dev_wiki_row)
     dev_layout.addStretch()
     tabs.addTab(dev_tab, tl('utilities'))
 
@@ -942,11 +962,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     stats_tab = QWidget()
     stats_layout = QVBoxLayout(stats_tab)
     stats_layout.setContentsMargins(4, 4, 4, 4)
-    stats_warn_row = QHBoxLayout()
-    stats_warn_row.addWidget(QLabel(tl('advanced_warning')))
-    stats_warn_row.addStretch()
-    stats_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Stats", f"{_wiki_base}/Stats"))
-    stats_layout.addLayout(stats_warn_row)
+    stats_layout.addLayout(warning_label(tl('advanced_warning')))
 
     stats_inputs = {}
     indices = [str(i + 1) for i in range(12)]
@@ -1038,6 +1054,10 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     swap_row.addStretch()
     stats_layout.addLayout(swap_row)
 
+    stats_wiki_row = QHBoxLayout()
+    stats_wiki_row.addStretch()
+    stats_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Stats", f"{_wiki_base}/Stats"))
+    stats_layout.addLayout(stats_wiki_row)
     stats_layout.addStretch()
     tabs.addTab(stats_tab, tl('stats'))
 
@@ -1045,11 +1065,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     flythrough_tab = QWidget()
     fly_layout = QVBoxLayout(flythrough_tab)
     fly_layout.setContentsMargins(4, 4, 4, 4)
-    fly_warn_row = QHBoxLayout()
-    fly_warn_row.addWidget(QLabel(tl('advanced_warning')))
-    fly_warn_row.addStretch()
-    fly_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Flythroughs", f"{_wiki_base}/Flythroughs"))
-    fly_layout.addLayout(fly_warn_row)
+    fly_layout.addLayout(warning_label(tl('advanced_warning')))
 
     flythrough_editor = QTextEdit()
     flythrough_editor.setFixedHeight(150)
@@ -1089,6 +1105,10 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     fly_btn_row.addStretch()
     fly_layout.addLayout(fly_btn_row)
 
+    fly_wiki_row = QHBoxLayout()
+    fly_wiki_row.addStretch()
+    fly_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Flythroughs", f"{_wiki_base}/Flythroughs"))
+    fly_layout.addLayout(fly_wiki_row)
     fly_layout.addStretch()
     tabs.addTab(flythrough_tab, tl('flythrough'))
 
@@ -1096,11 +1116,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     bot_tab = QWidget()
     bot_layout = QVBoxLayout(bot_tab)
     bot_layout.setContentsMargins(4, 4, 4, 4)
-    bot_warn_row = QHBoxLayout()
-    bot_warn_row.addWidget(QLabel(tl('advanced_warning')))
-    bot_warn_row.addStretch()
-    bot_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Bots", f"{_wiki_base}/Bots"))
-    bot_layout.addLayout(bot_warn_row)
+    bot_layout.addLayout(warning_label(tl('advanced_warning')))
 
     bot_editor = QTextEdit()
     bot_editor.setFixedHeight(150)
@@ -1140,6 +1156,10 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     bot_btn_row.addStretch()
     bot_layout.addLayout(bot_btn_row)
 
+    bot_wiki_row = QHBoxLayout()
+    bot_wiki_row.addStretch()
+    bot_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Bots", f"{_wiki_base}/Bots"))
+    bot_layout.addLayout(bot_wiki_row)
     bot_layout.addStretch()
     tabs.addTab(bot_tab, tl('bot'))
 
@@ -1147,11 +1167,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     combat_tab = QWidget()
     combat_layout = QVBoxLayout(combat_tab)
     combat_layout.setContentsMargins(4, 4, 4, 4)
-    combat_warn_row = QHBoxLayout()
-    combat_warn_row.addWidget(QLabel(tl('advanced_warning')))
-    combat_warn_row.addStretch()
-    combat_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Playstyles", f"{_wiki_base}/Playstyles"))
-    combat_layout.addLayout(combat_warn_row)
+    combat_layout.addLayout(warning_label(tl('advanced_warning')))
 
     combat_editor = QTextEdit()
     combat_editor.setFixedHeight(150)
@@ -1187,6 +1203,10 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     combat_btn_row.addStretch()
     combat_layout.addLayout(combat_btn_row)
 
+    combat_wiki_row = QHBoxLayout()
+    combat_wiki_row.addStretch()
+    combat_wiki_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Playstyles", f"{_wiki_base}/Playstyles"))
+    combat_layout.addLayout(combat_wiki_row)
     combat_layout.addStretch()
     tabs.addTab(combat_tab, tl('combat'))
 
