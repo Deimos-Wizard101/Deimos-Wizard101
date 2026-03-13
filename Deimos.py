@@ -2233,6 +2233,6 @@ if __name__ == "__main__":
 	backend_thread.start()
 
 	# Run GUI on the main thread (swap queue order: sending from window = receiving from backend)
-	deimosgui.manage_gui(recv_queue, gui_send_queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, gui_langcode, gui_font, gui_font_size)
+	deimosgui.manage_gui(recv_queue, gui_send_queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, gui_langcode, gui_font, gui_font_size, tool_author)
 
 	logger.remove(current_log)

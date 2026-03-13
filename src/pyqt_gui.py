@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLabel, QPushButton, QCheckBox, QLineEdit, QTextEdit,
     QPlainTextEdit, QComboBox, QGroupBox, QFrame, QDialog, QListWidget,
-    QFileDialog, QSizePolicy,
+    QFileDialog, QSizePolicy, QStyle,
 )
 from PyQt6.QtCore import QTimer, Qt, QMetaObject, Q_ARG, pyqtSlot
 from PyQt6.QtGui import QPixmap, QIcon, QFont
@@ -363,7 +363,7 @@ def _show_entity_list_popup(parent, entity_list_content):
     dialog.show()
 
 
-def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode, gui_font='Segoe UI', gui_font_size=9):
+def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode, gui_font='Segoe UI', gui_font_size=9, tool_author='Deimos-Wizard101'):
     tl = load_lang(langcode)
 
     # Set AppUserModelID so Windows uses our icon in taskbar/process list
@@ -591,6 +591,43 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     discord_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     discord_btn.clicked.connect(lambda: webbrowser.open("https://discord.gg/59UrPJwYDm"))
     info_layout.addWidget(discord_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+    # Repo links row
+    _repo_base = f"https://github.com/{tool_author}/{tool_name}-Wizard101"
+    repo_links_row = QHBoxLayout()
+    repo_links_row.setSpacing(4)
+
+    icon_btn_style = (
+        "QPushButton {"
+        "  background-color: transparent;"
+        "  border: none;"
+        "  padding: 2px;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: rgba(255,255,255,30);"
+        "  border-radius: 4px;"
+        "}"
+    )
+
+    def _repo_icon_btn_from_style(sp, tooltip, url):
+        btn = QPushButton()
+        btn.setToolTip(tooltip)
+        btn.setStyleSheet(icon_btn_style)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setFixedSize(24, 24)
+        btn.setIcon(app.style().standardIcon(sp))
+        btn.clicked.connect(lambda: webbrowser.open(url))
+        return btn
+
+    repo_links_row.addStretch()
+    repo_links_row.addWidget(_repo_icon_btn_from_style(
+        QStyle.StandardPixmap.SP_FileDialogInfoView, "License", f"{_repo_base}/blob/main/LICENSE"))
+    repo_links_row.addWidget(_repo_icon_btn_from_style(
+        QStyle.StandardPixmap.SP_FileDialogDetailedView, "README", f"{_repo_base}/blob/main/README.md"))
+    repo_links_row.addWidget(_repo_icon_btn_from_style(
+        QStyle.StandardPixmap.SP_DirOpenIcon, "Source Code", _repo_base))
+    repo_links_row.addStretch()
+    info_layout.addLayout(repo_links_row)
 
     info_layout.addStretch()
     hotkeys_layout.addWidget(info_widget)
@@ -1186,12 +1223,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     license_dialog.setModal(True)
     ld_layout = QVBoxLayout(license_dialog)
     ld_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    license_parts = tl('license_text').split('\n')
-    license_html = '<br>'.join(
-        f'<b>{line}</b>' if 'agree' in line.lower() else line
-        for line in license_parts
-    )
-    license_label = QLabel(license_html)
+    license_label = QLabel(f"<b>{tl('license_text')}</b>")
     license_label.setTextFormat(Qt.TextFormat.RichText)
     license_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     license_label.setWordWrap(True)
