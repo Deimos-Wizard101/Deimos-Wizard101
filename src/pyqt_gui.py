@@ -18,10 +18,11 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLabel, QPushButton, QCheckBox, QLineEdit, QTextEdit,
     QPlainTextEdit, QComboBox, QGroupBox, QFrame, QDialog, QListWidget,
-    QFileDialog, QSizePolicy, QStyle,
+    QFileDialog, QSizePolicy,
 )
 from PyQt6.QtCore import QTimer, Qt, QMetaObject, Q_ARG, pyqtSlot
-from PyQt6.QtGui import QPixmap, QIcon, QFont
+from PyQt6.QtGui import QPixmap, QIcon, QFont, QPainter
+from PyQt6.QtSvg import QSvgRenderer
 
 
 def _resource_path(filename: str) -> str:
@@ -582,7 +583,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             info_layout.addWidget(logo_label)
 
-    version_label = QLabel(f"{tool_name} v{tool_version}")
+    version_label = QLabel(f"<b>{tool_name}</b> v{tool_version}")
     version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     info_layout.addWidget(version_label)
 
@@ -609,23 +610,35 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         "}"
     )
 
-    def _repo_icon_btn_from_style(sp, tooltip, url):
+    _stroke_color = gui_text_color if gui_text_color else ('#e0e0e0' if gui_theme == 'dark' else '#333333')
+
+    _license_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="m19 8 3 8a5 5 0 0 1-6 0zV7"/><path d="M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1"/><path d="m5 8 3 8a5 5 0 0 1-6 0zV7"/><path d="M7 21h10"/></svg>'
+    _readme_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>'
+    _source_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6a9 9 0 0 0-9 9V3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/></svg>'
+
+    def _svg_icon(svg_str):
+        renderer = QSvgRenderer(svg_str.encode())
+        pixmap = QPixmap(24, 24)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        return QIcon(pixmap)
+
+    def _repo_icon_btn(svg_str, tooltip, url):
         btn = QPushButton()
         btn.setToolTip(tooltip)
         btn.setStyleSheet(icon_btn_style)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFixedSize(24, 24)
-        btn.setIcon(app.style().standardIcon(sp))
+        btn.setIcon(_svg_icon(svg_str))
         btn.clicked.connect(lambda: webbrowser.open(url))
         return btn
 
     repo_links_row.addStretch()
-    repo_links_row.addWidget(_repo_icon_btn_from_style(
-        QStyle.StandardPixmap.SP_FileDialogInfoView, "License", f"{_repo_base}/blob/main/LICENSE"))
-    repo_links_row.addWidget(_repo_icon_btn_from_style(
-        QStyle.StandardPixmap.SP_FileDialogDetailedView, "README", f"{_repo_base}/blob/main/README.md"))
-    repo_links_row.addWidget(_repo_icon_btn_from_style(
-        QStyle.StandardPixmap.SP_DirOpenIcon, "Source Code", _repo_base))
+    repo_links_row.addWidget(_repo_icon_btn(_license_svg, "License", f"{_repo_base}/blob/main/LICENSE"))
+    repo_links_row.addWidget(_repo_icon_btn(_readme_svg, "README", f"{_repo_base}/blob/main/README.md"))
+    repo_links_row.addWidget(_repo_icon_btn(_source_svg, "Source Code", _repo_base))
     repo_links_row.addStretch()
     info_layout.addLayout(repo_links_row)
 
