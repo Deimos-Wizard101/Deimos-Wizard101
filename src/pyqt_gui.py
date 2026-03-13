@@ -481,29 +481,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         return lbl
 
-    _warning_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>'
-
-    def warning_label(text):
-        row = QHBoxLayout()
-        row.addWidget(_svg_label(_warning_svg))
-        row.addWidget(centered_label(text))
-        row.addWidget(_svg_label(_warning_svg))
-        return row
-
-    def _svg_label(svg_str):
-        renderer = QSvgRenderer(svg_str.encode())
-        size = renderer.defaultSize()
-        dpr = QApplication.instance().devicePixelRatio()
-        pixmap = QPixmap(int(size.width() * dpr), int(size.height() * dpr))
-        pixmap.setDevicePixelRatio(dpr)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        renderer.render(painter)
-        painter.end()
-        lbl = QLabel()
-        lbl.setPixmap(pixmap)
-        lbl.setFixedSize(size)
-        return lbl
 
     # ==================== Callbacks ====================
     def toggle_callback(event_key):
@@ -610,7 +587,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             info_layout.addWidget(logo_label)
 
     _changelog_url = f"https://github.com/{tool_author}/{tool_name}-Wizard101/releases/tag/{tool_version}"
-    version_label = QLabel(f'<b>{tool_name}</b> <a href="{_changelog_url}" style="color: {_stroke_color};">v{tool_version}</a>')
+    version_label = QLabel(f'<b>{tool_name}</b> <a href="{_changelog_url}" style="color: {_stroke_color}; text-decoration: none;">v{tool_version}</a>')
     version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     version_label.setOpenExternalLinks(True)
     info_layout.addWidget(version_label)
@@ -680,7 +657,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     cam_layout = QVBoxLayout(camera_tab)
     cam_layout.setContentsMargins(4, 4, 4, 4)
     cam_layout.setSpacing(4)
-    cam_layout.addLayout(warning_label(tl('advanced_warning')))
+    cam_layout.addWidget(centered_label(tl('advanced_warning')))
 
     cam_inputs = {}
 
@@ -780,7 +757,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     dev_layout = QVBoxLayout(dev_tab)
     dev_layout.setContentsMargins(4, 4, 4, 4)
     dev_layout.setSpacing(4)
-    dev_layout.addLayout(warning_label(tl('advanced_warning')))
+    dev_layout.addWidget(centered_label(tl('advanced_warning')))
 
     dev_inputs = {}
 
@@ -965,7 +942,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     stats_tab = QWidget()
     stats_layout = QVBoxLayout(stats_tab)
     stats_layout.setContentsMargins(4, 4, 4, 4)
-    stats_layout.addLayout(warning_label(tl('advanced_warning')))
+    stats_layout.addWidget(centered_label(tl('advanced_warning')))
 
     stats_inputs = {}
     indices = [str(i + 1) for i in range(12)]
@@ -1068,7 +1045,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     flythrough_tab = QWidget()
     fly_layout = QVBoxLayout(flythrough_tab)
     fly_layout.setContentsMargins(4, 4, 4, 4)
-    fly_layout.addLayout(warning_label(tl('advanced_warning')))
+    fly_layout.addWidget(centered_label(tl('advanced_warning')))
 
     flythrough_editor = QTextEdit()
     flythrough_editor.setFixedHeight(150)
@@ -1119,7 +1096,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     bot_tab = QWidget()
     bot_layout = QVBoxLayout(bot_tab)
     bot_layout.setContentsMargins(4, 4, 4, 4)
-    bot_layout.addLayout(warning_label(tl('advanced_warning')))
+    bot_layout.addWidget(centered_label(tl('advanced_warning')))
 
     bot_editor = QTextEdit()
     bot_editor.setFixedHeight(150)
@@ -1170,7 +1147,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     combat_tab = QWidget()
     combat_layout = QVBoxLayout(combat_tab)
     combat_layout.setContentsMargins(4, 4, 4, 4)
-    combat_layout.addLayout(warning_label(tl('advanced_warning')))
+    combat_layout.addWidget(centered_label(tl('advanced_warning')))
 
     combat_editor = QTextEdit()
     combat_editor.setFixedHeight(150)
