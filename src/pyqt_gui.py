@@ -452,6 +452,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             btn.clicked.connect(callback)
         return btn
 
+    def centered_label(text):
+        lbl = QLabel(text)
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        return lbl
+
     # ==================== Callbacks ====================
     def toggle_callback(event_key):
         def cb():
