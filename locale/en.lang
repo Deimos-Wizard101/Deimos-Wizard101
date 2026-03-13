@@ -60,7 +60,6 @@ tp_utils=TP Utils
 custom_tp=Custom TP
 entity_name=Entity Name
 entity_tp=Entity TP
-dev_utils_label=Dev Utils
 available_entities=Entities
 available_paths=Window Paths
 zone_name=Zone Name

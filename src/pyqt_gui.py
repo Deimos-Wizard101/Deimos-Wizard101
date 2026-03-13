@@ -18,9 +18,9 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLabel, QPushButton, QCheckBox, QLineEdit, QTextEdit,
     QPlainTextEdit, QComboBox, QGroupBox, QFrame, QDialog, QListWidget,
-    QFileDialog, QSizePolicy, QSpacerItem,
+    QFileDialog, QSizePolicy,
 )
-from PyQt6.QtCore import QTimer, Qt, QSize, QMetaObject, Q_ARG, pyqtSlot
+from PyQt6.QtCore import QTimer, Qt, QMetaObject, Q_ARG, pyqtSlot
 from PyQt6.QtGui import QPixmap, QIcon, QFont
 
 
@@ -127,7 +127,6 @@ class GUIKeys:
     copy_ui_tree = "copyuitree"
     copy_camera_position = "copycameraposition"
     copy_stats = "copystats"
-    copy_camera_rotation = "copycamerarotation"
     copy_logs = "copylogs"
 
     button_custom_tp = "buttoncustomtp"
@@ -364,7 +363,7 @@ def _show_entity_list_popup(parent, entity_list_content):
     dialog.show()
 
 
-def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode, gui_scale=1.0):
+def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, langcode, gui_scale=1.0, gui_font='Bahnschrift', gui_font_size=14):
     tl = load_lang(langcode)
 
     # Set AppUserModelID so Windows uses our icon in taskbar/process list
@@ -378,6 +377,29 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
     _scale = float(gui_scale) if gui_scale else 1.0
     _vp_height = int(450 * _scale)
+
+    # Apply font
+    font = QFont(gui_font, gui_font_size)
+    app.setFont(font)
+
+    # Apply theme (dark/light) and text color
+    _text_color = gui_text_color if isinstance(gui_text_color, str) else 'white'
+    _theme = gui_theme.lower() if isinstance(gui_theme, str) else 'black'
+    if _theme in ('black', 'dark'):
+        _bg_color = '#1e1e1e'
+        _alt_bg = '#2d2d2d'
+    else:
+        _bg_color = '#f0f0f0'
+        _alt_bg = '#ffffff'
+
+    app.setStyleSheet(
+        f"QWidget {{ background-color: {_bg_color}; color: {_text_color}; }}"
+        f"QComboBox {{ background-color: {_alt_bg}; color: {_text_color}; }}"
+        f"QLineEdit {{ background-color: {_alt_bg}; color: {_text_color}; }}"
+        f"QTextEdit {{ background-color: {_alt_bg}; color: {_text_color}; }}"
+        f"QPlainTextEdit {{ background-color: {_alt_bg}; color: {_text_color}; }}"
+        f"QListWidget {{ background-color: {_alt_bg}; color: {_text_color}; }}"
+    )
 
     # Button color
     _hex = gui_button_color.lstrip('#') if isinstance(gui_button_color, str) else "4a019e"
@@ -581,7 +603,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     cam_layout = QVBoxLayout(camera_tab)
     cam_layout.setContentsMargins(4, 4, 4, 4)
     cam_layout.setSpacing(4)
-    cam_layout.addWidget(QLabel(tl('advanced_warning')))
+    cam_layout.addWidget(centered_label(tl('advanced_warning')))
 
     cam_inputs = {}
 
@@ -677,7 +699,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     dev_layout = QVBoxLayout(dev_tab)
     dev_layout.setContentsMargins(4, 4, 4, 4)
     dev_layout.setSpacing(4)
-    dev_layout.addWidget(QLabel(tl('advanced_warning')))
+    dev_layout.addWidget(centered_label(tl('advanced_warning')))
 
     dev_inputs = {}
 
@@ -858,7 +880,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     stats_tab = QWidget()
     stats_layout = QVBoxLayout(stats_tab)
     stats_layout.setContentsMargins(4, 4, 4, 4)
-    stats_layout.addWidget(QLabel(tl('advanced_warning')))
+    stats_layout.addWidget(centered_label(tl('advanced_warning')))
 
     stats_inputs = {}
     indices = [str(i + 1) for i in range(12)]
@@ -957,7 +979,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     flythrough_tab = QWidget()
     fly_layout = QVBoxLayout(flythrough_tab)
     fly_layout.setContentsMargins(4, 4, 4, 4)
-    fly_layout.addWidget(QLabel(tl('advanced_warning')))
+    fly_layout.addWidget(centered_label(tl('advanced_warning')))
 
     flythrough_editor = QTextEdit()
     flythrough_editor.setFixedHeight(150)
@@ -1004,7 +1026,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     bot_tab = QWidget()
     bot_layout = QVBoxLayout(bot_tab)
     bot_layout.setContentsMargins(4, 4, 4, 4)
-    bot_layout.addWidget(QLabel(tl('advanced_warning')))
+    bot_layout.addWidget(centered_label(tl('advanced_warning')))
 
     bot_editor = QTextEdit()
     bot_editor.setFixedHeight(150)
@@ -1051,7 +1073,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     combat_tab = QWidget()
     combat_layout = QVBoxLayout(combat_tab)
     combat_layout.setContentsMargins(4, 4, 4, 4)
-    combat_layout.addWidget(QLabel(tl('advanced_warning')))
+    combat_layout.addWidget(centered_label(tl('advanced_warning')))
 
     combat_editor = QTextEdit()
     combat_editor.setFixedHeight(150)
@@ -1094,7 +1116,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     console_tab = QWidget()
     console_layout = QVBoxLayout(console_tab)
     console_layout.setContentsMargins(4, 4, 4, 4)
-    console_layout.addWidget(QLabel(tl('console_support')))
+    console_layout.addWidget(centered_label(tl('console_support')))
 
     console_text = ConsoleTextEdit()
     console_text.setReadOnly(True)
@@ -1172,15 +1194,8 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     license_dialog.show()
     QTimer.singleShot(5000, license_dialog.close)
 
-    # ==================== Font Scale ====================
-    if _scale != 1.0:
-        font = app.font()
-        font.setPointSizeF(font.pointSizeF() * _scale)
-        app.setFont(font)
-
     # ==================== Close Handling ====================
     close_accepted = [False]
-    original_close = window.closeEvent
 
     def close_event(event):
         if close_accepted[0]:
