@@ -1186,7 +1186,13 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     license_dialog.setModal(True)
     ld_layout = QVBoxLayout(license_dialog)
     ld_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    license_label = QLabel(tl('license_text'))
+    license_parts = tl('license_text').split('\n')
+    license_html = '<br>'.join(
+        f'<b>{line}</b>' if 'agree' in line.lower() else line
+        for line in license_parts
+    )
+    license_label = QLabel(license_html)
+    license_label.setTextFormat(Qt.TextFormat.RichText)
     license_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     license_label.setWordWrap(True)
     ld_layout.addWidget(license_label)
