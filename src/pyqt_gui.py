@@ -657,7 +657,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     cam_layout = QVBoxLayout(camera_tab)
     cam_layout.setContentsMargins(4, 4, 4, 4)
     cam_layout.setSpacing(4)
-    cam_layout.addWidget(centered_label(tl('advanced_warning')))
+    cam_warn_row = QHBoxLayout()
+    cam_warn_row.addWidget(QLabel(tl('advanced_warning')))
+    cam_warn_row.addStretch()
+    cam_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Camera", f"{_wiki_base}/Camera"))
+    cam_layout.addLayout(cam_warn_row)
 
     cam_inputs = {}
 
@@ -743,7 +747,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     cam_utils_lay.addWidget(styled_btn("Populate", populate_camera_callback))
     cam_utils_lay.addWidget(styled_btn(tl('copy_camera_position'), copy_callback(GUIKeys.copy_camera_position)))
     cam_utils_lay.addStretch()
-    cam_utils_lay.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Camera", f"{_wiki_base}/Camera"))
     cam_layout.addWidget(cam_utils_group)
 
     cam_layout.addStretch()
@@ -754,7 +757,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     dev_layout = QVBoxLayout(dev_tab)
     dev_layout.setContentsMargins(4, 4, 4, 4)
     dev_layout.setSpacing(4)
-    dev_layout.addWidget(centered_label(tl('advanced_warning')))
+    dev_warn_row = QHBoxLayout()
+    dev_warn_row.addWidget(QLabel(tl('advanced_warning')))
+    dev_warn_row.addStretch()
+    dev_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Utilities", f"{_wiki_base}/Utilities"))
+    dev_layout.addLayout(dev_warn_row)
 
     dev_inputs = {}
 
@@ -925,7 +932,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     pet_combo.currentTextChanged.connect(pet_world_callback)
     misc_lay.addWidget(pet_combo)
     misc_lay.addStretch()
-    misc_lay.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Utilities", f"{_wiki_base}/Utilities"))
 
     dev_layout.addWidget(misc_group)
 
@@ -936,7 +942,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     stats_tab = QWidget()
     stats_layout = QVBoxLayout(stats_tab)
     stats_layout.setContentsMargins(4, 4, 4, 4)
-    stats_layout.addWidget(centered_label(tl('advanced_warning')))
+    stats_warn_row = QHBoxLayout()
+    stats_warn_row.addWidget(QLabel(tl('advanced_warning')))
+    stats_warn_row.addStretch()
+    stats_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Stats", f"{_wiki_base}/Stats"))
+    stats_layout.addLayout(stats_warn_row)
 
     stats_inputs = {}
     indices = [str(i + 1) for i in range(12)]
@@ -1026,7 +1036,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     widget_tags['ForceSchoolStatus'] = force_school_check
     swap_row.addWidget(force_school_check)
     swap_row.addStretch()
-    swap_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Stats", f"{_wiki_base}/Stats"))
     stats_layout.addLayout(swap_row)
 
     stats_layout.addStretch()
@@ -1036,7 +1045,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     flythrough_tab = QWidget()
     fly_layout = QVBoxLayout(flythrough_tab)
     fly_layout.setContentsMargins(4, 4, 4, 4)
-    fly_layout.addWidget(centered_label(tl('advanced_warning')))
+    fly_warn_row = QHBoxLayout()
+    fly_warn_row.addWidget(QLabel(tl('advanced_warning')))
+    fly_warn_row.addStretch()
+    fly_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Flythroughs", f"{_wiki_base}/Flythroughs"))
+    fly_layout.addLayout(fly_warn_row)
 
     flythrough_editor = QTextEdit()
     flythrough_editor.setFixedHeight(150)
@@ -1074,7 +1087,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     fly_btn_row.addWidget(styled_btn(tl('execute_flythrough'), execute_flythrough_callback))
     fly_btn_row.addWidget(styled_btn(tl('kill_flythrough'), kill_flythrough_callback))
     fly_btn_row.addStretch()
-    fly_btn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Flythroughs", f"{_wiki_base}/Flythroughs"))
     fly_layout.addLayout(fly_btn_row)
 
     fly_layout.addStretch()
@@ -1084,7 +1096,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     bot_tab = QWidget()
     bot_layout = QVBoxLayout(bot_tab)
     bot_layout.setContentsMargins(4, 4, 4, 4)
-    bot_layout.addWidget(centered_label(tl('advanced_warning')))
+    bot_warn_row = QHBoxLayout()
+    bot_warn_row.addWidget(QLabel(tl('advanced_warning')))
+    bot_warn_row.addStretch()
+    bot_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Bots", f"{_wiki_base}/Bots"))
+    bot_layout.addLayout(bot_warn_row)
 
     bot_editor = QTextEdit()
     bot_editor.setFixedHeight(150)
@@ -1122,7 +1138,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     bot_btn_row.addWidget(styled_btn(tl('run_bot'), run_bot_callback))
     bot_btn_row.addWidget(styled_btn(tl('kill_bot'), kill_bot_callback))
     bot_btn_row.addStretch()
-    bot_btn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Bots", f"{_wiki_base}/Bots"))
     bot_layout.addLayout(bot_btn_row)
 
     bot_layout.addStretch()
@@ -1132,7 +1147,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     combat_tab = QWidget()
     combat_layout = QVBoxLayout(combat_tab)
     combat_layout.setContentsMargins(4, 4, 4, 4)
-    combat_layout.addWidget(centered_label(tl('advanced_warning')))
+    combat_warn_row = QHBoxLayout()
+    combat_warn_row.addWidget(QLabel(tl('advanced_warning')))
+    combat_warn_row.addStretch()
+    combat_warn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Playstyles", f"{_wiki_base}/Playstyles"))
+    combat_layout.addLayout(combat_warn_row)
 
     combat_editor = QTextEdit()
     combat_editor.setFixedHeight(150)
@@ -1166,7 +1185,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     combat_btn_row.addWidget(styled_btn(tl('export_playstyle'), combat_export))
     combat_btn_row.addWidget(styled_btn(tl('set_playstyles'), set_playstyles_callback))
     combat_btn_row.addStretch()
-    combat_btn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Playstyles", f"{_wiki_base}/Playstyles"))
     combat_layout.addLayout(combat_btn_row)
 
     combat_layout.addStretch()
