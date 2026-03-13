@@ -599,6 +599,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
     # Repo links row
     _repo_base = f"https://github.com/{tool_author}/{tool_name}-Wizard101"
+    _wiki_base = f"{_repo_base}/wiki"
     repo_links_row = QHBoxLayout()
     repo_links_row.setSpacing(4)
 
@@ -642,6 +643,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     repo_links_row.addWidget(_repo_icon_btn(_license_svg, "License", f"{_repo_base}/blob/main/LICENSE"))
     repo_links_row.addWidget(_repo_icon_btn(_readme_svg, "README", f"{_repo_base}/blob/main/README.md"))
     repo_links_row.addWidget(_repo_icon_btn(_source_svg, "Source Code", _repo_base))
+    repo_links_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Hotkeys", f"{_wiki_base}/Hotkeys"))
     repo_links_row.addStretch()
     info_layout.addLayout(repo_links_row)
 
@@ -741,6 +743,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     cam_utils_lay.addWidget(styled_btn("Populate", populate_camera_callback))
     cam_utils_lay.addWidget(styled_btn(tl('copy_camera_position'), copy_callback(GUIKeys.copy_camera_position)))
     cam_utils_lay.addStretch()
+    cam_utils_lay.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Camera", f"{_wiki_base}/Camera"))
     cam_layout.addWidget(cam_utils_group)
 
     cam_layout.addStretch()
@@ -922,6 +925,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     pet_combo.currentTextChanged.connect(pet_world_callback)
     misc_lay.addWidget(pet_combo)
     misc_lay.addStretch()
+    misc_lay.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Utilities", f"{_wiki_base}/Utilities"))
 
     dev_layout.addWidget(misc_group)
 
@@ -1022,6 +1026,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     widget_tags['ForceSchoolStatus'] = force_school_check
     swap_row.addWidget(force_school_check)
     swap_row.addStretch()
+    swap_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Stats", f"{_wiki_base}/Stats"))
     stats_layout.addLayout(swap_row)
 
     stats_layout.addStretch()
@@ -1069,6 +1074,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     fly_btn_row.addWidget(styled_btn(tl('execute_flythrough'), execute_flythrough_callback))
     fly_btn_row.addWidget(styled_btn(tl('kill_flythrough'), kill_flythrough_callback))
     fly_btn_row.addStretch()
+    fly_btn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Flythroughs", f"{_wiki_base}/Flythroughs"))
     fly_layout.addLayout(fly_btn_row)
 
     fly_layout.addStretch()
@@ -1116,6 +1122,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     bot_btn_row.addWidget(styled_btn(tl('run_bot'), run_bot_callback))
     bot_btn_row.addWidget(styled_btn(tl('kill_bot'), kill_bot_callback))
     bot_btn_row.addStretch()
+    bot_btn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Bots", f"{_wiki_base}/Bots"))
     bot_layout.addLayout(bot_btn_row)
 
     bot_layout.addStretch()
@@ -1159,6 +1166,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     combat_btn_row.addWidget(styled_btn(tl('export_playstyle'), combat_export))
     combat_btn_row.addWidget(styled_btn(tl('set_playstyles'), set_playstyles_callback))
     combat_btn_row.addStretch()
+    combat_btn_row.addWidget(_repo_icon_btn(_readme_svg, "Wiki: Playstyles", f"{_wiki_base}/Playstyles"))
     combat_layout.addLayout(combat_btn_row)
 
     combat_layout.addStretch()
