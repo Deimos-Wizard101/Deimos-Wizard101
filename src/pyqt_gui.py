@@ -288,7 +288,7 @@ def _show_ui_tree_popup(parent, ui_tree_content):
 
     dialog = QDialog(parent)
     dialog.setWindowTitle("UI Tree")
-    dialog.resize(700, 500)
+    dialog.resize(1050, 750)
     layout = QVBoxLayout(dialog)
 
     layout.addWidget(QLabel("Click the path needed to copy it to clipboard."))
@@ -331,7 +331,7 @@ def _show_entity_list_popup(parent, entity_list_content):
 
     dialog = QDialog(parent)
     dialog.setWindowTitle("Entity List")
-    dialog.resize(450, 400)
+    dialog.resize(675, 600)
     layout = QVBoxLayout(dialog)
 
     layout.addWidget(QLabel("Click the entity needed to copy the name and location to clipboard."))
@@ -391,6 +391,8 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     else:
         _bg_color = '#f0f0f0'
         _alt_bg = '#ffffff'
+
+    _stroke_color = gui_text_color if gui_text_color else ('#e0e0e0' if _theme in ('black', 'dark') else '#333333')
 
     app.setStyleSheet(
         f"QWidget {{ background-color: {_bg_color}; color: {_text_color}; }}"
@@ -612,7 +614,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         "}"
     )
 
-    _stroke_color = gui_text_color if gui_text_color else ('#e0e0e0' if gui_theme == 'dark' else '#333333')
 
     _license_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="m19 8 3 8a5 5 0 0 1-6 0zV7"/><path d="M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1"/><path d="m5 8 3 8a5 5 0 0 1-6 0zV7"/><path d="M7 21h10"/></svg>'
     _readme_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>'
