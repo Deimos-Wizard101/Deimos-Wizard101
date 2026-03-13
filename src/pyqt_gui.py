@@ -394,7 +394,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
     app.setStyleSheet(
         f"QWidget {{ background-color: {_bg_color}; color: {_text_color}; }}"
-        f"QComboBox {{ background-color: {_alt_bg}; color: {_text_color}; }}"
+        f"QComboBox {{ background-color: {_alt_bg}; color: {_text_color}; padding-left: 4px; }}"
         f"QLineEdit {{ background-color: {_alt_bg}; color: {_text_color}; }}"
         f"QTextEdit {{ background-color: {_alt_bg}; color: {_text_color}; }}"
         f"QPlainTextEdit {{ background-color: {_alt_bg}; color: {_text_color}; }}"
@@ -583,8 +583,10 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
             logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             info_layout.addWidget(logo_label)
 
-    version_label = QLabel(f"<b>{tool_name}</b> v{tool_version}")
+    _changelog_url = f"https://github.com/{tool_author}/{tool_name}-Wizard101/releases/tag/{tool_version}"
+    version_label = QLabel(f'<b>{tool_name}</b> <a href="{_changelog_url}" style="color: {_stroke_color};">v{tool_version}</a>')
     version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    version_label.setOpenExternalLinks(True)
     info_layout.addWidget(version_label)
 
     discord_btn = QPushButton("discord.gg/59UrPJwYDm")
