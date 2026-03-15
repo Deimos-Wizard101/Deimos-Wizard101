@@ -1,0 +1,174 @@
+name: Release Deimos
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0
+  
+  # Optional: Allow manual release creation
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.2.0)'
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: windows-latest
+    
+    permissions:
+      contents: write  # Required to create releases
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for changelog
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Set up Python
+      run: uv python install
+
+    - name: Install dependencies
+      run: uv sync --group dev
+
+    - name: Get version from source code
+      id: version
+      shell: powershell
+      run: |
+        # Read version from Deimos.py
+        $content = Get-Content "Deimos.py" -Raw
+        $versionMatch = $content | Select-String "tool_version: str = '([^']+)'" 
+        
+        if ($versionMatch) {
+          $sourceVersion = $versionMatch.Matches[0].Groups[1].Value
+          $tagVersion = "v$sourceVersion"
+          Write-Host "Found version in source: $sourceVersion"
+          Write-Host "Tag version will be: $tagVersion"
+        } else {
+          Write-Error "Could not find tool_version in Deimos.py"
+          exit 1
+        }
+        
+        # For manual dispatch, use input version, otherwise use source version
+        if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          $VERSION = "${{ github.event.inputs.version }}"
+          $VERSION_NUMBER = $VERSION.TrimStart('v')
+        } else {
+          $VERSION = $tagVersion
+          $VERSION_NUMBER = $sourceVersion
+        }
+        
+        echo "VERSION=$VERSION" >> $env:GITHUB_OUTPUT
+        echo "VERSION_NUMBER=$VERSION_NUMBER" >> $env:GITHUB_OUTPUT
+        echo "Building version: $VERSION"
+    
+    - name: Update version in code (optional)
+      shell: bash
+      run: |
+        # Update the tool_version variable in Deimos.py
+        sed -i "s/tool_version: str = '[^']*'/tool_version: str = '${{ steps.version.outputs.VERSION_NUMBER }}'/" Deimos.py
+        echo "Updated version in Deimos.py to ${{ steps.version.outputs.VERSION_NUMBER }}"
+    
+    - name: Build with PyInstaller
+      run: |
+        uv run --group dev pyinstaller -F -w --clean -i Deimos-logo.ico --add-data "Deimos-logo.ico;." --add-data "Deimos-logo.png;." --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest"
+        echo "Build completed successfully"
+        dir dist
+    
+    - name: Verify required files exist
+      shell: bash
+      run: |
+        echo "Checking for required files..."
+        if [ ! -f "dist/Deimos.exe" ]; then
+          echo "ERROR: Deimos.exe not found in dist folder"
+          exit 1
+        fi
+        if [ ! -f "Deimos-config.ini" ]; then
+          echo "ERROR: Deimos-config.ini not found"
+          exit 1
+        fi
+        if [ ! -f "LICENSE" ]; then
+          echo "ERROR: LICENSE file not found"
+          exit 1
+        fi
+        echo "All required files found ✓"
+        echo "Deimos.exe size: $(stat -c%s dist/Deimos.exe) bytes"
+    
+    - name: Create release package
+      shell: powershell
+      run: |
+        Write-Host "Creating release package..."
+        New-Item -ItemType Directory -Path "release" -Force
+        
+        # Copy files to release directory
+        Copy-Item "dist/Deimos.exe" -Destination "release/"
+        Copy-Item "Deimos-config.ini" -Destination "release/"
+        Copy-Item "LICENSE" -Destination "release/"
+        
+        # Create zip file with version in name using PowerShell
+        $zipName = "Deimos-${{ steps.version.outputs.VERSION }}.zip"
+        Compress-Archive -Path "release/*" -DestinationPath $zipName -Force
+        
+        Write-Host "Release package created: $zipName"
+        Write-Host "Package contents:"
+        Get-ChildItem "release" | Format-Table Name, Length
+    
+    - name: Generate changelog
+      id: changelog
+      shell: bash
+      run: |
+        echo "Generating changelog..."
+        
+        # Get the last tag (excluding current)
+        LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        
+        if [ -z "$LAST_TAG" ]; then
+          echo "No previous tag found, generating changelog from recent commits"
+          CHANGELOG=$(git log --pretty=format:"- %s" --no-merges | head -20)
+        else
+          echo "Generating changelog since last tag: $LAST_TAG"
+          CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s" --no-merges)
+        fi
+        
+        # Handle empty changelog
+        if [ -z "$CHANGELOG" ]; then
+          CHANGELOG="- Initial release"
+        fi
+        
+        echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        echo "LAST_TAG=$LAST_TAG" >> $GITHUB_OUTPUT
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.VERSION }}
+        name: Deimos ${{ steps.version.outputs.VERSION }}
+        body: |
+          ## 🚀 What's New in Deimos ${{ steps.version.outputs.VERSION }}
+          
+          ${{ steps.changelog.outputs.CHANGELOG }}
+          
+          ---
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.changelog.outputs.LAST_TAG }}...${{ steps.version.outputs.VERSION }}
+        files: |
+          Deimos-${{ steps.version.outputs.VERSION }}.zip
+        draft: false
+        prerelease: ${{ contains(steps.version.outputs.VERSION, 'alpha') || contains(steps.version.outputs.VERSION, 'beta') || contains(steps.version.outputs.VERSION, 'rc') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Release Summary
+      shell: bash
+      run: |
+        echo "🎉 Release ${{ steps.version.outputs.VERSION }} completed successfully!"
+        echo "📦 Package: Deimos-${{ steps.version.outputs.VERSION }}.zip"
+        echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.VERSION }}"
+        echo "📁 Package size: $(stat -c%s "Deimos-${{ steps.version.outputs.VERSION }}.zip") bytes"

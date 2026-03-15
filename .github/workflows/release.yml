@@ -1,0 +1,229 @@
+name: Release Deimos
+
+on:
+  push:
+    branches:
+      - main  # Only trigger on main branch pushes
+  
+  # Optional: Allow manual release creation
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: windows-latest
+    
+    permissions:
+      contents: write  # Required to create releases
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for changelog
+    
+    - name: Extract version from Deimos.py
+      id: version
+      shell: bash
+      run: |
+        echo "Extracting version from Deimos.py..."
+        
+        # Check if Deimos.py exists
+        if [ ! -f "Deimos.py" ]; then
+          echo "ERROR: Deimos.py not found in repository root"
+          exit 1
+        fi
+        
+        # Extract version using grep and sed
+        VERSION_LINE=$(grep -n "tool_version: str = " Deimos.py | head -1)
+        
+        if [ -z "$VERSION_LINE" ]; then
+          echo "ERROR: Could not find 'tool_version: str = ' in Deimos.py"
+          echo "Make sure the version is defined as: tool_version: str = 'x.x.x'"
+          exit 1
+        fi
+        
+        # Extract the version number from the line
+        VERSION_NUMBER=$(echo "$VERSION_LINE" | sed -n "s/.*tool_version: str = ['\"]\\([^'\"]*\\)['\"].*/\\1/p")
+        
+        if [ -z "$VERSION_NUMBER" ]; then
+          echo "ERROR: Could not parse version number from: $VERSION_LINE"
+          echo "Make sure the version format is: tool_version: str = 'x.x.x'"
+          exit 1
+        fi
+        
+        # Validate version format (basic semver check)
+        if ! echo "$VERSION_NUMBER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'; then
+          echo "ERROR: Invalid version format: $VERSION_NUMBER"
+          echo "Expected format: x.x.x or x.x.x-suffix (e.g., 1.2.3 or 1.2.3-beta)"
+          exit 1
+        fi
+        
+        VERSION_TAG="v${VERSION_NUMBER}"
+        
+        echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_OUTPUT
+        echo "VERSION_NUMBER=${VERSION_NUMBER}" >> $GITHUB_OUTPUT
+        echo "Found version: ${VERSION_NUMBER} (tag: ${VERSION_TAG})"
+    
+    - name: Check if release already exists
+      id: check_release
+      shell: bash
+      run: |
+        echo "Checking if release ${{ steps.version.outputs.VERSION_TAG }} already exists..."
+        
+        # Check if tag exists
+        if git rev-parse "${{ steps.version.outputs.VERSION_TAG }}" >/dev/null 2>&1; then
+          echo "ERROR: Git tag ${{ steps.version.outputs.VERSION_TAG }} already exists"
+          echo "This version has already been released. Please increment the version in Deimos.py"
+          exit 1
+        fi
+        
+        # Check if GitHub release exists using GitHub CLI
+        if gh release view "${{ steps.version.outputs.VERSION_TAG }}" >/dev/null 2>&1; then
+          echo "ERROR: GitHub release ${{ steps.version.outputs.VERSION_TAG }} already exists"
+          echo "This version has already been released. Please increment the version in Deimos.py"
+          exit 1
+        fi
+        
+        echo "✓ Release ${{ steps.version.outputs.VERSION_TAG }} does not exist yet"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Set up Python
+      run: uv python install
+
+    - name: Install dependencies
+      run: uv sync --group dev
+
+    - name: Build with PyInstaller
+      run: |
+        uv run --group dev pyinstaller -F -w --clean -i Deimos-logo.ico --add-data "Deimos-logo.ico;." --add-data "Deimos-logo.png;." --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest"
+        echo "Build completed successfully"
+        dir dist
+    
+    - name: Verify required files exist
+      shell: bash
+      run: |
+        echo "Checking for required files..."
+        if [ ! -f "dist/Deimos.exe" ]; then
+          echo "ERROR: Deimos.exe not found in dist folder"
+          exit 1
+        fi
+        if [ ! -f "Deimos-config.ini" ]; then
+          echo "ERROR: Deimos-config.ini not found"
+          exit 1
+        fi
+        if [ ! -f "LICENSE" ]; then
+          echo "ERROR: LICENSE file not found"
+          exit 1
+        fi
+        echo "All required files found ✓"
+        echo "Deimos.exe size: $(stat -c%s dist/Deimos.exe) bytes"
+    
+    - name: Create release package
+      shell: powershell
+      run: |
+        Write-Host "Creating release package..."
+        New-Item -ItemType Directory -Path "release" -Force
+        
+        # Copy files to release directory
+        Copy-Item "dist/Deimos.exe" -Destination "release/"
+        Copy-Item "Deimos-config.ini" -Destination "release/"
+        Copy-Item "LICENSE" -Destination "release/"
+        
+        # Create zip file with version in name using PowerShell
+        $zipName = "Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip"
+        Compress-Archive -Path "release/*" -DestinationPath $zipName -Force
+        
+        Write-Host "Release package created: $zipName"
+        Write-Host "Package contents:"
+        Get-ChildItem "release" | Format-Table Name, Length
+    
+    - name: Generate changelog
+      id: changelog
+      shell: bash
+      run: |
+        echo "Generating changelog..."
+        
+        # Get the last tag (excluding current)
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        
+        if [ -z "$LAST_TAG" ]; then
+          echo "No previous tag found, generating changelog from recent commits"
+          CHANGELOG=$(git log --pretty=format:"- %s" --no-merges | head -20)
+        else
+          echo "Generating changelog since last tag: $LAST_TAG"
+          CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s" --no-merges)
+        fi
+        
+        # Handle empty changelog
+        if [ -z "$CHANGELOG" ]; then
+          CHANGELOG="- Initial release"
+        fi
+        
+        echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        echo "LAST_TAG=$LAST_TAG" >> $GITHUB_OUTPUT
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.VERSION_TAG }}
+        name: Deimos ${{ steps.version.outputs.VERSION_TAG }}
+        body: |
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.changelog.outputs.LAST_TAG }}...${{ steps.version.outputs.VERSION_TAG }}
+        files: |
+          Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip
+        draft: false
+        prerelease: ${{ contains(steps.version.outputs.VERSION_NUMBER, 'alpha') || contains(steps.version.outputs.VERSION_NUMBER, 'beta') || contains(steps.version.outputs.VERSION_NUMBER, 'rc') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # - name: Notify Discord
+    #   run: .\release_notify.ps1 -WebhookUrl "${{ secrets.DISCORD_WEBHOOK }}"
+    #   shell: pwsh
+
+    - name: Notify Discord via PowerShell Script
+      shell: pwsh
+      working-directory: ${{ github.workspace }}
+      run: |
+        $ErrorActionPreference = "Stop"
+
+        $scriptPath = '.\scripts\release_notify.ps1'
+        if (-Not (Test-Path $scriptPath)) {
+          throw "release_notify.ps1 not found at $scriptPath"
+        }
+
+        # Safely access environment variables
+        $webhookUrl = $env:DISCORD_WEBHOOK
+        $version = $env:VERSION
+        $versionTag = $env:VERSION_TAG
+        $repository = $env:REPOSITORY
+        $zipFile = $env:ZIP_FILE
+        $changelogUrl = $env:CHANGELOG_URL
+
+        & $scriptPath `
+          -WebhookUrl $webhookUrl `
+          -VersionTag $versionTag `
+          -Repository $repository `
+          -ChangelogUrl $changelogUrl `
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        VERSION: ${{ steps.version.outputs.VERSION_NUMBER }}
+        VERSION_TAG: ${{ steps.version.outputs.VERSION_TAG }}
+        REPOSITORY: https://github.com/${{ github.repository }}
+        ZIP_FILE: Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip
+        CHANGELOG_URL: https://github.com/${{ github.repository }}/compare/${{ steps.changelog.outputs.LAST_TAG }}...${{ steps.version.outputs.VERSION_TAG }}
+
+
+    - name: Release Summary
+      shell: bash
+      run: |
+        echo "🎉 Release ${{ steps.version.outputs.VERSION_TAG }} completed successfully!"
+        echo "📦 Package: Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip"
+        echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.VERSION_TAG }}"
+        echo "📁 Package size: $(stat -c%s "Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip") bytes"

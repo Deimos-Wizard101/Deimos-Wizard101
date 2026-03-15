@@ -1,0 +1,128 @@
+# Deimos English language file
+
+# License
+license_title=License Agreement
+license_text=By using Deimos, you agree to the GPL v3 license agreement.
+
+# Main banner
+free_tool=Deimos will always be a free tool. If you paid for this, you got scammed!
+
+# Tab names
+hotkeys=Hotkeys
+camera=Camera
+dev_utils=Dev Utils
+utilities=Utilities
+stats=Stats
+flythrough=Flythrough
+bot=Bot
+combat=Combat
+misc=Misc
+console=Console
+
+# Toggles
+toggles=Toggles
+speedhack=Speedhack
+combat_toggle=Combat
+dialogue=Dialogue
+sigil=Sigil
+questing=Questing
+auto_pet=Auto Pet
+auto_potion=Auto Potion
+
+# Hotkeys
+hotkeys_label=Hotkeys
+quest_tp=Quest TP
+freecam=Freecam
+freecam_tp=Freecam TP
+mass_hotkeys=Mass Hotkeys
+mass_tp=Mass TP
+xyz_sync=XYZ Sync
+x_press=X Press
+
+# Camera
+set_camera_position=Update
+yaw=Yaw
+roll=Roll
+pitch=Pitch
+entity=Entity
+anchor=Anchor
+toggle_camera_collision=Collision
+distance=Distance
+min=Min
+max=Max
+set_distance=Set Dist
+copy_camera_position=Copy Cam Pos
+populate_camera=Populate
+
+# Dev Utils
+advanced_warning=The utils below are for advanced users and no support will be given on them.
+tp_utils=TP Utils
+custom_tp=Custom TP
+entity_name=Entity Name
+entity_tp=Entity TP
+available_entities=Entities
+available_paths=Window Paths
+zone_name=Zone Name
+go_to_zone=Go To Zone
+mass_go_to_zone=Mass Zone
+world_name=World Name
+go_to_world=Go To World
+mass_go_to_world=Mass World
+go_to_bazaar=Go To Bazaar
+mass_go_to_bazaar=Mass Go To Bazaar
+refill_potions=Refill Potions
+mass_refill_potions=Mass Refill Potions
+
+# Stats
+caster_target_indices=Caster/Target Indices
+dmg=Dmg
+school=School
+crit=Crit
+view_stats=View Stats
+copy_stats=Copy Stats
+no_client_selected=No client has been selected.
+swap_members=Swap Members
+force_school_damage=Force School Damage
+
+# Flythrough
+import_flythrough=Import Flythrough
+export_flythrough=Export Flythrough
+execute_flythrough=Execute Flythrough
+kill_flythrough=Kill Flythrough
+
+# Bot
+import_bot=Import Bot
+export_bot=Export Bot
+run_bot=Run Bot
+kill_bot=Kill Bot
+
+# Combat
+import_playstyle=Import Playstyle
+export_playstyle=Export Playstyle
+set_playstyles=Set Playstyles
+
+# Misc
+scale=Scale
+set_scale=Set Scale
+select_pet_world=Select a pet world:
+
+# Console
+console_support=Be sure to include your logs when asking for support.
+collapse_expand_logs=Collapse / Expand Logs
+copy_logs=Copy Logs
+
+# Tooltips
+tooltip_license=License
+tooltip_wiki_hotkeys=Wiki: Hotkeys
+tooltip_source_code=Source Code
+tooltip_discord=Discord
+tooltip_wiki_camera=Wiki: Camera
+tooltip_wiki_utilities=Wiki: Utilities
+tooltip_wiki_stats=Wiki: Stats
+tooltip_wiki_flythroughs=Wiki: Flythroughs
+tooltip_wiki_bots=Wiki: Bots
+tooltip_wiki_playstyles=Wiki: Playstyles
+
+# Client info
+client=Client
+zone=Zone
