@@ -1,38 +1,31 @@
+[project]
+name = "wizwalker"
+version = "1.8.2"
+description = "Wizard101 scripting library"
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+dependencies = [
+    "loguru>=0.7.2",
+    "aiofiles>=23.2.1",
+    "pymem==1.13.1; sys_platform == 'win32'",
+    "appdirs>=1.4.4",
+    "click>=8.1.7",
+    "click-default-group>=1.2.4",
+    "janus>=1.0.0",
+    "pefile>=2023.2.7",
+    "regex>=2024.5.15",
+]
+
+[project.scripts]
+wizwalker = "wizwalker.__main__:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[project]
-name = "deimos-wizard101"
-version = "3.13.0"
-description = "A Wizard101 automation tool"
-license = "GPL-3.0-only"
-requires-python = ">=3.13"
-dependencies = [
-    "loguru>=0.7.2",
-    "pypresence>=4.3.0",
-    "pyperclip>=1.9.0",
-    "PyQt6>=6.6.0",
-    "pywin32>=306; sys_platform == 'win32'",
-    "pyyaml>=6.0.1",
-    "requests>=2.32.3",
-    "thefuzz>=0.22.1",
-    "wizwalker",
-    "wizsprinter",
-]
-
-[tool.hatch.metadata]
-allow-direct-references = true
-
-[tool.hatch.build.targets.wheel]
-packages = ["src"]
-
-[tool.uv.workspace]
-members = ["libs/wizwalker", "libs/wizsprinter"]
-
-[tool.uv.sources]
-wizwalker = { workspace = true }
-wizsprinter = { workspace = true }
-
 [dependency-groups]
-dev = ["pyinstaller>=6.0"]
+dev = [
+    "pywin32-ctypes>=0.2.2",
+    "pdoc>=14.5.0",
+]
