@@ -14,30 +14,37 @@ def get_sprinty_grammar():
             
             line: round_specifier? move_config [(_pipe move_config)*]? _NEWLINE?
             
+            move_config: move (_at target)? [(_and move (_at target)?)*]?
+
+            move: (move_pass | move_willcast | move_draw | (spell enchant? second_enchant?))
+            move_pass: _spaced{"pass"}
+            move_willcast: _spaced{"willcast"}
+            move_draw: _spaced{"draw"} (_open_paren INT _close_paren)?
+            move_discard: _spaced{"discard"}
+
             move_config: move (_at target)?
-            
-            move: (move_pass | (spell enchant?))
-            move_pass: "pass"
             
             spell: any_spell | words | string
             enchant: _open_bracket (any_spell | words | string) _close_bracket
+            second_enchant: _open_bracket (any_spell | words | string) _close_bracket
             
-            target: (target_type | target_multi)
-            target_type: target_self | target_boss | target_enemy | target_ally | target_aoe | target_named
+            target: (target_type | target_select)
+            target_type: target_self | target_boss | target_enemy | target_ally | target_aoe | target_spell | target_named
             target_self: _spaced{"self"}
             target_boss: _spaced{"boss"}
             target_enemy: _spaced{"enemy"} (_open_paren INT _close_paren)?
             target_ally: _spaced{"ally"} (_open_paren INT _close_paren)?
             target_aoe: _spaced{"aoe"}
             target_named: words | string
-            target_multi: _open_paren target_type [(_comma target_type)*]? _close_paren | target_type [(_comma target_type)*]?
+            target_spell: _spaced{"spell"} _open_paren (any_spell | words | string) [(_comma (any_spell | words | string))*]? _close_paren
+            target_select: _spaced{"select"} _open_paren target_type [(_comma target_type)*]? _close_paren | target_type [(_comma target_type)*]?
             
             round_specifier: _newlines? "{" expression "}" _newlines?
             
             
             auto: _spaced{"auto"}
             
-            any_spell: _spaced{"any"} _less_than spell_type (_and spell_type)* _greater_than
+            any_spell: _spaced{"any"} _less_than spell_type [(_and spell_type)*]? _greater_than
             spell_type: spell_damage | spell_aoe | spell_heal_self | spell_heal_other | spell_heal | spell_blade | spell_charm | spell_ward | spell_trap | spell_enchant | spell_aura | spell_global | spell_polymorph | spell_shadow | spell_shadow_creature | spell_pierce | spell_prism | spell_dispel | spell_inc_damage | spell_out_damage | spell_inc_heal | spell_out_heal | spell_mod_damage | spell_mod_heal | spell_mod_pierce
             spell_damage: _spaced{"damage"}
             spell_aoe: _spaced{"aoe"}
@@ -102,8 +109,10 @@ def get_sprinty_grammar():
 
 
 class TreeToConfig(Transformer):
-    def spell(self, items):
+    def spell(self, items, enchant: bool = False):
         if type(items[0]) is not str:
+            if enchant:
+                return TemplateSpell(items[0], optional=True)
             return TemplateSpell(items[0])
         else:
             name: str = items[0]
@@ -112,23 +121,68 @@ class TreeToConfig(Transformer):
             return NamedSpell(name, False)
 
     def enchant(self, items):
-        return self.spell(items)
+        return self.spell(items, enchant=True)
 
+    def second_enchant(self, items):
+        return self.spell(items, enchant=True)
+    
     def move_pass(self, items):
         return NamedSpell("pass")
+
+    def move_willcast(self, items):
+        return NamedSpell("willcast")
+
+    def move_draw(self, items):
+        if len(items) > 0:
+            return DrawSpell(items[0])
+        return DrawSpell()
+
+    def move_discard(self, items):
+        return NamedSpell("discard")
 
     def move(self, items):
         return Move(*items)
 
     def move_config(self, items):
-        if len(items) > 1 and type(items[1]) is not TargetType:
-            t, n = items[1]
-            if type(n) is str and n.startswith("\""):
-                return MoveConfig(items[0], TargetData(t, n[1:-1], is_literal=True))
-            return MoveConfig(items[0], TargetData(t, n))
-        elif len(items) > 1:
-            return MoveConfig(items[0], TargetData(items[1]))
-        return MoveConfig(items[0])
+        movestargets = {}
+        move_count = 0
+        for i, item in enumerate(items):
+            if type(item) is Move:
+                move_count += 1
+                if i + 1 < len(items) and type(items[i + 1]) is not Move:
+                    target_data = items[i + 1]
+                    if type(target_data) is not TargetType:
+                        t, n = target_data
+                        if type(n) is str and n.startswith("\""):
+                            movestargets[item] = TargetData(t, n[1:-1], is_literal=True)
+                            #return MoveConfig(items[0], TargetData(t, n[1:-1], is_literal=True))
+                        elif type(n) is list:
+                            for index, target in enumerate(n):
+                                if type(target) is tuple and len(target) > 1 and type(target[1]) is str and target[1].startswith("\""):
+                                    n[index] = TargetData(target[0], target[1][1:-1], is_literal=True)
+                                elif type(target) is tuple:
+                                    n[index] = TargetData(target[0], target[1])
+                                elif isinstance(target, Spell):
+                                    pass
+                                else:
+                                    n[index] = TargetData(target)
+                            movestargets[item] = TargetData(t, n)
+                        else:
+                            movestargets[item] = TargetData(t, n)
+                    else:
+                        movestargets[item] = TargetData(target_data, None)
+                else:
+                    movestargets[item] = None
+            #return MoveConfig(items[0], TargetData(t, n))
+        if move_count < 2:
+            move, target = (list(movestargets.keys())[0], list(movestargets.values())[0])
+            return MoveConfig(move, target)
+        moves = [x for x in movestargets.keys()]
+        targets = [x for x in movestargets.values()]
+        return MoveConfig(moves, targets)
+        #elif len(items) > 1: 
+            #return MoveConfig(items[0], TargetData(items[1]))
+        #return MoveConfig(items[0])
 
     def line(self, items):
         if type(items[0]) is int:
@@ -140,6 +194,15 @@ class TreeToConfig(Transformer):
 
     def target_self(self, _):
         return TargetType.type_self
+
+    def target_spell(self, items):
+        if type(items) is list and len(items) > 1:
+            new_items = []
+            for item in items:
+                item = [item]
+                new_items.append(self.spell(item))
+            return TargetType.type_spell, new_items
+        return TargetType.type_spell, self.spell(items)
 
     def target_boss(self, _):
         return TargetType.type_boss
@@ -165,6 +228,9 @@ class TreeToConfig(Transformer):
 
     def target(self, items):
         return items[0]
+
+    def target_select(self, items):
+        return TargetType.type_select, items
 
     def any_spell(self, items):
         return items

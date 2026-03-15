@@ -6,6 +6,7 @@ from .backend_base import BaseCombatBackend
 from .combat_config_parser import CombatConfig, PriorityLine, get_sprinty_grammar, TreeToConfig, Move, MoveConfig
 from ..sprinty_combat import SprintyCombat
 
+
 class CombatConfigProvider(BaseCombatBackend):
     def __init__(self, path: str, cast_time: float = 0.2):
         super().__init__(cast_time=cast_time)
@@ -39,13 +40,20 @@ class CombatConfigProvider(BaseCombatBackend):
         for old_round in old_rounds:
             priorities = []
             for old_priority in old_round.priorities:
-                if old_priority.move.enchant is None:
-                    priorities.append(old_priority)
-                else:
-                    priorities.append(old_priority)
-                    enchantless_move = Move(old_priority.move.card, None)
-                    enchantless = MoveConfig(enchantless_move, old_priority.target)
-                    priorities.append(enchantless)
+                #if old_priority.move.enchant is None:
+                priorities.append(old_priority)
+                #elif old_priority.move.enchant and old_priority.move.second_enchant is None:
+                #    priorities.append(old_priority)
+                    # enchantless_move = Move(old_priority.move.card, None, None)
+                    # enchantless = MoveConfig(enchantless_move, old_priority.target)
+                    # priorities.append(enchantless)
+                #else:
+                #    priorities.append(old_priority)
+                #    enchantless_move = Move(
+                #        old_priority.move.card, old_priority.move.enchant, None)
+                #    enchantless = MoveConfig(
+                #        enchantless_move, old_priority.target)
+                #    priorities.append(enchantless)
             rounds.append(PriorityLine(priorities, old_round.round))
 
         return CombatConfig(rounds)
