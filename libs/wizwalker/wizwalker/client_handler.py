@@ -83,6 +83,8 @@ class ClientHandler:
             if not client.is_running():
                 dead_clients.append(client)
                 self.clients.remove(client)
+                if client.window_handle in self._managed_handles:
+                    self._managed_handles.remove(client.window_handle)
 
         return dead_clients
 

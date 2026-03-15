@@ -123,6 +123,31 @@ tooltip_wiki_flythroughs=Wiki: Flythroughs
 tooltip_wiki_bots=Wiki: Bots
 tooltip_wiki_playstyles=Wiki: Playstyles
 
+# Section tooltips
+tooltip_section_camera_position=Set the camera's XYZ position and YPR orientation
+tooltip_section_anchor=Anchor the camera to an entity or toggle collision
+tooltip_section_distance=Set camera distance and zoom limits
+tooltip_section_utils=Populate fields with current camera values or copy position
+tooltip_section_tp_utils=Teleport to coordinates or a named entity
+tooltip_section_navigation=Navigate to zones, worlds, the bazaar, or refill potions
+tooltip_section_misc=Adjust character scale and select pet game world
+
+# Launcher
+launcher=Launcher
+add_account=Add Account
+remove_account=Remove Account
+launch_login=Launch & Login
+game_path=Game Path
+nickname=Nickname
+username=Username
+password=Password
+save_account=Save
+no_accounts_selected=No accounts selected.
+account_added=Account saved successfully.
+account_removed=Account removed.
+launching_instances=Launching instances...
+tooltip_wiki_launcher=Wiki: Launcher
+
 # Client info
 client=Client
 zone=Zone

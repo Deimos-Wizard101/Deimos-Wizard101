@@ -8,8 +8,6 @@ class TargetType(Enum):
     type_ally = auto()
     type_aoe = auto()
     type_named = auto()
-    type_spell = auto()
-    type_select = auto()
 
 
 class SpellType(Enum):
@@ -46,13 +44,6 @@ class Spell:
     pass
 
 
-class DrawSpell(Spell):
-    def __init__(self, draw_amount: int = 1):
-        self.draw_amount = draw_amount
-
-    def __repr__(self) -> str:
-        return f"DrawSpell(draw_amount={self.draw_amount})"
-
 class NamedSpell(Spell):
     def __init__(self, name: str, is_literal: bool = False):
         self.name = name
@@ -72,13 +63,12 @@ class TemplateSpell(Spell):
 
 
 class Move:
-    def __init__(self, card: Spell, enchant: Spell = None, second_enchant: Spell = None):
+    def __init__(self, card: Spell, enchant: Spell = None):
         self.card = card
         self.enchant = enchant
-        self.second_enchant = second_enchant
 
     def __repr__(self) -> str:
-        return f"Move(card={self.card}, enchant={self.enchant}, second_enchant={self.second_enchant})"
+        return f"Move(card={self.card}, enchant={self.enchant})"
 
 
 class TargetData:
@@ -92,7 +82,7 @@ class TargetData:
 
 
 class MoveConfig:
-    def __init__(self, move: Union[Move, List], target: Union[TargetData, List] = None):
+    def __init__(self, move: Move, target: TargetData = None):
         self.move = move
         self.target = target
 

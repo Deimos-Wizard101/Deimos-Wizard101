@@ -44,6 +44,7 @@ from typing import List
 
 from src import pyqt_gui as deimosgui
 from src.pyqt_gui import GUIKeys
+from src.account_vault import AccountVault
 from src.tokenizer import tokenize
 from src.deimoslang import vm
 
@@ -479,24 +480,28 @@ async def kill_tool(debug: bool):
 async def tool_finish():
 	if not walker or len(walker.clients) == 0:
 		return
-	
-	await asyncio.gather(*[p.client_object.write_speed_multiplier(client_speeds[p.process_id]) for p in walker.clients])
-	for p in walker.clients:
-		p.title = 'Wizard101'
-		# Uncomment when freecam is fixed
-		if await p.game_client.is_freecam():
-			await p.camera_elastic()
-		else:
-			camera: ElasticCameraController = await p.game_client.elastic_camera_controller()
-			client_object = await p.body.parent_client_object()
-			await camera.write_attached_client_object(client_object)
-			await camera.write_check_collisions(True)
-			await camera.write_distance_target(300.0)
-			await camera.write_distance(300.0)
-			await camera.write_min_distance(150.0)
-			await camera.write_max_distance(450.0)
-			await camera.write_zoom_resolution(150.0)
-		await p.body.write_scale(1.0)
+
+	alive_clients = [p for p in walker.clients if p.is_running()]
+	for p in alive_clients:
+		try:
+			await p.client_object.write_speed_multiplier(client_speeds[p.process_id])
+			p.title = 'Wizard101'
+			# Uncomment when freecam is fixed
+			if await p.game_client.is_freecam():
+				await p.camera_elastic()
+			else:
+				camera: ElasticCameraController = await p.game_client.elastic_camera_controller()
+				client_object = await p.body.parent_client_object()
+				await camera.write_attached_client_object(client_object)
+				await camera.write_check_collisions(True)
+				await camera.write_distance_target(300.0)
+				await camera.write_distance(300.0)
+				await camera.write_min_distance(150.0)
+				await camera.write_max_distance(450.0)
+				await camera.write_zoom_resolution(150.0)
+			await p.body.write_scale(1.0)
+		except Exception:
+			pass
 	await listener.clear()
 	for p in walker.clients:
 		try:
@@ -1259,58 +1264,212 @@ async def main():
 		global flythrough_task
 		global gui_thread
 		global recv_queue
+		global combat_task
+		global dialogue_task
+		global sigil_task
+		global questing_task
+		global speed_task
+		global auto_pet_task
 		enemy_stats = []
 		current_pos = None
 		current_rotation = None
+
+		# Pause/resume state for client disconnect resilience
+		paused_task_names = None
+		previous_client_count = None
+
+		# Account vault for launcher
+		try:
+			vault = AccountVault()
+		except Exception as e:
+			logger.error(f"Failed to initialize account vault: {e}")
+			vault = None
 		while True:
 			if walker.clients and foreground_client:
-				current_zone = await foreground_client.zone_name()
-				#try:
-				if current_zone and not await foreground_client.is_loading():
-					if await foreground_client.game_client.is_freecam():
-						camera = await foreground_client.game_client.free_camera_controller()
-						current_pos = await camera.position()
-						current_rotation: Orient = await camera.orientation()
-						current_pos.x = trunc(current_pos.x, 3)
-						current_pos.y = trunc(current_pos.y, 3)
-						current_pos.z = trunc(current_pos.z, 3)
-						current_rotation.yaw = trunc(current_rotation.yaw, 3)
-						current_rotation.pitch = trunc(current_rotation.pitch, 3)
-						current_rotation.roll = trunc(current_rotation.roll, 3)
+				try:
+					current_zone = await foreground_client.zone_name()
+					if current_zone and not await foreground_client.is_loading():
+						if await foreground_client.game_client.is_freecam():
+							camera = await foreground_client.game_client.free_camera_controller()
+							current_pos = await camera.position()
+							current_rotation: Orient = await camera.orientation()
+							current_pos.x = trunc(current_pos.x, 3)
+							current_pos.y = trunc(current_pos.y, 3)
+							current_pos.z = trunc(current_pos.z, 3)
+							current_rotation.yaw = trunc(current_rotation.yaw, 3)
+							current_rotation.pitch = trunc(current_rotation.pitch, 3)
+							current_rotation.roll = trunc(current_rotation.roll, 3)
+						else:
+							if parent := await foreground_client.client_object.parent():
+								if await parent.object_name() == "Player Object":
+									children = await parent.children()
+									for pet_object in children:
+										current_pos = await pet_object.location()
+										current_rotation = await pet_object.orientation()
+								else:
+									current_pos: XYZ = await foreground_client.body.position()
+									current_rotation: Orient = await foreground_client.body.orientation()
+									current_pos.x = trunc(current_pos.x, 3)
+									current_pos.y = trunc(current_pos.y, 3)
+									current_pos.z = trunc(current_pos.z, 3)
+									current_rotation.yaw = trunc(current_rotation.yaw, 3)
+									current_rotation.pitch = trunc(current_rotation.pitch, 3)
+									current_rotation.roll = trunc(current_rotation.roll, 3)
 					else:
-						if parent := await foreground_client.client_object.parent():
-							if await parent.object_name() == "Player Object":
-								children = await parent.children()
-								for pet_object in children:
-									current_pos = await pet_object.location()
-									current_rotation = await pet_object.orientation()
-							else:
-								current_pos: XYZ = await foreground_client.body.position()
-								current_rotation: Orient = await foreground_client.body.orientation()
-								current_pos.x = trunc(current_pos.x, 3)
-								current_pos.y = trunc(current_pos.y, 3)
-								current_pos.z = trunc(current_pos.z, 3)
-								current_rotation.yaw = trunc(current_rotation.yaw, 3)
-								current_rotation.pitch = trunc(current_rotation.pitch, 3)
-								current_rotation.roll = trunc(current_rotation.roll, 3)
-				else:
-					current_pos: XYZ = XYZ(0, 0, 0)
-					current_rotation: Orient = Orient(0, 0, 0)
-						
-				#except wizwalker.errors.MemoryReadError as e:
-				#	await handle_coord_error(e)
-					
-				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Title', f'Client: {foreground_client.title}')))
-				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Zone', f'Zone: {current_zone}')))
-				# gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('x', f'X: {current_pos.x}')))
-				# gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('y', f'Y: {current_pos.y}')))
-				# gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('z', f'Z: {current_pos.z}')))
-				# gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Yaw', f'Yaw: {current_rotation.yaw}')))
-				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('xyz', f'Position (XYZ): {current_pos.x}, {current_pos.y}, {current_pos.z}')))
-				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('pry', f'Orientation (PRY): {current_rotation.pitch}, {current_rotation.roll}, {current_rotation.yaw}')))
+						current_pos: XYZ = XYZ(0, 0, 0)
+						current_rotation: Orient = Orient(0, 0, 0)
+
+					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Title', f'Client: {foreground_client.title}')))
+					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Zone', f'Zone: {current_zone}')))
+					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('xyz', f'Position (XYZ): {current_pos.x}, {current_pos.y}, {current_pos.z}')))
+					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('pry', f'Orientation (PRY): {current_rotation.pitch}, {current_rotation.roll}, {current_rotation.yaw}')))
+				except Exception:
+					# Client process likely closed — remove dead clients, keep title gaps
+					count_before = len(walker.clients)
+					dead = walker.remove_dead_clients()
+					if dead:
+						for c in dead:
+							logger.info(f"Client '{c.title}' disconnected.")
+
+						# Record which tasks were active, then cancel them all
+						active_tasks = set()
+						task_vars = {
+							"combat": combat_task,
+							"dialogue": dialogue_task,
+							"sigil": sigil_task,
+							"questing": questing_task,
+							"speed": speed_task,
+							"bot": bot_task,
+							"auto_pet": auto_pet_task,
+						}
+						for name, task in task_vars.items():
+							if task is not None and not task.cancelled():
+								active_tasks.add(name)
+								task.cancel()
+
+						if "combat" in active_tasks:
+							combat_task = None
+						if "dialogue" in active_tasks:
+							dialogue_task = None
+						if "sigil" in active_tasks:
+							sigil_task = None
+						if "questing" in active_tasks:
+							questing_task = None
+						if "speed" in active_tasks:
+							speed_task = None
+						if "bot" in active_tasks:
+							bot_task = None
+						if "auto_pet" in active_tasks:
+							auto_pet_task = None
+
+						# Reset per-client status flags on remaining alive clients
+						for c in walker.clients:
+							c.combat_status = False
+							c.sigil_status = False
+							c.questing_status = False
+							c.feeding_pet_status = False
+							c.entity_detect_combat_status = False
+
+						if active_tasks:
+							previous_client_count = count_before
+							paused_task_names = active_tasks
+							logger.info(f"Client(s) disconnected. Bot tasks paused. Waiting for client count to be restored ({len(walker.clients)}/{previous_client_count}).")
+							if "bot" in active_tasks:
+								logger.warning("Bot script was interrupted and cannot be auto-resumed. Please restart it manually.")
+
+						if not walker.clients:
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Title', f'Client: None')))
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Zone', f'Zone: ')))
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('xyz', f'Position (XYZ): ')))
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('pry', f'Orientation (PRY): ')))
+					await asyncio.sleep(0.5)
 			elif not walker.clients:
 				await asyncio.sleep(0.1)
-				# continue
+
+			# Poll for new clients when in paused state (waiting for reconnection)
+			if paused_task_names and len(walker.clients) < previous_client_count:
+				new_clients = walker.get_new_clients()
+				if new_clients:
+					# Assign titles — fill gaps using the next available number
+					existing_nums = set()
+					for c in walker.clients:
+						if c.title.startswith('p') and c.title[1:].isdigit():
+							existing_nums.add(int(c.title[1:]))
+
+					for nc in new_clients:
+						num = 1
+						while num in existing_nums:
+							num += 1
+						nc.title = f'p{num}'
+						existing_nums.add(num)
+						nc.combat_config = default_config
+
+					# Hook new clients
+					try:
+						await asyncio.gather(*[c.activate_hooks() for c in new_clients])
+					except Exception as e:
+						logger.error(f"Failed to hook new client(s): {e}")
+
+					# Initialize new client attributes
+					for nc in new_clients:
+						client_speeds[nc.process_id] = await nc.client_object.speed_multiplier()
+						nc.combat_status = False
+						nc.questing_status = False
+						nc.sigil_status = False
+						nc.auto_pet_status = False
+						nc.feeding_pet_status = False
+						nc.use_team_up = use_team_up
+						nc.dance_hook_status = False
+						nc.entity_detect_combat_status = False
+						nc.invincible_combat_timer = False
+						nc.just_entered_combat = None
+						nc.just_left_combat = False
+						nc.helper_clients = []
+						nc.client_being_helped = None
+						nc.original_location_before_combat = None
+						nc.duel_circle_joinable = True
+						nc.in_solo_zone = False
+						nc.wizard_name = None
+						nc.character_level = await nc.stats.reference_level()
+						nc.discard_duplicate_cards = discard_duplicate_cards
+						nc.kill_minions_first = kill_minions_first
+						nc.automatic_team_based_combat = automatic_team_based_combat
+						nc.latest_drops = ''
+						nc.use_potions = use_potions
+						nc.buy_potions = buy_potions
+						nc.client_to_follow = client_to_follow
+						logger.info(f"New client '{nc.title}' hooked.")
+
+					# Check if count restored
+					if len(walker.clients) >= previous_client_count:
+						# Re-enable tasks that were active before disconnect
+						resumable = paused_task_names - {"bot"}
+						for name in resumable:
+							if name == "combat":
+								for c in walker.clients:
+									c.combat_status = True
+								combat_task = asyncio.create_task(try_task_coro(combat_loop, walker.clients, True))
+							elif name == "dialogue":
+								dialogue_task = asyncio.create_task(try_task_coro(dialogue_loop, walker.clients, True))
+							elif name == "sigil":
+								for c in walker.clients:
+									c.sigil_status = True
+								sigil_task = asyncio.create_task(try_task_coro(sigil_loop, walker.clients, True))
+							elif name == "questing":
+								for c in walker.clients:
+									c.questing_status = True
+								questing_task = asyncio.create_task(try_task_coro(questing_loop, walker.clients, True))
+							elif name == "speed":
+								speed_task = asyncio.create_task(try_task_coro(speed_switching, walker.clients))
+							elif name == "auto_pet":
+								for c in walker.clients:
+									c.feeding_pet_status = True
+								auto_pet_task = asyncio.create_task(try_task_coro(auto_pet_loop, walker.clients, True))
+
+						previous_client_count = None
+						paused_task_names = None
+						logger.info("Client count restored. Resuming bot tasks.")
+
 			# Stuff sent by the window
 			try:
 			# Eat as much as the queue gives us. We will be freed by exception
@@ -1719,6 +1878,53 @@ async def main():
 							desired_scale = param_input(com.data, 1.0)
 							logger.debug(f'Set Scale to {desired_scale}')
 							await asyncio.gather(*[client.body.write_scale(desired_scale) for client in walker.clients])
+
+						case deimosgui.GUICommandType.LoadAccounts:
+							if vault:
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, vault.get_nicknames()))
+
+						case deimosgui.GUICommandType.SaveAccount:
+							if vault:
+								nickname, username, password = com.data
+								vault.save_account(nickname, username, password)
+								logger.info(f"Account '{nickname}' saved.")
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, vault.get_nicknames()))
+
+						case deimosgui.GUICommandType.DeleteAccount:
+							if vault:
+								vault.delete_account(com.data)
+								logger.info(f"Account '{com.data}' removed.")
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, vault.get_nicknames()))
+
+						case deimosgui.GUICommandType.LaunchInstance:
+							if vault:
+								nicknames, game_path = com.data
+								if game_path:
+									utils.override_wiz_install_location(game_path)
+								logger.info(f"Launching {len(nicknames)} instance(s)...")
+								start_handles = set(get_all_wizard_handles())
+								for nickname in nicknames:
+									try:
+										username, password = vault.get_account(nickname)
+										utils.start_instance()
+										# Poll for new window handle with timeout
+										handle = None
+										for _ in range(60):  # up to 30 seconds
+											await asyncio.sleep(0.5)
+											new_handles = set(get_all_wizard_handles()).difference(start_handles)
+											if new_handles:
+												handle = new_handles.pop()
+												start_handles.add(handle)
+												break
+										if handle:
+											await asyncio.sleep(2)  # let login screen render
+											utils.instance_login(handle, username, password)
+											logger.info(f"Launched and logged in '{nickname}'.")
+										else:
+											logger.error(f"Failed to detect new window for '{nickname}'.")
+									except Exception as e:
+										logger.error(f"Error launching '{nickname}': {e}")
+
 			except queue.Empty:
 				pass
 
@@ -2127,9 +2333,7 @@ async def main():
 		ban_watcher_task = asyncio.create_task(ban_watcher())
 		tool_active_task = asyncio.create_task(tool_active())
 
-		# while True:
-		# await asyncio.wait([foreground_client_switching_task, speed_switching_task, combat_loop_task, assign_foreground_clients_task, dialogue_loop_task, anti_afk_loop_task, sigil_loop_task, in_combat_loop_task, questing_leader_combat_detection_task, gui_task, potion_usage_loop_task, rpc_loop_task, drop_logging_loop_task, zone_check_loop_task])
-		done, _ = await asyncio.wait([
+		all_tasks = [
 			ban_watcher_task,
 			foreground_client_switching_task,
 			assign_foreground_clients_task,
@@ -2143,20 +2347,32 @@ async def main():
 			zone_check_loop_task,
 			anti_afk_questing_loop_task,
 			tool_active_task
-			], return_when=asyncio.FIRST_EXCEPTION)
+		]
 
-		for t in done:
-			if t.done():
+		while True:
+			pending = [t for t in all_tasks if not t.done()]
+			if not pending:
+				break
+			done, _ = await asyncio.wait(pending, return_when=asyncio.FIRST_EXCEPTION)
+
+			should_exit = False
+			for t in done:
 				exc = t.exception()
-				match exc:
-					case None:
-						continue
-					case deimosgui.ToolClosedException():
-						logger.info("Tool close triggered by user.")
-						continue
-					case _:
-						logger.exception(exc)
-						pass
+				if exc is None:
+					continue
+				elif isinstance(exc, deimosgui.ToolClosedException):
+					logger.info("Tool close triggered by user.")
+					should_exit = True
+				elif t == gui_task:
+					# GUI task errors are always fatal
+					logger.exception(exc)
+					should_exit = True
+				else:
+					# Client-dependent task died (memory error, dead process, etc.)
+					# Non-fatal — the client is likely closed
+					logger.debug(f"Task ended: {exc}")
+			if should_exit:
+				break
 
 	finally:
 		tasks: List[asyncio.Task] = [ban_watcher_task, foreground_client_switching_task, combat_task, assign_foreground_clients_task, dialogue_task, anti_afk_loop_task, sigil_task, questing_task, in_combat_loop_task, questing_leader_combat_detection_task, gui_task, potion_usage_loop_task, rpc_loop_task, drop_logging_loop_task, zone_check_loop_task, anti_afk_questing_loop_task, speed_task]
