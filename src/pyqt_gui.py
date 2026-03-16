@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLabel, QPushButton, QCheckBox, QLineEdit, QTextEdit,
     QPlainTextEdit, QComboBox, QGroupBox, QFrame, QDialog, QListWidget,
-    QFileDialog, QSizePolicy, QStackedWidget,
+    QFileDialog, QSizePolicy, QStackedWidget, QToolTip,
 )
 from PyQt6.QtCore import QTimer, Qt, QMetaObject, Q_ARG, pyqtSlot, pyqtSignal, QPropertyAnimation, QEasingCurve, QPoint, QParallelAnimationGroup, QRectF
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QPainter, QColor, QPen, QBrush
@@ -251,7 +251,10 @@ class DuelCircleWidget(QWidget):
         self._ally_name = ""
         self._slot_centers = {}  # (side, index) -> (x, y)
         self._slot_icons = {}   # (side, index) -> QPixmap
+        self._status_message = ""
+        self._slot_info = {}    # (side, index) -> {'name': str, 'max_dmg': int, 'sim_dmg': int}
         self.setFixedSize(300, 200)
+        self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         sc = stroke_color
@@ -272,6 +275,7 @@ class DuelCircleWidget(QWidget):
             self._slot_icons[('enemy', i + 1)] = self._render_svg(svg, icon_size)
         for i, svg in enumerate(ally_svgs):
             self._slot_icons[('ally', i + 1)] = self._render_svg(svg, icon_size)
+
 
     def _render_svg(self, svg_str, size):
         dpr = self.devicePixelRatioF()
@@ -338,6 +342,16 @@ class DuelCircleWidget(QWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(QRectF(cx - rx, cy - ry, rx * 2, ry * 2))
 
+        # When not in combat, show status message and return early
+        if self._enemy_count == 0 and self._ally_count == 0 and self._status_message:
+            label_font = painter.font()
+            label_font.setPixelSize(11)
+            painter.setFont(label_font)
+            painter.setPen(QPen(self._stroke_color))
+            painter.drawText(QRectF(0, 0, w, h), Qt.AlignmentFlag.AlignCenter, self._status_message)
+            painter.end()
+            return
+
         # Draw divider line
         painter.setPen(QPen(self._stroke_color, 0.5, Qt.PenStyle.DashLine))
         painter.drawLine(int(cx - rx * 0.7), int(cy), int(cx + rx * 0.7), int(cy))
@@ -401,6 +415,21 @@ class DuelCircleWidget(QWidget):
                 self.casterSelected.emit(idx)
             self.update()
 
+    def mouseMoveEvent(self, event):
+        px, py = event.position().x(), event.position().y()
+        hit_r = self._SLOT_RADIUS + 6
+        for (side, idx), (sx, sy) in self._slot_centers.items():
+            if (px - sx) ** 2 + (py - sy) ** 2 <= hit_r ** 2:
+                info = self._slot_info.get((side, idx))
+                if info:
+                    name = info.get('name', '???')
+                    max_dmg = info.get('max_dmg', 0)
+                    sim_dmg = info.get('sim_dmg', 0)
+                    text = f"{name}\nMax Dmg: {max_dmg}\nSim Dmg: {sim_dmg}"
+                    QToolTip.showText(event.globalPosition().toPoint(), text, self)
+                    return
+        QToolTip.hideText()
+
     def selected_caster(self):
         return self._selected_caster
 
@@ -413,6 +442,37 @@ class DuelCircleWidget(QWidget):
 
     def set_ally_name(self, name):
         self._ally_name = name
+        self.update()
+
+    def set_enemy_count(self, count):
+        self._enemy_count = count
+        if self._selected_target > count:
+            self._selected_target = max(1, count)
+        self.update()
+
+    def set_ally_count(self, count):
+        self._ally_count = count
+        if self._selected_caster > count:
+            self._selected_caster = max(1, count)
+        self.update()
+
+    def set_status_message(self, msg):
+        self._status_message = msg
+
+    def set_slot_info(self, info):
+        self._slot_info = info
+        self.update()
+
+    def swap_sides(self):
+        """Swap enemy/ally icons, names, counts, and selections visually."""
+        self._selected_caster, self._selected_target = self._selected_target, self._selected_caster
+        self._enemy_name, self._ally_name = self._ally_name, self._enemy_name
+        self._enemy_count, self._ally_count = self._ally_count, self._enemy_count
+        swapped = {}
+        for (side, idx), pix in self._slot_icons.items():
+            new_side = 'ally' if side == 'enemy' else 'enemy'
+            swapped[(new_side, idx)] = pix
+        self._slot_icons = swapped
         self.update()
 
 
@@ -1749,7 +1809,9 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
 
     # Radial duel circle widget
     duel_circle = DuelCircleWidget(stroke_color=_stroke_color, text_color=_text_color, bg_color=_bg_color)
-    stats_layout.addWidget(duel_circle, alignment=Qt.AlignmentFlag.AlignCenter)
+    duel_circle.set_status_message(tl('not_in_combat'))
+    duel_circle.set_enemy_count(0)
+    duel_circle.set_ally_count(0)
 
     # Damage calculation config (lives inside a popup dialog)
     stats_inputs = {}
@@ -1776,39 +1838,6 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
     force_school_check = QCheckBox(tl('force_school_damage'))
     stats_inputs['ForceSchoolStatus'] = force_school_check
     widget_tags['ForceSchoolStatus'] = force_school_check
-
-    _dmg_calc_popup = [None]
-
-    def _show_dmg_calc_popup():
-        if _dmg_calc_popup[0] is not None and _dmg_calc_popup[0].isVisible():
-            _dmg_calc_popup[0].raise_()
-            return
-
-        dialog = QDialog(window)
-        dialog.setWindowTitle(tl('dmg'))
-        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
-        dlg_layout = QVBoxLayout(dialog)
-
-        row1 = QHBoxLayout()
-        row1.addWidget(QLabel(tl('dmg') + ':'))
-        row1.addWidget(damage_input)
-        row1.addWidget(QLabel(tl('school') + ':'))
-        row1.addWidget(school_combo)
-        dlg_layout.addLayout(row1)
-
-        row2 = QHBoxLayout()
-        row2.addWidget(crit_check)
-        row2.addWidget(force_school_check)
-        row2.addStretch()
-        dlg_layout.addLayout(row2)
-
-        close_btn = styled_btn("Close", dialog.close)
-        dlg_layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        dialog.adjustSize()
-        dialog.setFixedSize(dialog.sizeHint())
-        _dmg_calc_popup[0] = dialog
-        dialog.show()
 
     # Stat popup dialog (non-modal, reusable)
     _stat_popup = [None]
@@ -1849,32 +1878,113 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
         _stat_popup[0] = dialog
         return dialog
 
+    # Sends a stat refresh command to the backend
+    _swapped = [False]
+
+    def _send_stat_request():
+        try:
+            base_damage = re.sub(r'[^0-9]', '', str(damage_input.text()))
+            school_id: int = school_id_to_names[school_combo.currentText()]
+            # When swapped, the duel circle's caster side shows enemies and vice versa
+            if not _swapped[0]:
+                ally_idx = duel_circle.selected_caster()
+                enemy_idx = duel_circle.selected_target()
+            else:
+                enemy_idx = duel_circle.selected_caster()
+                ally_idx = duel_circle.selected_target()
+            send_queue.put(GUICommand(GUICommandType.SelectEnemy, (
+                ally_idx, enemy_idx,
+                base_damage, school_id,
+                crit_check.isChecked(),
+                force_school_check.isChecked(),
+                _swapped[0]
+            )))
+        except Exception:
+            logger.error("Failed to send stat request", exc_info=True)
+
+    def _is_selection_valid():
+        if not _swapped[0]:
+            return (duel_circle.selected_caster() <= duel_circle._ally_count and
+                    duel_circle.selected_target() <= duel_circle._enemy_count and
+                    duel_circle._ally_count > 0 and duel_circle._enemy_count > 0)
+        else:
+            return (duel_circle.selected_caster() <= duel_circle._enemy_count and
+                    duel_circle.selected_target() <= duel_circle._ally_count and
+                    duel_circle._ally_count > 0 and duel_circle._enemy_count > 0)
+
     # View stats callback — sends command and opens popup
     def view_stats_callback():
-        base_damage = re.sub(r'[^0-9]', '', str(damage_input.text()))
-        school_id: int = school_id_to_names[school_combo.currentText()]
-        send_queue.put(GUICommand(GUICommandType.SelectEnemy, (
-            duel_circle.selected_target(),
-            duel_circle.selected_caster(),
-            base_damage, school_id,
-            crit_check.isChecked(),
-            force_school_check.isChecked()
-        )))
+        if not _is_selection_valid():
+            return
+        _send_stat_request()
         popup = _get_or_create_stat_popup()
         popup.show()
         popup.raise_()
 
+    # Auto-refresh stats when duel circle selection changes
+    def _on_slot_changed(_idx):
+        _update_eye_btn()
+        if _is_selection_valid():
+            _send_stat_request()
+
+    duel_circle.casterSelected.connect(_on_slot_changed)
+    duel_circle.targetSelected.connect(_on_slot_changed)
+
     # Action icon SVGs
     _eye_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>'
-    _calc_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>'
+    _eye_off_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>'
+    _swap_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{_stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>'
 
-    # Centered action icons — Damage Config + View Stats
-    stats_btn_row = QHBoxLayout()
-    stats_btn_row.addStretch()
-    stats_btn_row.addWidget(_action_icon_btn(_calc_svg, tl('dmg'), _show_dmg_calc_popup))
-    stats_btn_row.addWidget(_action_icon_btn(_eye_svg, tl('view_stats'), view_stats_callback))
-    stats_btn_row.addStretch()
-    stats_layout.addLayout(stats_btn_row)
+    def _swap_sides_callback():
+        _swapped[0] = not _swapped[0]
+        duel_circle.swap_sides()
+        _update_eye_btn()
+        if _stat_popup[0] is not None and _stat_popup[0].isVisible() and _is_selection_valid():
+            _send_stat_request()
+
+    eye_btn = _action_icon_btn(_eye_svg, tl('view_stats'), view_stats_callback)
+
+    def _update_eye_btn():
+        valid = _is_selection_valid()
+        svg = _eye_svg if valid else _eye_off_svg
+        eye_btn.setIcon(_titlebar_svg_icon(svg, 32))
+
+    # Content row — buttons | duel circle | calc settings
+    stats_content = QHBoxLayout()
+
+    # Left: action buttons, vertically centered with duel circle
+    btn_col = QVBoxLayout()
+    btn_col.addStretch()
+    btn_col.addWidget(eye_btn)
+    btn_col.addWidget(_action_icon_btn(_swap_svg, tl('swap_sides'), _swap_sides_callback))
+    btn_col.addStretch()
+
+    # Right: inline damage calc settings, vertically centered
+    calc_col = QVBoxLayout()
+    calc_col.setSpacing(4)
+    calc_col.addStretch()
+    damage_input.setPlaceholderText(tl('base_dmg'))
+    damage_input.setFixedWidth(70)
+    calc_col.addWidget(damage_input)
+    school_combo.setFixedWidth(70)
+    calc_col.addWidget(school_combo)
+    calc_col.addWidget(crit_check)
+    calc_col.addWidget(force_school_check)
+    calc_col.addStretch()
+
+    stats_content.addLayout(btn_col)
+    stats_content.addWidget(duel_circle, alignment=Qt.AlignmentFlag.AlignCenter)
+    stats_content.addLayout(calc_col)
+    stats_layout.addLayout(stats_content)
+
+    # Auto-refresh: poll combat state every 3 seconds when stats tab is active
+    stats_timer = QTimer()
+    stats_timer.setInterval(3000)
+    def _auto_refresh_stats():
+        if tabs.currentWidget() == stats_tab:
+            _send_stat_request()
+    stats_timer.timeout.connect(_auto_refresh_stats)
+    stats_timer.start()
 
     stats_layout.addStretch()
     tabs.addTab(stats_tab, tl('stats'))
@@ -2194,6 +2304,15 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                             duel_circle.set_enemy_name(str(value))
                         elif tag == 'AllyInput':
                             duel_circle.set_ally_name(str(value))
+                        elif tag == 'slot_info':
+                            if _swapped[0]:
+                                swapped_info = {}
+                                for (side, idx), info in value.items():
+                                    new_side = 'ally' if side == 'enemy' else 'enemy'
+                                    swapped_info[(new_side, idx)] = info
+                                duel_circle.set_slot_info(swapped_info)
+                            else:
+                                duel_circle.set_slot_info(value)
                         else:
                             widget = widget_tags.get(tag)
                             if widget is not None:
@@ -2214,10 +2333,17 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, gui_theme, gui_
                     case GUICommandType.UpdateWindowValues:
                         tag = com.data[0]
                         values = com.data[1]
-                        widget = widget_tags.get(tag)
-                        if widget is not None and isinstance(widget, QComboBox):
-                            widget.clear()
-                            widget.addItems(values)
+                        if tag == 'EnemyInput':
+                            duel_circle.set_enemy_count(len(values))
+                            _update_eye_btn()
+                        elif tag == 'AllyInput':
+                            duel_circle.set_ally_count(len(values))
+                            _update_eye_btn()
+                        else:
+                            widget = widget_tags.get(tag)
+                            if widget is not None and isinstance(widget, QComboBox):
+                                widget.clear()
+                                widget.addItems(values)
 
                     case GUICommandType.UpdateConsole:
                         console_psg.toggle_show_expanded_logs()

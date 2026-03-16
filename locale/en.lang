@@ -76,6 +76,7 @@ mass_refill_potions=Mass Refill Potions
 # Stats
 caster_target_indices=Caster/Target Indices
 dmg=Dmg
+base_dmg=Base Dmg
 school=School
 crit=Crit
 view_stats=View Stats
@@ -83,6 +84,8 @@ copy_stats=Copy Stats
 no_client_selected=No client has been selected.
 swap_members=Swap Members
 force_school_damage=Force School Damage
+swap_sides=Swap Sides
+not_in_combat=The selected client is not currently in combat.
 
 # Flythrough
 import_flythrough=Import Flythrough

@@ -1328,7 +1328,10 @@ async def main():
 					count_before = len(walker.clients)
 					dead = walker.remove_dead_clients()
 					if dead:
+						# Clean up managed handles so get_new_clients() can detect relaunched clients
 						for c in dead:
+							if c.window_handle in walker._managed_handles:
+								walker._managed_handles.remove(c.window_handle)
 							logger.info(f"Client '{c.title}' disconnected.")
 
 						# Record which tasks were active, then cancel them all
@@ -1633,23 +1636,29 @@ async def main():
 									await foreground_client.teleport(entity_pos)
 						case deimosgui.GUICommandType.SelectEnemy:
 							if not walker.clients:
-								logger.info("This GUI option requires hooks to be active, skipping.")
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('EnemyInput', [])))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('AllyInput', [])))
 								continue
 							if foreground_client and await foreground_client.in_battle():
-								caster_index, target_index, base_damage, school_id, crit_status, force_school_status = com.data
+								ally_index, enemy_index, base_damage, school_id, crit_status, force_school_status, swapped = com.data
 								if not base_damage:
 									base_damage = None
 								else:
 									base_damage = int(base_damage)
-								enemy_stats, names_list, caster_i, target_i, school_name = await total_stats(foreground_client, caster_index, target_index, base_damage, school_id, crit_status, force_school_status)
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('stat_viewer', '\n'.join(enemy_stats))))
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('EnemyInput', names_list)))
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('AllyInput', names_list)))
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('EnemyInput', names_list[caster_i])))
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('AllyInput', names_list[target_i])))
+								result = await total_stats(foreground_client, ally_index, enemy_index, base_damage, school_id, crit_status, force_school_status, swapped=swapped)
+								if result is None:
+									continue
+								stat_lines, ally_names, enemy_names, ally_i, enemy_i, school_name, slot_info = result
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('stat_viewer', '\n'.join(stat_lines))))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('EnemyInput', enemy_names)))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('AllyInput', ally_names)))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('EnemyInput', enemy_names[enemy_i])))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('AllyInput', ally_names[ally_i])))
 								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SchoolInput', school_name)))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('slot_info', slot_info)))
 							else:
-								logger.info('Last selected client is not currently in combat. You must be in combat to use the stat viewer.')
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('EnemyInput', [])))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('AllyInput', [])))
 						case deimosgui.GUICommandType.XYZSync:
 							if not walker.clients:
 								logger.info("This GUI option requires hooks to be active, skipping.")
