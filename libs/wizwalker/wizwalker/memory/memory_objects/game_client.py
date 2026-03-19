@@ -175,6 +175,18 @@ class GameClient(MemoryObject):
         )
         await self.write_value_to_offset(offset, shutdown_signal, Primitive.int32)
 
+    async def user_id(self) -> int:
+        """Account-level UserID from MSG_USER_VALIDATE / MSG_CHARACTERSELECTED."""
+        return await self.read_value_from_offset(0x21258, Primitive.uint64)
+
+    async def player_gid(self) -> int:
+        """Current character's global ID (CharID from MSG_CHARACTERSELECTED)."""
+        return await self.read_value_from_offset(0x214C0, Primitive.uint64)
+
+    async def machine_id(self) -> int:
+        """MachineID sent during login."""
+        return await self.read_value_from_offset(0x214C8, Primitive.uint64)
+
     async def character_registry(self) -> Optional[DynamicCharacterRegistry]:
         """
         Get the character registry
