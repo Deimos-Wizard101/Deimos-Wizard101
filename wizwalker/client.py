@@ -23,6 +23,7 @@ from .memory import (
     CurrentQuestPosition,
     CurrentRootWindow,
     CurrentGameClient,
+    CurrentSocialSystemsManager,
     DuelPhase,
     HookHandler,
     CurrentRenderContext,
@@ -73,6 +74,7 @@ class Client:
         self.root_window = CurrentRootWindow(self.hook_handler)
         self.render_context = CurrentRenderContext(self.hook_handler)
         self.game_client = CurrentGameClient(self.hook_handler)
+        self.social_systems_manager = CurrentSocialSystemsManager(self.hook_handler)
 
         self._teleport_helper = TeleportHelper(self.hook_handler)
 

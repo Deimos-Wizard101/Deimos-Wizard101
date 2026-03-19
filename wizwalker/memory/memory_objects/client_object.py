@@ -9,6 +9,8 @@ from .client_zone import DynamicClientZone
 from .core_object import CoreObject
 from .inventory_behavior import ClientWizInventoryBehavior
 from .equipment_behavior import ClientWizEquipmentBehavior
+from .spellbook_behavior import ClientSpellbookBehavior
+from .deck_behavior import ClientDeckBehavior, ClientTreasureBookBehavior
 from .behavior_template import NPCBehaviorTemplate
 
 
@@ -28,6 +30,50 @@ class ClientObject(CoreObject):
             return ClientWizEquipmentBehavior(self.hook_handler, await base.read_base_address())
         return None
 
+    async def try_get_spellbook_behavior(self) -> ClientSpellbookBehavior | None:
+        """Get the player's trained spellbook behavior (all learned spells)."""
+        base = await self.search_behavior_by_name("BasicSpellbookBehavior")
+        if base:
+            return ClientSpellbookBehavior(self.hook_handler, await base.read_base_address())
+        return None
+
+    async def try_get_deck_behavior(self) -> ClientDeckBehavior | None:
+        """Get the player's active deck behavior.
+
+        Convenience shortcut. The DeckBehavior lives on the equipped deck
+        item (not on the player CoreObject), so this searches all equipped
+        items via CoreObject.search_behavior_by_name().
+        """
+        equip = await self.try_get_equipment_behavior()
+        if not equip:
+            return None
+        for item in await equip.item_list():
+            try:
+                behavior = await item.search_behavior_by_name("BasicDeckBehavior")
+                if behavior:
+                    return ClientDeckBehavior(
+                        self.hook_handler, await behavior.read_base_address()
+                    )
+            except Exception:
+                continue
+        return None
+
+    async def try_get_treasure_book_behavior(self) -> ClientTreasureBookBehavior | None:
+        """Get the player's treasure card collection behavior."""
+        base = await self.search_behavior_by_name("BasicTreasureBookBehavior")
+        if base:
+            return ClientTreasureBookBehavior(self.hook_handler, await base.read_base_address())
+        return None
+
+    async def list_behavior_names(self) -> List[str]:
+        """List all behavior template names on this client object. Useful for debugging."""
+        names = []
+        for behavior in await self.inactive_behaviors():
+            name = await behavior.behavior_name()
+            if name:
+                names.append(name)
+        return names
+
     # helper method
     async def actor_body(self) -> Optional[DynamicActorBody]:
         if behavior := await self.search_behavior_by_name("AnimationBehavior"):
@@ -37,7 +83,6 @@ class ClientObject(CoreObject):
                 return None
 
             return DynamicActorBody(self.hook_handler, addr)
-
 
     # helper method
     async def object_name(self) -> Optional[str]:
