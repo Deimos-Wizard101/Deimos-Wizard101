@@ -41,6 +41,8 @@ DEFAULT_SETTINGS = {
     "kill_minions_first": False,
     "automatic_team_based_combat": False,
     "discard_duplicate_cards": True,
+    # [launcher]
+    "remember_chosen_clients": False,
 }
 
 RESTART_REQUIRED_KEYS = {"locale"}

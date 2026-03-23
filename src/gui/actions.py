@@ -16,6 +16,7 @@ class ActionRegistry:
         self.btn_style = btn_style
         self.icon_btn_style = icon_btn_style
         self._titlebar_svg_icon = titlebar_svg_icon_fn
+        self._ctx = None
 
         self.callbacks = {}   # action_id -> callback function
         self.meta = {}        # action_id -> {'name': str, 'category': str}
@@ -101,7 +102,8 @@ class ActionRegistry:
                     self._auto_counter += 1
                     aid = f"{aid}_{self._auto_counter}"
             if aid not in self.meta:
-                self.register(aid, label, '', callback)
+                cat = getattr(self._ctx, 'current_tab_name', '') if self._ctx else ''
+                self.register(aid, label, cat, callback)
             self.make_bindable(btn, aid)
         return btn
 
@@ -118,7 +120,8 @@ class ActionRegistry:
         if aid in self.meta:
             self._auto_counter += 1
             aid = f"{aid}_{self._auto_counter}"
-        self.register(aid, tooltip, '', callback)
+        cat = getattr(self._ctx, 'current_tab_name', '') if self._ctx else ''
+        self.register(aid, tooltip, cat, callback)
         self.make_bindable(btn, aid)
         return btn
 

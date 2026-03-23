@@ -60,6 +60,7 @@ def build_hotkeys_tab(ctx):
         'locate':    f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/></svg>',
         'keyboard':  f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></svg>',
         'custom':    f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5.5"/><path d="m14.3 19.6 1-.4"/><path d="M15 3v7.5"/><path d="m15.2 16.9-.9-.3"/><path d="m16.6 21.7.3-.9"/><path d="m16.8 15.3-.4-1"/><path d="m19.1 15.2.3-.9"/><path d="m19.6 21.7-.4-1"/><path d="m20.7 16.8 1-.4"/><path d="m21.7 19.4-.9-.3"/><path d="M9 3v18"/><circle cx="18" cy="18" r="3"/></svg>',
+        'chevron':   f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/></svg>',
         'exit':      f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12h11"/><path d="m17 16 4-4-4-4"/><path d="M21 6.344V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-1.344"/></svg>',
     }
 
@@ -131,7 +132,7 @@ def build_hotkeys_tab(ctx):
                 _dynamic_header_label[0].setVisible(False)
         return handler
 
-    def _build_hk_row(action_id, display_name, callback, is_toggle=False, tag_name=None, icon_svg=None, removable=False):
+    def _build_hk_row(action_id, display_name, callback, is_toggle=False, tag_name=None, icon_svg=None, removable=False, category=None):
         # Parent widgets to hk_scroll_widget to prevent them from briefly
         # appearing as top-level windows (parentless QPushButtons flash on Windows).
         _p = hk_scroll_widget
@@ -151,12 +152,42 @@ def build_hotkeys_tab(ctx):
             ctx.widget_tags[f'{tag_name}Status'] = name_label
         else:
             name_label = QLabel(display_name, _p)
-        name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        name_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        if callback:
-            name_label.setCursor(Qt.CursorShape.PointingHandCursor)
-            name_label.mousePressEvent = (lambda cb_ref: lambda e: cb_ref())(callback)
-        row.addWidget(name_label)
+
+        # icon(20) + key(70) + edit(20) + clear/spacer(20) + spacing ≈ 140px
+        _name_max = 165
+
+        if category:
+            _chevron_svg = _toggle_icons['chevron']
+            chevron_label = QLabel(_p)
+            chevron_label.setFixedSize(16, 16)
+            chevron_label.setPixmap(ctx.titlebar_svg_icon(_chevron_svg, 16).pixmap(16, 16))
+            ctx.tracked_svg_labels.append([chevron_label, _chevron_svg, 16, 'pixmap'])
+
+            cat_label = QLabel(category, _p)
+
+            name_group = QWidget(_p)
+            name_group.setMaximumWidth(_name_max)
+            name_row = QHBoxLayout(name_group)
+            name_row.setContentsMargins(0, 0, 0, 0)
+            name_row.setSpacing(2)
+            name_row.addStretch()
+            name_row.addWidget(cat_label)
+            name_row.addWidget(chevron_label)
+            name_row.addWidget(name_label)
+            name_row.addStretch()
+            name_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            if callback:
+                name_group.setCursor(Qt.CursorShape.PointingHandCursor)
+                name_group.mousePressEvent = (lambda cb_ref: lambda e: cb_ref())(callback)
+            row.addWidget(name_group)
+        else:
+            name_label.setMaximumWidth(_name_max)
+            name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            name_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            if callback:
+                name_label.setCursor(Qt.CursorShape.PointingHandCursor)
+                name_label.mousePressEvent = (lambda cb_ref: lambda e: cb_ref())(callback)
+            row.addWidget(name_label)
 
         key_label = QLabel(registry.get_binding_display(action_id), _p)
         key_label.setFixedWidth(70)
@@ -199,9 +230,12 @@ def build_hotkeys_tab(ctx):
         if action_id in _dynamic_row_widgets:
             _dynamic_row_widgets[action_id].setVisible(True)
             registry.row_widgets[action_id] = _dynamic_row_widgets[action_id]
+            if _dynamic_header_label[0] is not None:
+                _dynamic_header_label[0].setVisible(True)
             return
         meta = registry.meta.get(action_id, {})
         display_name = meta.get('name', action_id)
+        cat = meta.get('category', '') or None
         callback = registry.callbacks.get(action_id)
 
         insert_idx = _hk_stretch_index[0] if _hk_stretch_index[0] is not None else hk_scroll_layout.count()
@@ -211,14 +245,14 @@ def build_hotkeys_tab(ctx):
             hdr = QLabel(f"<b>{tl('cat_other')}</b>")
             _dynamic_header_label[0] = hdr
             hk_scroll_layout.insertWidget(insert_idx, hdr)
-        elif _dynamic_header_label[0] is not None:
-            _dynamic_header_label[0].setVisible(True)
             insert_idx += 1
             if _hk_stretch_index[0] is not None:
                 _hk_stretch_index[0] += 1
+        elif _dynamic_header_label[0] is not None:
+            _dynamic_header_label[0].setVisible(True)
 
         row_widget = QWidget()
-        row_layout = _build_hk_row(action_id, display_name, callback, icon_svg=_toggle_icons['custom'], removable=True)
+        row_layout = _build_hk_row(action_id, display_name, callback, icon_svg=_toggle_icons['custom'], removable=True, category=cat)
         row_widget.setLayout(row_layout)
         row_widget.setContentsMargins(0, 0, 0, 0)
         hk_scroll_layout.insertWidget(insert_idx, row_widget)

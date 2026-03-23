@@ -304,29 +304,42 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
     gear_btn.clicked.connect(lambda: _open_settings())
 
     # ==================== Build Tabs ====================
+    registry._ctx = ctx
+    ctx.current_tab_name = ''
+
+    ctx.current_tab_name = tl('launcher')
     launcher_tab = build_launcher_tab(ctx)
     tabs.addTab(launcher_tab, tl('launcher'))
 
+    ctx.current_tab_name = tl('hotkeys')
     hotkeys_tab = build_hotkeys_tab(ctx)
     tabs.addTab(hotkeys_tab, tl('hotkeys'))
 
+    ctx.current_tab_name = tl('camera')
     camera_tab = build_camera_tab(ctx)
     tabs.addTab(camera_tab, tl('camera'))
 
+    ctx.current_tab_name = tl('dev_utils')
     dev_tab = build_dev_utils_tab(ctx)
     tabs.addTab(dev_tab, tl('dev_utils'))
 
+    ctx.current_tab_name = tl('stats')
     stats_tab = build_stats_tab(ctx)
     tabs.addTab(stats_tab, tl('stats'))
 
+    ctx.current_tab_name = tl('flythrough')
     flythrough_tab = build_flythrough_tab(ctx)
     tabs.addTab(flythrough_tab, tl('flythrough'))
 
+    ctx.current_tab_name = tl('bot')
     bot_tab = build_bot_tab(ctx)
     tabs.addTab(bot_tab, tl('bot'))
 
+    ctx.current_tab_name = tl('combat')
     combat_tab = build_combat_tab(ctx)
     tabs.addTab(combat_tab, tl('combat'))
+
+    ctx.current_tab_name = ''
 
     # ==================== Console Tab ====================
     console_tab = QWidget()
@@ -662,7 +675,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
                             _update_dev_mass(hooked_count)
 
                     case GUICommandType.ClearLaunchCheckboxes:
-                        if account_list:
+                        if account_list and not (settings and settings.get_setting('remember_chosen_clients')):
                             for i in range(account_list.count()):
                                 item = account_list.item(i)
                                 w = account_list.itemWidget(item)

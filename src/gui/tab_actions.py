@@ -25,7 +25,7 @@ def _make_toggle_btn(ctx, play_tooltip, kill_tooltip, execute_cb, kill_cb, actio
             execute_cb()
 
     btn.clicked.connect(_toggle)
-    ctx.registry.register(action_id, play_tooltip, '', _toggle)
+    ctx.registry.register(action_id, play_tooltip, getattr(ctx, 'current_tab_name', ''), _toggle)
     ctx.registry.make_bindable(btn, action_id)
 
     def set_running(running):

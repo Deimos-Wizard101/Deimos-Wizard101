@@ -340,6 +340,15 @@ def show_settings_dialog(ctx):
 
     layout.addWidget(combat_group)
 
+    # ---- Launcher ----
+    launcher_group = QGroupBox(tl('settings_launcher'))
+    launcher_form = QFormLayout(launcher_group)
+    launcher_form.setSpacing(4)
+
+    _add_checkbox(launcher_form, 'remember_chosen_clients', 'setting_remember_chosen_clients')
+
+    layout.addWidget(launcher_group)
+
     layout.addStretch()
 
     # ---- Bottom buttons ----

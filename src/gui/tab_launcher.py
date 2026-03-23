@@ -165,18 +165,20 @@ def build_launcher_tab(ctx):
         return row
 
     def _populate_account_list(nicknames: list[str]):
+        remember = ctx.settings and ctx.settings.get_setting('remember_chosen_clients')
         managed = ctx.widget_tags.get('managed_accounts', set())
         account_list.setUpdatesEnabled(False)
         account_list.clear()
         for nick in nicknames:
             item = QListWidgetItem()
             item.setSizeHint(QSize(0, 28))
-            row_widget = _build_account_item_widget(nick, disabled=(nick in managed))
+            row_widget = _build_account_item_widget(nick, disabled=(nick in managed and not remember))
             account_list.addItem(item)
             account_list.setItemWidget(item, row_widget)
         account_list.setUpdatesEnabled(True)
 
     def _refresh_account_eligibility(managed_accounts):
+        remember = ctx.settings and ctx.settings.get_setting('remember_chosen_clients')
         managed = set(managed_accounts)
         for i in range(account_list.count()):
             item = account_list.item(i)
@@ -188,7 +190,7 @@ def build_launcher_tab(ctx):
             if not cb or not lbl:
                 continue
             nick = lbl.text()
-            if nick in managed:
+            if nick in managed and not remember:
                 cb.setEnabled(False)
                 cb.setChecked(False)
                 lbl.setStyleSheet("color: rgba(255,255,255,80);" if ctx.theme in ('black', 'dark') else "color: rgba(0,0,0,80);")
