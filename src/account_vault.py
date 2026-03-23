@@ -60,5 +60,31 @@ class AccountVault:
         acct = self._accounts[nickname]
         return acct["username"], acct["password"]
 
+    def reorder_accounts(self, ordered_nicknames: list[str]):
+        """Reorder accounts dict to match the given nickname order."""
+        self._accounts = {k: self._accounts[k] for k in ordered_nicknames if k in self._accounts}
+        self._save()
+
+    def update_player_gid(self, nickname: str, gid: int):
+        if nickname in self._accounts:
+            self._accounts[nickname]["player_gid"] = str(gid)
+            self._save()
+
+    def get_nickname_by_gid(self, gid: int) -> str | None:
+        gid_str = str(gid)
+        for nick, data in self._accounts.items():
+            if data.get("player_gid") == gid_str:
+                return nick
+        return None
+
+    def get_player_gid(self, nickname: str) -> int | None:
+        data = self._accounts.get(nickname)
+        if data and "player_gid" in data:
+            try:
+                return int(data["player_gid"])
+            except (ValueError, TypeError):
+                return None
+        return None
+
     def get_nicknames(self) -> list[str]:
         return list(self._accounts.keys())

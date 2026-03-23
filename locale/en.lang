@@ -38,6 +38,23 @@ mass_hotkeys=Mass Hotkeys
 mass_tp=Mass TP
 xyz_sync=XYZ Sync
 x_press=X Press
+friend_tp=Friend TP
+dialogue_side_quests=+ Side Quests
+kill_tool=Kill Tool
+
+# Hotkey Manager
+hotkey_manager=Hotkey Manager
+bind_hotkey=Bind Hotkey
+unbind_hotkey=Unbind
+press_a_key=Press a key...
+reset_defaults=Reset to Defaults
+unbound=Unbound
+key_conflict=Key Conflict
+cat_toggles=Toggles
+cat_teleports=Teleports
+cat_multi_client=Multi-Client
+cat_camera=Camera
+cat_system=System
 
 # Camera
 set_camera_position=Update
@@ -45,12 +62,10 @@ yaw=Yaw
 roll=Roll
 pitch=Pitch
 entity=Entity
-anchor=Anchor
 toggle_camera_collision=Collision
-distance=Distance
-min=Min
-max=Max
-set_distance=Set Dist
+distance=Dist
+dist_min=Dist Min
+dist_max=Dist Max
 copy_camera_position=Copy Cam Pos
 populate_camera=Populate
 
@@ -59,7 +74,6 @@ advanced_warning=The utils below are for advanced users and no support will be g
 tp_utils=TP Utils
 custom_tp=Custom TP
 entity_name=Entity Name
-entity_tp=Entity TP
 available_entities=Entities
 available_paths=Window Paths
 zone_name=Zone Name
@@ -83,7 +97,6 @@ view_stats=View Stats
 copy_stats=Copy Stats
 no_client_selected=No client has been selected.
 swap_members=Swap Members
-force_school_damage=Force School Damage
 swap_sides=Swap Sides
 not_in_combat=The selected client is not currently in combat.
 
@@ -127,16 +140,20 @@ tooltip_wiki_bots=Wiki: Bots
 tooltip_wiki_playstyles=Wiki: Playstyles
 
 # Section tooltips
-tooltip_section_camera_position=Set the camera's XYZ position and YPR orientation
-tooltip_section_anchor=Anchor the camera to an entity or toggle collision
-tooltip_section_distance=Set camera distance and zoom limits
-tooltip_section_utils=Populate fields with current camera values or copy position
+tooltip_section_camera=Set camera position, orientation, anchor, and distance
+tooltip_section_utils=Populate fields with current camera values, copy position, or toggle collision
 tooltip_section_tp_utils=Teleport to coordinates or a named entity
 tooltip_section_navigation=Navigate to zones, worlds, the bazaar, or refill potions
-tooltip_section_misc=Adjust character scale and select pet game world
 
 # Launcher
 launcher=Launcher
+saved_accounts=Account Manager
+hooked_clients=Client Manager
+unhook_client=Unhook
+hook_client=Hook
+kill_client=Kill
+relaunch_client=Relaunch
+unmanaged_clients=Available Clients
 add_account=Add Account
 remove_account=Remove Account
 launch_login=Launch & Login
@@ -150,7 +167,97 @@ account_added=Account saved successfully.
 account_removed=Account removed.
 launching_instances=Launching instances...
 tooltip_wiki_launcher=Wiki: Launcher
+settings=Settings
+
+# Status labels
+status_dead=Dead
+status_stunned=Stunned
+status_friendly=Friendly
+status_hostile=Hostile
+status_unknown=Unknown
+already_active=Already active
+recent_imports=Recent Imports
+no_recent_imports=No recent imports
 
 # Client info
 client=Client
 zone=Zone
+
+# Settings dialog
+settings_title=Settings
+settings_general=General
+settings_appearance=Appearance
+settings_sigil=Sigil
+settings_questing=Questing
+settings_auto_pet=Auto Pet
+settings_combat=Combat
+settings_restart_note=* Requires restart to take effect
+settings_save=Save
+settings_cancel=Cancel
+
+setting_speed_multiplier=Speed Multiplier
+setting_use_potions=Use Potions
+setting_buy_potions=Buy Potions
+setting_rich_presence=Rich Presence
+setting_drop_logging=Drop Logging
+setting_use_anti_afk=Anti-AFK
+setting_bg_color=Background
+setting_alt_bg=Input Background
+setting_text_color=Text Color
+setting_button_color=Button Color
+setting_stroke_color=Icon Color
+setting_titlebar_bg=Titlebar Background
+settings_import_theme=Import Theme
+settings_export_theme=Export Theme
+settings_theme=Theme
+setting_locale=Language
+setting_font=Font
+setting_font_size=Font Size
+setting_use_team_up=Use Team Up
+setting_client_to_follow=Client to Follow
+setting_client_to_boost=Client to Boost
+setting_friend_teleport=Friend Teleport
+setting_gear_switching=Gear Switch in Solo Zones
+setting_hitter_client=Hitter Client
+setting_ignore_pet_level_up=Ignore Pet Level Up
+setting_only_dance_game=Only Play Dance Game
+setting_kill_minions_first=Kill Minions First
+setting_auto_team_combat=Auto Team-Based Combat
+setting_discard_duplicates=Discard Duplicate Cards
+
+# Common
+ok=OK
+cancel=Cancel
+close=Close
+search=Search
+copy=Copy
+copied=Copied!
+reset_to_default=Reset to default ({0})
+always_on_top=Always on top
+not_on_top=Not on top
+individual=Individual
+all_clients=All Clients
+navigation=Navigation
+cat_other=Other
+fetch_player_gid=Fetch player GID
+copy_text=Copy text: {0}
+
+# Popups
+ui_tree=UI Tree
+ui_tree_hint=Click the path needed to copy it to clipboard.
+entity_list=Entity List
+entity_list_hint=Click to copy. Right-click for TP / Camera options.
+tp_to_entity=Teleport to Entity
+anchor_cam_to_entity=Anchor Camera to Entity
+
+# Settings extras
+import_lang_file=Import .lang file
+import_lang_title=Import Language File
+overwrite_binding={0} is already bound to '{1}'.\nOverwrite?
+
+# Footer
+position_xyz=Position (XYZ):
+orientation_pry=Orientation (PRY):
+
+# Stats popup
+combat_stats=Combat Stats
