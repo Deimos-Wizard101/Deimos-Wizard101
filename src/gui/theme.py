@@ -12,7 +12,7 @@ def compute_styles(theme: dict, font: str = None, font_size: int = None) -> dict
     bc = theme['button_color']
     tb = theme['titlebar_bg']
 
-    font_css = f" font-family: '{font}'; font-size: {font_size}pt;" if font else ""
+    font_css = (f" font-family: '{font}';" if font else "") + (f" font-size: {font_size}pt;" if font_size else "")
 
     app_style = (
         f"QWidget {{ background-color: {bg}; color: {tc};{font_css} }}"

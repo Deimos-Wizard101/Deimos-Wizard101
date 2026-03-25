@@ -50,6 +50,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
         pass
 
     app = QApplication(sys.argv)
+    app.setFont(QFont(gui_font if gui_font else "Segoe UI", gui_font_size if gui_font_size else 9))
 
     _vp_height = 450
 
