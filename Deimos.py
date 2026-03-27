@@ -1502,7 +1502,7 @@ async def main():
 								'name': entity_name,
 								'x': entity_pos.x, 'y': entity_pos.y, 'z': entity_pos.z,
 								'height': entity_height,
-								'gid': gid,
+								'gid': 0 if entity_name == 'Player Object' else gid,
 								'distance': distance,
 								'display': display,
 							})
