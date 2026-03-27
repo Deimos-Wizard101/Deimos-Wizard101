@@ -1,0 +1,35 @@
+[package]
+name = "wizvault"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "wizvault"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Pure-Rust crypto for legacy Fernet vault migration (no OpenSSL dependency)
+aes = "0.8"
+cbc = "0.1"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+
+[dependencies.windows]
+version = "0.58"
+features = [
+    "Win32_Security_Credentials",
+    "Win32_Security_Cryptography",
+    "Win32_System_Threading",
+    "Win32_System_Com",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Memory",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+]
