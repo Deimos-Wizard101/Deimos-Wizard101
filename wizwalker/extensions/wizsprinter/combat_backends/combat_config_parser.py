@@ -22,8 +22,6 @@ def get_sprinty_grammar():
             move_draw: _spaced{"draw"} (_open_paren INT _close_paren)?
             move_discard: _spaced{"discard"}
 
-            move_config: move (_at target)?
-            
             spell: any_spell | words | string
             enchant: _open_bracket (any_spell | words | string) _close_bracket
             second_enchant: _open_bracket (any_spell | words | string) _close_bracket
