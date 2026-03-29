@@ -75,6 +75,19 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
         _window_flags |= Qt.WindowType.WindowStaysOnTopHint
     window.setWindowFlags(_window_flags)
     window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+
+    # Enable Windows 11 rounded corners on frameless window
+    try:
+        import ctypes, ctypes.wintypes
+        _hwnd = ctypes.wintypes.HWND(int(window.winId()))
+        DWMWA_WINDOW_CORNER_PREFERENCE = 33
+        DWMWCP_ROUND = ctypes.c_int(2)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            _hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
+            ctypes.byref(DWMWCP_ROUND), ctypes.sizeof(DWMWCP_ROUND)
+        )
+    except Exception:
+        pass
     window.setStyleSheet(styles['groupbox_style'])
     window.setFixedHeight(_vp_height)
 

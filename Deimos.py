@@ -18,7 +18,6 @@ import winreg
 import subprocess
 from loguru import logger
 import datetime
-from configparser import ConfigParser
 import statistics
 import re
 # import pypresence
@@ -53,7 +52,7 @@ from src.deimoslang import vm
 
 cMessageBox = ctypes.windll.user32.MessageBoxW
 
-tool_version: str = '3.13.0 (BETA)'
+tool_version: str = '3.13.0 (BETA 2)'
 tool_name: str = 'Deimos'
 tool_author: str = 'Deimos-Wizard101'
 repo_name: str = tool_name + '-Wizard101'
@@ -95,99 +94,30 @@ def download_file(url: str, file_name : str, delete_previous: bool = False, debu
 				f.write(chunk)
 
 
-# reading hotkeys from config
-parser = ConfigParser()
-
-
-def read_config(config_name : str):
-	parser.read(config_name)
-
-	# Settings
-	# global auto_updating
-	global speed_multiplier
-	global use_potions
-	global rpc_status
-	global drop_status
-	global anti_afk_status
-	# auto_updating = parser.getboolean('settings', 'auto_updating', fallback=True)
-	speed_multiplier = parser.getfloat('settings', 'speed_multiplier', fallback=5.0)
-	use_potions = parser.getboolean('settings', 'use_potions', fallback=True)
-	rpc_status = parser.getboolean('settings', 'rich_presence', fallback=True)
-	drop_status = parser.getboolean('settings', 'drop_logging', fallback=True)
-	anti_afk_status = parser.getboolean('settings', 'use_anti_afk', fallback=True)
-
-
-	# Hotkeys are now managed by DeimosSettings (AppData/Deimos/settings.json)
-	# The ini [hotkeys] section is preserved for one-time migration only
-
-
-	# GUI Settings
-	# global show_gui
-	global gui_on_top
-	global gui_langcode
-	global gui_font
-	global gui_font_size
-	# show_gui = parser.getboolean('gui', 'show_gui', fallback=True)
-	gui_on_top = parser.getboolean('gui', 'on_top', fallback=True)
-	gui_langcode = parser.get('gui', 'locale', fallback='en')
-	gui_font = parser.get('gui', 'font', fallback='Segoe UI')
-	gui_font_size = parser.getint('gui', 'font_size', fallback=9)
-
-
-	# Auto Sigil Settings
-	global use_team_up
-	global buy_potions
-	global client_to_follow
-	use_team_up = parser.getboolean('sigil', 'use_team_up', fallback=False)
-	buy_potions = parser.getboolean('settings', 'buy_potions', fallback=True)
-	client_to_follow = parser.get('sigil', 'client_to_follow', fallback=None)
-
-
-	# Auto Questing Settings
-	global client_to_boost
-	global questing_friend_tp
-	global gear_switching_in_solo_zones
-	global hitter_client
-	client_to_boost = parser.get('questing', 'client_to_boost', fallback=None)
-	questing_friend_tp = parser.getboolean('questing', 'friend_teleport', fallback=False)
-	gear_switching_in_solo_zones = parser.getboolean('questing', 'gear_switching_in_solo_zones', fallback=False)
-	hitter_client = parser.get('questing', 'hitter_client', fallback=None)
-	# empty string can falsely be read as a client.  Check if the user's config entry was valid and set to None if not
-	valid_configs = ['p1', 'p2', 'p3', 'p4', '1', '2', '3', '4']
-	if any(hitter_client == option for option in valid_configs):
-		pass
-	else:
-		hitter_client = None
-
-
-	# Combat Settings
-	global kill_minions_first
-	global automatic_team_based_combat
-	global discard_duplicate_cards
-	kill_minions_first = parser.getboolean('combat', 'kill_minions_first', fallback=False)
-	automatic_team_based_combat = parser.getboolean('combat', 'automatic_team_based_combat', fallback=False)
-	discard_duplicate_cards = parser.getboolean('combat', 'discard_duplicate_cards', fallback=True)
-
-
-	# Auto Pet Settings
-	global ignore_pet_level_up
-	global only_play_dance_game
-	ignore_pet_level_up = parser.getboolean('auto pet', 'ignore_pet_level_up', fallback=False)
-	only_play_dance_game = parser.getboolean('auto pet', 'only_play_dance_game', fallback=False)
-
-
-while True:
-	if not os.path.exists(f'{tool_name}-config.ini'):
-		# download_file(f'https://raw.githubusercontent.com/{tool_author}/{repo_name}/{branch}/{tool_name}-config.ini', f'{tool_name}-config.ini')
-		download_file(f'{repo_path_raw}/{tool_name}-config.ini', f'{tool_name}-config.ini')
-	time.sleep(0.1)
-
-	read_config(f'{tool_name}-config.ini')
-	break
+# Default settings — JSON in AppData is authoritative
+speed_multiplier = 5.0
+use_potions = True
+rpc_status = True
+drop_status = True
+anti_afk_status = True
+gui_on_top = True
+gui_langcode = 'en'
+gui_font = 'Segoe UI'
+gui_font_size = 9
+use_team_up = False
+buy_potions = True
+client_to_follow = None
+client_to_boost = None
+questing_friend_tp = False
+gear_switching_in_solo_zones = False
+hitter_client = None
+kill_minions_first = False
+automatic_team_based_combat = False
+discard_duplicate_cards = True
+ignore_pet_level_up = False
+only_play_dance_game = False
 
 settings = DeimosSettings()
-settings.migrate_from_ini(parser)
-settings.migrate_settings_from_ini(parser)
 settings.migrate_theme_from_settings()
 
 # Load theme from dedicated theme file
@@ -276,52 +206,6 @@ def generate_timestamp() -> str:
 	time_stamp = time_stamp.replace('/', '-').replace(':', '-')
 	return time_stamp
 
-
-def config_update():
-	config_url = f'{repo_path_raw}/{tool_name}-config.ini'
-
-	if not os.path.exists(f'{tool_name}-config.ini'):
-		download_file(url=config_url, file_name=f'{tool_name}-config.ini')
-		time.sleep(0.1)
-
-	if not os.path.exists(f'README.md'):
-		download_file(f'{repo_path_raw}/README.md', 'README.md')
-
-	download_file(url=config_url, file_name=f'{tool_name}-Testconfig.ini', delete_previous=True, debug=False)
-	time.sleep(0.1)
-
-	comparison_parser = ConfigParser()
-	comparison_parser.read(f'{tool_name}-Testconfig.ini')
-	comparison_sections = comparison_parser.sections()
-	for i in comparison_sections:
-		if not parser.has_section(i):
-			print(f'Config file lacks section "{i}", adding it.')
-			parser.add_section(i)
-
-		comparison_options = comparison_parser.options(i)
-		for b in comparison_options:
-			if not parser.has_option(i, b):
-				print(f'Config file section "{i}" lacks option "{b}", adding it and its default value.')
-				parser.set(i, b, str(comparison_parser.get(i, b)))
-
-	sections = parser.sections()
-	for i in sections:
-		if not comparison_parser.has_section(i):
-			print(f'Config file has erroneous section "{i}", removing it.')
-			parser.remove_section(i)
-
-		options = parser.options(i)
-		for b in options:
-			if not comparison_parser.has_option(i, b):
-				print(f'Config file section "{i}" has erroneous option "{b}", removing it.')
-				parser.remove_option(i, b)
-
-	with open(f'{tool_name}-config.ini', 'w') as new_config:
-		parser.write(new_config)
-	remove_if_exists(f'{tool_name}-Testconfig.ini')
-	time.sleep(0.1)
-	read_config(f'{tool_name}-config.ini')
-	print('\n')
 
 
 def run_updater():
@@ -2912,12 +2796,13 @@ async def main():
 					should_exit = True
 				elif t == all_tasks.get('gui'):
 					# GUI task errors are always fatal
-					logger.exception(exc)
+					logger.opt(exception=exc).error("GUI task crashed")
 					should_exit = True
 				else:
 					# Client-dependent task died (memory error, dead process, etc.)
 					# Non-fatal — the client is likely closed
-					logger.debug(f"Task ended: {exc}")
+					task_name = next((k for k, v in all_tasks.items() if v is t), '?')
+					logger.opt(exception=exc).warning(f"Task '{task_name}' ended")
 			if should_exit:
 				break
 
