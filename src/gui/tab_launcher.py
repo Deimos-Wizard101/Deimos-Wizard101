@@ -111,25 +111,12 @@ def build_launcher_tab(ctx):
         dlg_layout.addWidget(QLabel(tl('nickname')))
         dlg_layout.addWidget(nick_input)
 
-        user_input = QLineEdit()
-        user_input.setPlaceholderText(tl('username'))
-        dlg_layout.addWidget(QLabel(tl('username')))
-        dlg_layout.addWidget(user_input)
-
-        pass_input = QLineEdit()
-        pass_input.setPlaceholderText(tl('password'))
-        pass_input.setEchoMode(QLineEdit.EchoMode.Password)
-        dlg_layout.addWidget(QLabel(tl('password')))
-        dlg_layout.addWidget(pass_input)
-
         save_btn = QPushButton(tl('save_account'))
         save_btn.setStyleSheet(ctx.btn_style)
         def _on_save():
             nick = nick_input.text().strip()
-            user = user_input.text().strip()
-            pw = pass_input.text()
-            if nick and user and pw:
-                send_queue.put(GUICommand(GUICommandType.SaveAccount, (nick, user, pw)))
+            if nick:
+                send_queue.put(GUICommand(GUICommandType.SaveAccount, nick))
                 dlg.accept()
         save_btn.clicked.connect(_on_save)
         dlg_layout.addWidget(save_btn)

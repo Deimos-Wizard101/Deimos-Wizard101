@@ -45,7 +45,7 @@ from typing import List
 
 from src import gui as deimosgui
 from src.gui import GUIKeys
-from src.account_vault import AccountVault
+import wizlaunch
 from src.settings_manager import DeimosSettings
 from src.tokenizer import tokenize
 from src.deimoslang import vm
@@ -1261,13 +1261,6 @@ async def main():
 	# Handles currently mid-hook (activate_hooks in progress)
 	_hooking_in_progress: set[int] = set()
 
-	# Account vault for launcher (in main scope so _init_client_attrs can access it)
-	try:
-		vault = AccountVault()
-	except Exception as e:
-		logger.error(f"Failed to initialize account vault: {e}")
-		vault = None
-
 	def _mask_uid(uid) -> str:
 		s = str(uid)
 		return '****' if len(s) <= 4 else '*' * (len(s) - 4) + s[-4:]
@@ -1299,10 +1292,10 @@ async def main():
 			nick = launched_account_map.get(c.window_handle)
 			hooked.append({'title': c.title, 'handle': c.window_handle, 'account_nick': nick})
 			# Also detect accounts via player_gid for manually-hooked clients
-			if vault and not nick:
+			if not nick:
 				gid = getattr(c, 'player_gid', None)
 				if gid:
-					vault_nick = vault.get_nickname_by_gid(gid)
+					vault_nick = wizlaunch.get_nickname_by_gid(gid)
 					if vault_nick:
 						managed_accounts.add(vault_nick)
 		# Unmanaged = running wizard handles not currently managed
@@ -1352,14 +1345,13 @@ async def main():
 			logger.debug(f"[GID] _init_client_attrs '{client.title}': user_id={_mask_uid(uid)}")
 			if uid and uid != 0:
 				client.player_gid = uid
-				if vault:
-					vault_nick = vault.get_nickname_by_gid(uid)
-					if vault_nick and client.window_handle not in launched_account_map:
-						launched_account_map[client.window_handle] = vault_nick
-					nick = launched_account_map.get(client.window_handle)
-					if nick:
-						vault.update_player_gid(nick, uid)
-						logger.debug(f"[GID] Saved user_id {_mask_uid(uid)} for vault account '{nick}'")
+				vault_nick = wizlaunch.get_nickname_by_gid(uid)
+				if vault_nick and client.window_handle not in launched_account_map:
+					launched_account_map[client.window_handle] = vault_nick
+				nick = launched_account_map.get(client.window_handle)
+				if nick:
+					wizlaunch.update_player_gid(nick, uid)
+					logger.debug(f"[GID] Saved user_id {_mask_uid(uid)} for vault account '{nick}'")
 			else:
 				client.player_gid = None
 				logger.debug(f"[GID] _init_client_attrs '{client.title}': user_id is 0, deferring")
@@ -1649,7 +1641,7 @@ async def main():
 				await asyncio.sleep(0.1)
 
 			# Retry user_id resolution for hooked clients that don't have one yet
-			if initial_setup_complete and vault and walker.clients:
+			if initial_setup_complete and walker.clients:
 				for c in walker.clients:
 					if getattr(c, 'player_gid', None) is None:
 						try:
@@ -1657,13 +1649,13 @@ async def main():
 							if uid and uid != 0:
 								logger.debug(f"[GID] Retry resolved '{c.title}': user_id={_mask_uid(uid)}")
 								c.player_gid = uid
-								vault_nick = vault.get_nickname_by_gid(uid)
+								vault_nick = wizlaunch.get_nickname_by_gid(uid)
 								if vault_nick and c.window_handle not in launched_account_map:
 									launched_account_map[c.window_handle] = vault_nick
 									_send_hooked_clients_update()
 								nick = launched_account_map.get(c.window_handle)
 								if nick:
-									vault.update_player_gid(nick, uid)
+									wizlaunch.update_player_gid(nick, uid)
 									logger.debug(f"[GID] Retry saved user_id {_mask_uid(uid)} for '{nick}'")
 									_send_hooked_clients_update()
 							else:
@@ -2316,74 +2308,55 @@ async def main():
 							await asyncio.gather(*[client.body.write_scale(desired_scale) for client in walker.clients])
 
 						case deimosgui.GUICommandType.LoadAccounts:
-							if vault:
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, vault.get_nicknames()))
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, wizlaunch.list_accounts()))
 
 						case deimosgui.GUICommandType.SaveAccount:
-							if vault:
-								nickname, username, password = com.data
-								vault.save_account(nickname, username, password)
+							nickname = com.data
+							try:
+								await asyncio.to_thread(wizlaunch.prompt_save_account, nickname)
 								logger.info(f"Account '{nickname}' saved.")
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, vault.get_nicknames()))
+							except RuntimeError as e:
+								logger.info(f"Account save cancelled or failed: {e}")
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, wizlaunch.list_accounts()))
 
 						case deimosgui.GUICommandType.DeleteAccount:
-							if vault:
-								vault.delete_account(com.data)
-								logger.info(f"Account '{com.data}' removed.")
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, vault.get_nicknames()))
+							wizlaunch.delete_account(com.data)
+							logger.info(f"Account '{com.data}' removed.")
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, wizlaunch.list_accounts()))
 
 						case deimosgui.GUICommandType.LaunchInstance:
-							if vault:
-								nicknames, game_path = com.data
-								if game_path:
-									utils.override_wiz_install_location(game_path)
-								# Filter out accounts already managed (hooked) by launch map or player_gid
-								already_managed = set(launched_account_map.values())
-								if vault:
-									for c in walker.clients:
-										gid = getattr(c, 'player_gid', None)
-										if gid:
-											vault_nick = vault.get_nickname_by_gid(gid)
-											if vault_nick:
-												already_managed.add(vault_nick)
-								nicknames = [n for n in nicknames if n not in already_managed]
-								if not nicknames:
-									logger.info("All selected accounts are already launched and hooked.")
-								else:
-									logger.info(f"Launching {len(nicknames)} instance(s)...")
-								# Clear any released handles so newly launched clients get auto-hooked
-								released_handles.clear()
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.ClearLaunchCheckboxes))
-								start_handles = set(get_all_wizard_handles())
-								for nickname in nicknames:
-									try:
-										username, password = vault.get_account(nickname)
-										utils.start_instance()
-										# Poll for new window handle with timeout
-										handle = None
-										for _ in range(60):  # up to 30 seconds
-											await asyncio.sleep(0.5)
-											new_handles = set(get_all_wizard_handles()).difference(start_handles)
-											if new_handles:
-												handle = new_handles.pop()
-												start_handles.add(handle)
-												break
-										if handle:
-											ctypes.windll.user32.EnableWindow(handle, False)
-											await asyncio.sleep(2)  # let login screen render
-											utils.instance_login(handle, username, password)
-											ctypes.windll.user32.EnableWindow(handle, True)
-											launched_account_map[handle] = nickname
-											logger.info(f"Launched and logged in '{nickname}'.")
-										else:
-											logger.error(f"Failed to detect new window for '{nickname}'.")
-									except Exception as e:
-										logger.error(f"Error launching '{nickname}': {e}")
+							nicknames, game_path = com.data
+							if not game_path:
+								game_path = str(utils.get_wiz_install())
+							else:
+								utils.override_wiz_install_location(game_path)
+							# Filter out accounts already managed (hooked) by launch map or player_gid
+							already_managed = set(launched_account_map.values())
+							for c in walker.clients:
+								gid = getattr(c, 'player_gid', None)
+								if gid:
+									vault_nick = wizlaunch.get_nickname_by_gid(gid)
+									if vault_nick:
+										already_managed.add(vault_nick)
+							nicknames = [n for n in nicknames if n not in already_managed]
+							if not nicknames:
+								logger.info("All selected accounts are already launched and hooked.")
+							else:
+								logger.info(f"Launching {len(nicknames)} instance(s)...")
+							# Clear any released handles so newly launched clients get auto-hooked
+							released_handles.clear()
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.ClearLaunchCheckboxes))
+							try:
+								results = await asyncio.to_thread(wizlaunch.launch_instances, nicknames, game_path)
+								for nickname, handle in results.items():
+									launched_account_map[handle] = nickname
+									logger.info(f"Launched and logged in '{nickname}'.")
+							except Exception as e:
+								logger.error(f"Error launching instances: {e}")
 
 
 						case deimosgui.GUICommandType.ReorderAccounts:
-							if vault:
-								vault.reorder_accounts(com.data)
+							wizlaunch.reorder_accounts(com.data)
 
 						case deimosgui.GUICommandType.ReorderClients:
 							handles = com.data
@@ -2506,33 +2479,16 @@ async def main():
 							released_handles.discard(handle)
 							logger.info(f"Killed client for relaunch (handle {handle}, account '{nickname}').")
 							_send_hooked_clients_update()
-							# Relaunch
-							if vault:
-								try:
-									await asyncio.sleep(1)
-									username, password = vault.get_account(nickname)
-									utils.start_instance()
-									# Poll for new window handle
-									start_handles = set(get_all_wizard_handles())
-									new_handle = None
-									for _ in range(60):
-										await asyncio.sleep(0.5)
-										new_handles = set(get_all_wizard_handles()).difference(start_handles)
-										if new_handles:
-											new_handle = new_handles.pop()
-											break
-									if new_handle:
-										ctypes.windll.user32.EnableWindow(new_handle, False)
-										await asyncio.sleep(2)
-										utils.instance_login(new_handle, username, password)
-										ctypes.windll.user32.EnableWindow(new_handle, True)
-										launched_account_map[new_handle] = nickname
-										logger.info(f"Relaunched and logged in '{nickname}'.")
-										_send_hooked_clients_update()
-									else:
-										logger.error(f"Failed to detect new window for relaunch of '{nickname}'.")
-								except Exception as e:
-									logger.error(f"Error relaunching '{nickname}': {e}")
+							# Relaunch via wizlaunch (credentials stay in Rust)
+							try:
+								game_path = str(utils.get_wiz_install())
+								await asyncio.sleep(1)
+								new_handle = await asyncio.to_thread(wizlaunch.launch_instance, nickname, game_path)
+								launched_account_map[new_handle] = nickname
+								logger.info(f"Relaunched and logged in '{nickname}'.")
+								_send_hooked_clients_update()
+							except Exception as e:
+								logger.error(f"Error relaunching '{nickname}': {e}")
 							if walker.clients:
 								_restart_always_on_tasks()
 								_restart_active_toggle_tasks()

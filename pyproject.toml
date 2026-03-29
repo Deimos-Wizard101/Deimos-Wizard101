@@ -20,6 +20,7 @@ dependencies = [
     "thefuzz>=0.22.1",
     "wizwalker",
     "wizsprinter",
+    "wizlaunch",
 ]
 
 [tool.hatch.metadata]
@@ -29,11 +30,12 @@ allow-direct-references = true
 packages = ["src"]
 
 [tool.uv.workspace]
-members = ["libs/wizwalker", "libs/wizsprinter"]
+members = ["libs/wizwalker", "libs/wizsprinter", "libs/wizlaunch"]
 
 [tool.uv.sources]
 wizwalker = { workspace = true }
 wizsprinter = { workspace = true }
+wizlaunch = { workspace = true }
 
 [dependency-groups]
 dev = ["pyinstaller>=6.0"]
