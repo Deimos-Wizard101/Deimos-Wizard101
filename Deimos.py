@@ -2449,7 +2449,12 @@ async def main():
 
 					# Wait for at least one hooked client
 					if not walker.clients:
-						client = None
+						if client is not None:
+							try:
+								await rpc.clear()
+							except Exception:
+								pass
+							client = None
 						continue
 
 					# Pick the foreground client, or fall back to first
