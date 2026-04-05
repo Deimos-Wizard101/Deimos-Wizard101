@@ -844,7 +844,7 @@ class SprintyCombat(CombatHandler):
                 try:
                     if isinstance(target, Spell):
                         card_count = await self.get_num_card_windows()
-                        target = await self.try_get_spell(target, castable=False, multi=True)
+                        target = await self.try_get_spell(target, castable=False, multi=True, only_enchantable=True)
                         if target:
                             if type(target) is list:
                                 for targ in target:
