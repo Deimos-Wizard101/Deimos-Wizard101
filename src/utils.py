@@ -1248,20 +1248,24 @@ async def wait_for_visible_by_path(client: Client, path: List[str], wait_for_not
 
 async def try_task_coro(coro: Coroutine, clients: List[Client], deactive_mouseless: bool = False):
     task_coro = coro
-    try:
-        await task_coro()
+    max_retries = 10
+    for attempt in range(max_retries + 1):
+        try:
+            await task_coro()
+            return
 
-    except asyncio.CancelledError:
-        for p in clients:
-            p.feeding_pet_status = False
-        await asyncio.gather(*[attempt_deactivate_dance_hook(p) for p in clients])
-        pass
+        except asyncio.CancelledError:
+            for p in clients:
+                p.feeding_pet_status = False
+            await asyncio.gather(*[attempt_deactivate_dance_hook(p) for p in clients])
+            return
 
-    except wizwalker.errors.MemoryInvalidated | wizwalker.errors.ExceptionalTimeout:
-        await try_task_coro(coro, clients, deactive_mouseless)
-
-    finally:
-        pass
+        except (wizwalker.errors.MemoryInvalidated, wizwalker.errors.ExceptionalTimeout):
+            if attempt < max_retries:
+                logger.debug(f'Task {task_coro} encountered a memory error, retrying ({attempt + 1}/{max_retries})...')
+                await asyncio.sleep(1)
+            else:
+                logger.error(f'Task {task_coro} exceeded max retries ({max_retries}), giving up.')
 
 
 def index_with_str(input_str, desired_str: str) -> int:

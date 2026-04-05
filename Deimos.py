@@ -2430,146 +2430,153 @@ async def main():
 
 
 	async def rpc_loop():
-		if rpc_status:
-			# Connect to the discord dev app
+		if not rpc_status:
+			return
+
+		rpc = None
+		client: Client = None
+		while True:
+			# Connect / reconnect
+			if rpc is None:
+				try:
+					rpc = AioPresence(1000159655357587566)
+					await rpc.connect()
+				except Exception as e:
+					logger.debug(f'Discord RPC connection failed: {e}')
+					rpc = None
+					await asyncio.sleep(15)
+					continue
+
+			await asyncio.sleep(1)
+
+			# Disconnect RPC when no clients are managed
+			if not walker.clients:
+				if rpc is not None:
+					try:
+						await rpc.clear()
+					except Exception:
+						pass
+					try:
+						await rpc.close()
+					except Exception:
+						pass
+					rpc = None
+				client = None
+				continue
+
+			# Pick the foreground client, or fall back to first
+			client = walker.clients[0]
+			for c in walker.clients:
+				if c.is_foreground:
+					client = c
+					break
+
+			# If our tracked client was removed, reset
+			if client not in walker.clients:
+				client = walker.clients[0]
+
 			try:
-				rpc = AioPresence(1000159655357587566)
-				await rpc.connect()
+				zone_name = await client.zone_name()
+			except Exception:
+				client = None
+				continue
 
-			except Exception as e:
-				logger.error(e)
+			if zone_name:
+				zone_list = zone_name.split('/')
+				if len(zone_list):
+					status_str = zone_list[0]
+				else:
+					status_str = zone_name
 
-			# except pypresence.exceptions.PyPresenceException:
-			# 	pass
+				# parse zone name and make it more visually appealing
+				if len(zone_list) > 1:
+					if 'Housing_' in zone_name:
+						status_str = status_str.replace('Housing_', '')
+						end_zone_list = zone_list[-1].split('_')
+						end_zone = f' - {end_zone_list[-1]}'
+
+					elif 'Housing' in zone_name:
+						end_zone_list = zone_list[-1].split('_')
+
+						if 'School' in zone_list:
+							status_str = end_zone_list[0] + 'House'
+
+						else:
+							status_str = zone_list[1]
+
+						end_zone = f' - {end_zone_list[-1]}'
+
+					else:
+						end_zone = None
+
+					if not end_zone:
+						area_list: list[str] = zone_list[-1].split('_')
+						del area_list[0]
+
+						for a in area_list.copy():
+							if any([s.isdigit() for s in a]):
+								area_list.remove(a)
+
+						seperator = ' '
+						area = seperator.join(area_list)
+						zone_word_list = re.findall('[A-Z][^A-Z]*', area)
+						if zone_word_list:
+							end_zone = f' - {seperator.join(zone_word_list)}'
+
+						else:
+							end_zone = ''
 
 			else:
-				client: Client = None
-				while True:
-					await asyncio.sleep(1)
+				end_zone = ''
 
-					# Wait for at least one hooked client
-					if not walker.clients:
-						if client is not None:
-							try:
-								await rpc.clear()
-							except Exception:
-								pass
-							client = None
-						continue
+			status_str = status_str.replace('DragonSpire', 'Dragonspyre')
+			status_list = status_str.split('_')
+			if len(status_list[0]) <= 3:
+				del status_list[0]
 
-					# Pick the foreground client, or fall back to first
-					client = walker.clients[0]
-					for c in walker.clients:
-						if c.is_foreground:
-							client = c
-							break
+			seperator = ' '
+			status_str = seperator.join(status_list)
 
-					# If our tracked client was removed, reset
-					if client not in walker.clients:
-						client = walker.clients[0]
+			status_list = re.findall('[A-Z][^A-Z]*', status_str)
+			status_str = seperator.join(status_list)
 
-					try:
-						zone_name = await client.zone_name()
-					except Exception:
-						client = None
-						continue
+			if 'ext' in end_zone.lower():
+				end_zone = ' - Outside'
 
-					if zone_name:
-						zone_list = zone_name.split('/')
-						if len(zone_list):
-							status_str = zone_list[0]
-						else:
-							status_str = zone_name
+			elif 'int' in end_zone.lower():
+				end_zone = ' - Inside'
 
-						# parse zone name and make it more visually appealing
-						if len(zone_list) > 1:
-							if 'Housing_' in zone_name:
-								status_str = status_str.replace('Housing_', '')
-								end_zone_list = zone_list[-1].split('_')
-								end_zone = f' - {end_zone_list[-1]}'
+			try:
+				in_battle = await client.in_battle()
+			except Exception:
+				client = None
+				continue
 
-							elif 'Housing' in zone_name:
-								end_zone_list = zone_list[-1].split('_')
+			if in_battle:
+				task_str = 'Fighting '
 
-								if 'School' in zone_list:
-									status_str = end_zone_list[0] + 'House'
+			elif questing_status:
+				task_str = 'Questing '
 
-								else:
-									status_str = zone_list[1]
+			elif sigil_status:
+				task_str = 'Farming '
 
-								end_zone = f' - {end_zone_list[-1]}'
+			else:
+				task_str = ''
 
-							else:
-								end_zone = None
+			# Assign if a client is currently selected or not
+			if not any([c.is_foreground for c in walker.clients]):
+				details_pane = 'Idle'
 
-							if not end_zone:
-								area_list: list[str] = zone_list[-1].split('_')
-								del area_list[0]
+			else:
+				details_pane = 'Active'
 
-								for a in area_list.copy():
-									if any([s.isdigit() for s in a]):
-										area_list.remove(a)
+			try:
+				# Update the discord RPC status
+				await rpc.update(state=f'{task_str}In {status_str}{end_zone}', details=details_pane)
 
-								seperator = ' '
-								area = seperator.join(area_list)
-								zone_word_list = re.findall('[A-Z][^A-Z]*', area)
-								if zone_word_list:
-									end_zone = f' - {seperator.join(zone_word_list)}'
-
-								else:
-									end_zone = ''
-
-					else:
-						end_zone = ''
-
-					status_str = status_str.replace('DragonSpire', 'Dragonspyre')
-					status_list = status_str.split('_')
-					if len(status_list[0]) <= 3:
-						del status_list[0]
-
-					seperator = ' '
-					status_str = seperator.join(status_list)
-
-					status_list = re.findall('[A-Z][^A-Z]*', status_str)
-					status_str = seperator.join(status_list)
-
-					if 'ext' in end_zone.lower():
-						end_zone = ' - Outside'
-
-					elif 'int' in end_zone.lower():
-						end_zone = ' - Inside'
-
-					try:
-						in_battle = await client.in_battle()
-					except Exception:
-						client = None
-						continue
-
-					if in_battle:
-						task_str = 'Fighting '
-
-					elif questing_status:
-						task_str = 'Questing '
-
-					elif sigil_status:
-						task_str = 'Farming '
-
-					else:
-						task_str = ''
-
-					# Assign if a client is currently selected or not
-					if not any([c.is_foreground for c in walker.clients]):
-						details_pane = 'Idle'
-
-					else:
-						details_pane = 'Active'
-
-					try:
-						# Update the discord RPC status
-						await rpc.update(state=f'{task_str}In {status_str}{end_zone}', details=details_pane)
-
-					except Exception as e:
-						logger.error(e)
+			except Exception:
+				rpc = None
 
 
 	def ban_thread():
