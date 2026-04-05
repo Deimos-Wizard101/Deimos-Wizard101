@@ -349,16 +349,20 @@ def build_launcher_tab(ctx):
             game_path = game_path_input.text().strip()
             send_queue.put(GUICommand(GUICommandType.LaunchInstance, (selected, game_path)))
 
-    # Auto-detect game path
-    _steam_path = r"C:\Program Files (x86)\Steam\steamapps\common\Wizard101"
-    _default_path = r"C:\ProgramData\KingsIsle Entertainment\Wizard101"
-    _detected_path = ""
-    if os.path.isdir(_steam_path):
-        _detected_path = _steam_path
-    elif os.path.isdir(_default_path):
-        _detected_path = _default_path
+    # Resolve game path: saved setting > auto-detect
+    _saved_path = ctx.settings.get_setting('game_path') if ctx.settings else None
+    if _saved_path and os.path.isdir(_saved_path):
+        _resolved_path = _saved_path
+    else:
+        _steam_path = r"C:\Program Files (x86)\Steam\steamapps\common\Wizard101"
+        _default_path = r"C:\ProgramData\KingsIsle Entertainment\Wizard101"
+        _resolved_path = ""
+        if os.path.isdir(_steam_path):
+            _resolved_path = _steam_path
+        elif os.path.isdir(_default_path):
+            _resolved_path = _default_path
 
-    game_path_input = QLineEdit(_detected_path)
+    game_path_input = QLineEdit(_resolved_path)
     game_path_input.setReadOnly(True)
     game_path_input.setVisible(False)
     ctx.widget_tags['GamePath'] = game_path_input
@@ -378,6 +382,8 @@ def build_launcher_tab(ctx):
             if path:
                 path_input.setText(path)
                 game_path_input.setText(path)
+                if ctx.settings:
+                    ctx.settings.set_setting('game_path', path)
         path_row.addWidget(launcher_icon_btn(ctx, svgs['folder'], tl('game_path'), _pick))
         dlg_layout.addLayout(path_row)
         dlg.adjustSize()
