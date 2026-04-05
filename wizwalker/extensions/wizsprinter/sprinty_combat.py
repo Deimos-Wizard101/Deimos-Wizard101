@@ -590,16 +590,33 @@ class SprintyCombat(CombatHandler):
             if spell.name in ("pass", "none", "willcast", "discard"):
                 return spell.name
 
-            if spell.is_literal:
-                if castable:
-                    return await self.get_castable_card_named(spell.name, only_enchants)
+            res = []
+            if castable:
+                if spell.is_literal:
+                    cards = await self.get_castable_cards_named(spell.name)
                 else:
-                    return await self.get_card_named(spell.name)
+                    cards = await self.get_castable_cards_vaguely_named(spell.name)
             else:
-                if castable:
-                    return await self.get_castable_card_vaguely_named(spell.name, only_enchants)
+                all_cards = await self.get_cards()
+                if spell.is_literal:
+                    cards = [c for c in all_cards if await c.name() == spell.name]
                 else:
-                    return await self.get_card_vaguely_named(spell.name)
+                    cards = [c for c in all_cards if spell.name.lower() in (await c.name()).lower()]
+
+            for c in cards:
+                if only_enchants:
+                    effects = await c.get_spell_effects()
+                    if not any(await e.effect_target() is EffectTarget.spell for e in effects):
+                        continue
+                if only_enchantable and not await is_enchantable(c):
+                    continue
+                res.append(c)
+
+            if len(res) > 0:
+                if multi:
+                    return res
+                return res[0]
+            return None
 
         elif isinstance(spell, TemplateSpell):
             spell: TemplateSpell
