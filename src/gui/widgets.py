@@ -926,13 +926,15 @@ class HighlightOverlay(QWidget):
 class ConsoleTextEdit(QPlainTextEdit):
     """QPlainTextEdit subclass with thread-safe slots for log appending."""
 
+    MAX_BLOCK_COUNT = 1000
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setMaximumBlockCount(self.MAX_BLOCK_COUNT)
+
     @pyqtSlot(str)
     def _append_log(self, text):
-        current = self.toPlainText()
-        if current:
-            self.setPlainText(current + text)
-        else:
-            self.setPlainText(text)
+        self.appendPlainText(text.rstrip('\n'))
         scrollbar = self.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
 
