@@ -1,0 +1,295 @@
+WORLD - WizardCity
+ZONEDOOR;WizardCity/WC_Ravenwood_Teleporter
+	WizardCity/WC_Ravenwood_Teleporter;WizardCity/WC_Ravenwood
+		WizardCity/WC_Ravenwood;WizardCity/WC_Hub
+			WizardCity/WC_Hub;WizardCity/WC_Streets/Interiors/WC_PET_Park
+			WizardCity/WC_Hub;WizardCity/WC_Golem_Tower
+				WizardCity/WC_Golem_Tower;WizardCity/WC_Streets/WC_Golem_Tower/WC_Golem_Tower_1
+			WizardCity/WC_Hub;WizardCity/WC_Streets/WC_Unicorn
+				WizardCity/WC_Streets/WC_Unicorn;WizardCity/WC_Duel_Arena
+			WizardCity/WC_Hub;WizardCity/WC_Shop_Area
+				WizardCity/WC_Shop_Area;WizardCity/WC_Streets/WC_Colossus
+				WizardCity/WC_Shop_Area;WizardCity/WC_Streets/WC_OldeTown
+					WizardCity/WC_Streets/WC_OldeTown;WizardCity/WC_Streets/Interiors/WC_OldeTown_AuctionHouse
+					WizardCity/WC_Streets/WC_OldeTown;WizardCity/WC_Streets/WC_Cyclops
+					WizardCity/WC_Streets/WC_OldeTown;WizardCity/WC_Streets/WC_Triton
+					WizardCity/WC_Streets/WC_OldeTown;WizardCity/WC_Streets/WC_Firecat
+END
+WORLD - Krokotopia
+ZONEDOOR;Krokotopia/KT_WorldTeleporter
+	Krokotopia/KT_WorldTeleporter;Krokotopia/KT_Hub
+		Krokotopia/KT_Hub;Krokotopia/Interiors/KT_Shop01
+		Krokotopia/KT_Hub;Krokotopia/Interiors/KT_Shop05
+		Krokotopia/KT_Hub;Krokotopia/Interiors/KT_Shop02
+		Krokotopia/KT_Hub;Krokotopia/Interiors/KT_Shop03
+		Krokotopia/KT_Hub;Krokotopia/Interiors/KT_Shop04
+		Krokotopia/KT_Hub;Krokotopia/Interiors/KT_Library
+			Krokotopia/Interiors/KT_Library;Krokotopia/Interiors/KT_HallofDoors
+		Krokotopia/KT_Hub;Krokotopia/KT_Pyramid/KT_AltarOfKings
+			Krokotopia/KT_Pyramid/KT_AltarOfKings;Krokotopia/KT_Pyramid/KT_Hall
+			Krokotopia/KT_Pyramid/KT_AltarOfKings;Krokotopia/KT_Pyramid/KT_Chamber
+			Krokotopia/KT_Pyramid/KT_AltarOfKings;Krokotopia/KT_Pyramid/KT_PalaceOfFire
+		Krokotopia/KT_Hub;Krokotopia/KT_Hub_Sphinx
+			Krokotopia/KT_Hub_Sphinx;Krokotopia/Interiors/KT_School
+			Krokotopia/KT_Hub_Sphinx;Krokotopia/Interiors/KT_ShopSphinx
+			Krokotopia/KT_Hub_Sphinx;Krokotopia/KT_Krokosphinx/KT_EntranceHall
+				Krokotopia/KT_Krokosphinx/KT_EntranceHall;Krokotopia/KT_Krokosphinx/KT_Vault
+				Krokotopia/KT_Krokosphinx/KT_EntranceHall;Krokotopia/KT_Krokosphinx/KT_Retreat
+					Krokotopia/KT_Krokosphinx/KT_Retreat;Krokotopia/KT_Krokosphinx/Interiors/KT_Retreat_T2
+					Krokotopia/KT_Krokosphinx/KT_Retreat;Krokotopia/KT_Krokosphinx/Interiors/KT_Retreat_T1
+				Krokotopia/KT_Krokosphinx/KT_EntranceHall;Krokotopia/KT_Krokosphinx/KT_ChampHall
+				Krokotopia/KT_Krokosphinx/KT_EntranceHall;Krokotopia/KT_Krokosphinx/KT_Arena
+		Krokotopia/KT_Hub;Krokotopia/KT_Hub_Crypt
+			Krokotopia/KT_Hub_Crypt;Krokotopia/KT_Tomb/KT_WellOfSpirits
+				Krokotopia/KT_Tomb/KT_WellOfSpirits;Krokotopia/KT_Tomb/KT_TempleOfStorms
+				Krokotopia/KT_Tomb/KT_WellOfSpirits;Krokotopia/KT_Tomb/KT_Barracks
+				Krokotopia/KT_Tomb/KT_WellOfSpirits;Krokotopia/KT_Tomb/KT_DjeseritTomb
+				Krokotopia/KT_Tomb/KT_WellOfSpirits;Krokotopia/KT_Tomb/KT_AhnicTomb
+END
+WORLD - Marleybone
+ZONEDOOR;Marleybone/Interiors/MB_WolfminsterAbbey
+	Marleybone/Interiors/MB_WolfminsterAbbey;Marleybone/MB_Hub
+		Marleybone/MB_Hub;Marleybone/Interiors/MB_Shop_Wands
+		Marleybone/MB_Hub;Marleybone/Interiors/MB_Shop_Hats
+		Marleybone/MB_Hub;Marleybone/Interiors/MB_PostOffice1
+		Marleybone/MB_Hub;Marleybone/Interiors/MB_Shop_Robes
+		Marleybone/MB_Hub;Marleybone/Interiors/MB_Shop_Decks
+		Marleybone/MB_Hub;Marleybone/Interiors/MB_Shop_House
+		Marleybone/MB_Hub;Marleybone/Interiors/MB_Shop_Rings
+		Marleybone/MB_Hub;Marleybone/Interiors/MB_Pubs
+		Marleybone/MB_Hub;Marleybone/Interiors/MB_Shop_Athames
+		Marleybone/MB_Hub;Marleybone/Interiors/MB_Shop_Shoes
+		Marleybone/MB_Hub;Marleybone/MB_Station/MB_Station_Hub
+			Marleybone/MB_Station/MB_Station_Hub;Marleybone/Interiors/PilotsPub
+			Marleybone/MB_Station/MB_Station_Hub;Marleybone/MB_Station/MB_Ironworks
+			Marleybone/MB_Station/MB_Station_Hub;Marleybone/MB_Station/MB_HydePark
+			Marleybone/MB_Station/MB_Station_Hub;Marleybone/MB_Station/MB_ChelseaCourt
+		Marleybone/MB_Hub;Marleybone/Interiors/MB_ScotlandYard
+			Marleybone/Interiors/MB_ScotlandYard;Marleybone/MB_ScotlandYard/MB_Roof
+				Marleybone/MB_ScotlandYard/MB_Roof;Marleybone/MB_ScotlandYard/MB_KatzLab
+				Marleybone/MB_ScotlandYard/MB_Roof;Marleybone/MB_ScotlandYard/MB_KnightsCourt
+				Marleybone/MB_ScotlandYard/MB_Roof;Marleybone/MB_ScotlandYard/MB_Prison
+		Marleybone/MB_Hub;Marleybone/MB_BigBen/MB_Museum
+			Marleybone/MB_BigBen/MB_Museum;Marleybone/MB_BigBen/MB_BigBen
+END
+WORLD - MooShu
+ZONEDOOR;MooShu/Interiors/MS_Teleport_Chamber
+	MooShu/Interiors/MS_Teleport_Chamber;MooShu/MS_Hub
+		MooShu/MS_Hub;MooShu/Interiors/MS_ShopHouse
+		MooShu/MS_Hub;MooShu/Interiors/MS_ShopClothing
+		MooShu/MS_Hub;MooShu/Interiors/MS_ShopJewelry
+		MooShu/MS_Hub;MooShu/Interiors/MS_ShopWeapon
+		MooShu/MS_Hub;MooShu/Interiors/MS_ShopAccessories
+		MooShu/MS_Hub;MooShu/MS_War/MS_War_RuinedVillage_Hub
+			MooShu/MS_War/MS_War_RuinedVillage_Hub;MooShu/MS_War/MS_War_BattlefieldA
+			MooShu/MS_War/MS_War_RuinedVillage_Hub;MooShu/MS_War/MS_War_BattlefieldB
+		MooShu/MS_Hub;MooShu/Interiors/MS_WaterDojot1_Common
+			MooShu/Interiors/MS_WaterDojot1_Common;MooShu/MS_Plague/MS_Plague_Hub_FarmVillage
+				MooShu/MS_Plague/MS_Plague_Hub_FarmVillage;MooShu/MS_Plague/MS_Plague_Zone3_CliffsidePalace
+				MooShu/MS_Plague/MS_Plague_Hub_FarmVillage;MooShu/MS_Plague/MS_Plague_Zone1_WaterfallCave
+				MooShu/MS_Plague/MS_Plague_Hub_FarmVillage;MooShu/MS_Plague/MS_Plague_Zone2_RiverVillage
+		MooShu/MS_Hub;MooShu/Interiors/MS_Emperor_Palace
+		MooShu/MS_Hub;MooShu/Interiors/MS_RockDojoT2
+			MooShu/Interiors/MS_RockDojoT2;MooShu/MS_Death/MS_Death_Hub_RuinedTemple
+				MooShu/MS_Death/MS_Death_Hub_RuinedTemple;MooShu/MS_Death/MS_Death_Zone2_HauntedVillage
+				MooShu/MS_Death/MS_Death_Hub_RuinedTemple;MooShu/MS_Death/MS_Death_Zone3_AncientTree
+				MooShu/MS_Death/MS_Death_Hub_RuinedTemple;MooShu/MS_Death/MS_Death_Zone1_BurialGround
+END
+WORLD - DragonSpire
+ZONEDOOR;DragonSpire/DS_Hub_Cathedral
+	DragonSpire/DS_Hub_Cathedral;DragonSpire/DS_A1_Knowledge/DS_A1Hub_Library
+		DragonSpire/DS_A1_Knowledge/DS_A1Hub_Library;DragonSpire/DS_A1_Knowledge/Interiors/DS_Library_Shop1
+		DragonSpire/DS_A1_Knowledge/DS_A1Hub_Library;DragonSpire/DS_A1_Knowledge/Interiors/DS_Library_Shop2
+		DragonSpire/DS_A1_Knowledge/DS_A1Hub_Library;DragonSpire/DS_A1_Knowledge/Interiors/DS_Library_Interior
+		DragonSpire/DS_A1_Knowledge/DS_A1Hub_Library;DragonSpire/DS_A1_Knowledge/Interiors/DS_Library_Shop3
+		DragonSpire/DS_A1_Knowledge/DS_A1Hub_Library;DragonSpire/DS_A1_Knowledge/DS_A1Z1_WizardTower
+		DragonSpire/DS_A1_Knowledge/DS_A1Hub_Library;DragonSpire/DS_A1_Knowledge/DS_A1Z3_GrandChasm
+			DragonSpire/DS_A1_Knowledge/DS_A1Z3_GrandChasm;DragonSpire/DS_A1_Knowledge/DS_A1Z4_GrandChasm_Past
+	DragonSpire/DS_Hub_Cathedral;DragonSpire/DS_A2_Battle/DS_A2Hub_Necropolis
+		DragonSpire/DS_A2_Battle/DS_A2Hub_Necropolis;DragonSpire/DS_A2_Battle/DS_A2Z1_Hatchery
+		DragonSpire/DS_A2_Battle/DS_A2Hub_Necropolis;DragonSpire/DS_A2_Battle/DS_A2Z3_Detention
+		DragonSpire/DS_A2_Battle/DS_A2Hub_Necropolis;DragonSpire/DS_A2_Battle/DS_A2Z2_Arena
+	DragonSpire/DS_Hub_Cathedral;DragonSpire/DS_A3_Kings/DS_A3Hub_Academy
+		DragonSpire/DS_A3_Kings/DS_A3Hub_Academy;DragonSpire/DS_A3_Kings/DS_A3Z3_Volcano/DS_LandingZone
+		DragonSpire/DS_A3_Kings/DS_A3Hub_Academy;DragonSpire/DS_A3_Kings/DS_A3Z2_Amphitheatre
+		DragonSpire/DS_A3_Kings/DS_A3Hub_Academy;DragonSpire/DS_A3_Kings/DS_A3Z1_CrystalGrove
+END
+WORLD - Celestia
+ZONEDOOR;Celestia/CL_Hub
+	Celestia/CL_Hub;Celestia/CL_Z10_Kingdom_Of_The_Crabs
+		Celestia/CL_Z10_Kingdom_Of_The_Crabs;Celestia/Interiors/CL_Z10i2_Kingdom_Of_The_Crabs
+	Celestia/CL_Hub;Celestia/CL_Z06_StormHaven
+		Celestia/CL_Z06_StormHaven;Celestia/CL_Z07_Storm_Lord_Temple
+	Celestia/CL_Hub;Celestia/CL_Z03_District_Of_The_Stars
+		Celestia/CL_Z03_District_Of_The_Stars;Celestia/CL_Z04_Temple_Of_The_Stars
+	Celestia/CL_Hub;Celestia/CL_Z08_Temple_Of_The_Moon/MoonC1
+	Celestia/CL_Hub;Celestia/CL_Z01_Survey_Camp
+		Celestia/CL_Z01_Survey_Camp;Celestia/CL_Z02_Crab_Realm
+	Celestia/CL_Hub;Celestia/CL_Z05_The_Floating_Land
+	Celestia/CL_Hub;Celestia/CL_Z09_Science_Center
+END
+WORLD - Wysteria
+ZONEDOOR;Wysteria/PA_Hub
+	Wysteria/PA_Hub;Wysteria/Interiors/PA_Store01
+	Wysteria/PA_Hub;Wysteria/PA_Z01_Pegasus
+	Wysteria/PA_Hub;Wysteria/PA_Z02_Tanglewood
+	Wysteria/PA_Hub;Wysteria/Interiors/PA_Library
+		Wysteria/Interiors/PA_Library;Wysteria/Interiors/PA_Library_Archive
+END
+WORLD - Grizzleheim
+ZONEDOOR;Grizzleheim/GH_MainHub
+	Grizzleheim/GH_MainHub;Grizzleheim/Interiors/Hub_ThroneRoom
+	Grizzleheim/GH_MainHub;Grizzleheim/GH_Hero
+	Grizzleheim/GH_MainHub;Grizzleheim/GH_Wolf
+	Grizzleheim/GH_MainHub;Grizzleheim/GH_AbandCity/GH_EntranceHall
+		Grizzleheim/GH_AbandCity/GH_EntranceHall;Grizzleheim/GH_AbandCity/GH_Library
+	Grizzleheim/GH_MainHub;Grizzleheim/GH_Raven
+	Grizzleheim/GH_MainHub;Grizzleheim/GH_RedClaw
+	Grizzleheim/GH_MainHub;Grizzleheim/GH_HFjord/GH_HFjord
+		Grizzleheim/GH_HFjord/GH_HFjord;Grizzleheim/GH_HFjord/Interiors/GH_HFjord_TownHall
+		Grizzleheim/GH_HFjord/GH_HFjord;Grizzleheim/GH_HFjord/Interiors/GH_HFjord_Shop01
+		Grizzleheim/GH_HFjord/GH_HFjord;Grizzleheim/GH_HFjord/GH_Sudrilund
+		Grizzleheim/GH_HFjord/GH_HFjord;Grizzleheim/GH_HFjord/GH_Vestrilund
+		Grizzleheim/GH_HFjord/GH_HFjord;Grizzleheim/GH_HFjord/GH_Austrilund
+		Grizzleheim/GH_HFjord/GH_HFjord;Grizzleheim/GH_HFjord/GH_Nordrilund
+		Grizzleheim/GH_HFjord/GH_HFjord;Grizzleheim/GH_HFjord/GH_Nastrond
+END
+WORLD - Zafaria
+ZONEDOOR;Zafaria/ZF_Z00_Hub
+	Zafaria/ZF_Z00_Hub;Zafaria/ZF_Z02_Baobab_Market
+		Zafaria/ZF_Z02_Baobab_Market;Zafaria/ZF_Z07_Stone_Town
+			Zafaria/ZF_Z07_Stone_Town;Zafaria/Interiors/ZF_Z07_I01_Darajani_Palace
+			Zafaria/ZF_Z07_Stone_Town;Zafaria/ZF_Z08_Waterfront
+				Zafaria/ZF_Z08_Waterfront;Zafaria/Interiors/ZF_Z08_I08_Librarians_Hideout
+				Zafaria/ZF_Z08_Waterfront;Zafaria/ZF_Z09_Drum_Jungle
+					Zafaria/ZF_Z09_Drum_Jungle;Zafaria/ZF_Z10_Elephant_Graveyard
+	Zafaria/ZF_Z00_Hub;Zafaria/ZF_Z01_Baobab_Crown
+	Zafaria/ZF_Z00_Hub;Zafaria/ZF_Z03_Savannah
+	Zafaria/ZF_Z00_Hub;Zafaria/ZF_Z05_Zamunda_Outskirts
+		Zafaria/ZF_Z05_Zamunda_Outskirts;Zafaria/ZF_Z06_Zamunda
+			Zafaria/ZF_Z06_Zamunda;Zafaria/Interiors/ZF_Z06_I03_Magicians_House
+END
+WORLD - Avalon
+ZONEDOOR;Avalon/AV_Z00_Hub
+	Avalon/AV_Z00_Hub;Avalon/Interiors/AV_Z00_FairyCircle_Cave
+	Avalon/AV_Z00_Hub;Avalon/AV_Z01_AbbeyRoad
+	Avalon/AV_Z00_Hub;Avalon/AV_Z02_HighRoad
+		Avalon/AV_Z02_HighRoad;Avalon/Interiors/AV_Z02_TowerHarlequin
+		Avalon/AV_Z02_HighRoad;Avalon/AV_Z03_CaerLyon
+			Avalon/AV_Z03_CaerLyon;Avalon/Interiors/AV_Z03_TowerBoss
+			Avalon/AV_Z03_CaerLyon;Avalon/AV_Z04_TheWild
+				Avalon/AV_Z04_TheWild;Avalon/Interiors/AV_Z04_TowerDreadKeep
+				Avalon/AV_Z04_TheWild;Avalon/AV_Z05_TheWyrd
+					Avalon/AV_Z05_TheWyrd;Avalon/Interiors/AV_Z05_LostAbbey
+					Avalon/AV_Z05_TheWyrd;Avalon/AV_Z06_DunDara
+						Avalon/AV_Z06_DunDara;Avalon/Interiors/AV_Z06_Cave01
+			Avalon/AV_Z03_CaerLyon;Avalon/AV_Z07_OuterYard
+				Avalon/AV_Z07_OuterYard;Avalon/AV_Z08_LakeShore
+					Avalon/AV_Z08_LakeShore;Avalon/Interiors/AV_Z08_BogWitch
+END
+WORLD - Azteca
+ZONEDOOR;Azteca/AZ_Z00_Zocalo
+	Azteca/AZ_Z00_Zocalo;Azteca/AZ_Z03_MangroveMarsh
+		Azteca/AZ_Z03_MangroveMarsh;Azteca/AZ_Z04_SaltmeadowSwamp
+	Azteca/AZ_Z00_Zocalo;Azteca/AZ_Z01_ThreePoints
+		Azteca/AZ_Z01_ThreePoints;Azteca/AZ_Z11_TwinGiants
+		Azteca/AZ_Z01_ThreePoints;Azteca/AZ_Z02_Cenote
+	Azteca/AZ_Z00_Zocalo;Azteca/AZ_Z05_ZultunDock
+		Azteca/AZ_Z05_ZultunDock;Azteca/AZ_Z06_CloudburstIsland
+			Azteca/AZ_Z06_CloudburstIsland;Azteca/AZ_Z07_TierraDeBrea
+			Azteca/AZ_Z06_CloudburstIsland;Azteca/AZ_Z09_AltoAlto
+				Azteca/AZ_Z09_AltoAlto;Azteca/AZ_Z10_FloatingMountains
+END						
+WORLD - Khrysalis
+ZONEDOOR;Khrysalis/KR_Z00_Hub
+	Khrysalis/KR_Z00_Hub;Khrysalis/Interiors/KR_Z00_I07_Mausoleum
+		Khrysalis/Interiors/KR_Z00_I07_Mausoleum;Khrysalis/Interiors/KR_Z00_I07_Mausoleum_Room02
+	Khrysalis/KR_Z00_Hub;Khrysalis/Interiors/KR_Z00_I00_BenightedBurrow
+	Khrysalis/KR_Z00_Hub;Khrysalis/KR_Z02_MoonCliffs
+		Khrysalis/KR_Z02_MoonCliffs;Khrysalis/KR_Z03_LastWood
+			Khrysalis/KR_Z03_LastWood;Khrysalis/Interiors/KR_Z03_GlassShop
+	Khrysalis/KR_Z00_Hub;Khrysalis/KR_Z01_SilentMarket
+		Khrysalis/KR_Z01_SilentMarket;Khrysalis/Interiors/KR_Z01_WarRoom
+		Khrysalis/KR_Z01_SilentMarket;Khrysalis/KR_Z04_TyrianGorge
+		Khrysalis/KR_Z01_SilentMarket;Khrysalis/KR_Z07_RuinedAlcazar
+		Khrysalis/KR_Z01_SilentMarket;Khrysalis/KR_Z08_RadianceReborn
+		Khrysalis/KR_Z01_SilentMarket;Khrysalis/KR_Z09_MantisCity
+		Khrysalis/KR_Z01_SilentMarket;Khrysalis/KR_Z10_KondhaDesert
+		Khrysalis/KR_Z01_SilentMarket;Khrysalis/KR_Z11_TheHive
+	Khrysalis/KR_Z00_Hub;Khrysalis/KR_Z05_FortRachias
+		Khrysalis/KR_Z05_FortRachias;Khrysalis/KR_Z06_CrescentBeach
+			Khrysalis/KR_Z06_CrescentBeach;Khrysalis/Interiors/KR_Z06_I01_Hermitcave
+END
+WORLD - Polaris
+ZONEDOOR;Polaris/PL_Z00_Walruskberg
+	Polaris/PL_Z00_Walruskberg;Polaris/Interiors/PL_Z00_Palace_04B
+	Polaris/PL_Z00_Walruskberg;Polaris/PL_Z01_Harbor
+		Polaris/PL_Z01_Harbor;Polaris/Interiors/PL_Z01_I03_HeadQuarters_A
+	Polaris/PL_Z00_Walruskberg;Polaris/PL_Z02_ForlornTaig
+		Polaris/PL_Z02_ForlornTaig;Polaris/Interiors/PL_Z02_BabaYagaStatuary
+		Polaris/PL_Z02_ForlornTaig;Polaris/Interiors/PL_Z02_BabaYagaHut_Int
+			Polaris/Interiors/PL_Z02_BabaYagaHut_Int;Polaris/PL_Z03_IcefallPassage
+		Polaris/PL_Z02_ForlornTaig;Polaris/PL_Z04_UrvilleStation
+			Polaris/PL_Z04_UrvilleStation;Polaris/PL_Z05_FrigidMine
+	Polaris/PL_Z00_Walruskberg;Polaris/Interiors/PL_Z06_GolemGarden
+	Polaris/PL_Z00_Walruskberg;Polaris/PL_Z06_KatabaIceblock
+	Polaris/PL_Z00_Walruskberg;Polaris/Interiors/PL_Z06_TitanPod
+	Polaris/PL_Z00_Walruskberg;Polaris/PL_Z07_BorealisPeaks
+	Polaris/PL_Z00_Walruskberg;Polaris/Interiors/PL_Z07_SkyAnchorPeak
+END
+WORLD - Mirage
+ZONEDOOR;Mirage/MR_Z00_Hub
+	Mirage/MR_Z00_Hub;Mirage/MR_Z01_AlkaliBarrows
+	Mirage/MR_Z00_Hub;Mirage/MR_Z03_CaterwaulCanyon
+		Mirage/MR_Z03_CaterwaulCanyon;Mirage/MR_Z07_ThievesDen
+		Mirage/MR_Z03_CaterwaulCanyon;Mirage/MR_Z09_ZruvanGrotto
+	Mirage/MR_Z00_Hub;Mirage/MR_Z04_RubalWastes
+	Mirage/MR_Z00_Hub;Mirage/MR_Z05_Istanboa
+	Mirage/MR_Z00_Hub;Mirage/MR_Z06_YakhalMountain
+		Mirage/MR_Z06_YakhalMountain;Mirage/Interiors/MR_Z06_PrincessHovel
+	Mirage/MR_Z00_Hub;Mirage/MR_Z02_Aggrobah
+	Mirage/MR_Z00_Hub;Mirage/MR_Z08_EeremPalace
+END
+WORLD - Empyrea
+ZONEDOOR;Empyrea/EM_Z00_Aeriel_HUB
+	Empyrea/EM_Z00_Aeriel_HUB;Empyrea/EM_Z01_Jungle
+		Empyrea/EM_Z01_Jungle;Empyrea/Interiors/EM_Z01_MonkeySpiderCave
+	Empyrea/EM_Z00_Aeriel_HUB;Empyrea/EM_Z02_Zanadu
+		Empyrea/EM_Z02_Zanadu;Empyrea/Interiors/EM_Z02_Sewers
+	Empyrea/EM_Z00_Aeriel_HUB;Empyrea/EM_Z03_OuterAthanor
+	Empyrea/EM_Z00_Aeriel_HUB;Empyrea/EM_Z04_InnerAthanor
+	Empyrea/EM_Z00_Aeriel_HUB;Empyrea/EM_Z05_Sepidious
+		Empyrea/EM_Z05_Sepidious;Empyrea/Interiors/EM_Z05_NodoChord
+	Empyrea/EM_Z00_Aeriel_HUB;Empyrea/EM_Z12_LandingZone
+		Empyrea/EM_Z12_LandingZone;Empyrea/EM_Z13_SamsaraDestroyed
+	Empyrea/EM_Z00_Aeriel_HUB;Empyrea/EM_Z14_ChaosJungle
+	Empyrea/EM_Z00_Aeriel_HUB;Empyrea/EM_Z15_Nexus
+	Empyrea/EM_Z00_Aeriel_HUB;Empyrea/EM_Z06_NimbusHanger
+		Empyrea/EM_Z06_NimbusHanger;Empyrea/EM_Z07_NimbusCitadel
+	Empyrea/EM_Z00_Aeriel_HUB;Empyrea/EM_Z10_PortAero
+		Empyrea/EM_Z10_PortAero;Empyrea/EM_Z08_SWAeroplains
+END
+WORLD - Karamelle
+ZONEDOOR;Karamelle/KM_Z00_HUB
+	Karamelle/KM_Z00_HUB;Karamelle/KM_Z03_GumdropForest
+	Karamelle/KM_Z00_HUB;Karamelle/KM_Z01_VonTrapEstate
+		Karamelle/KM_Z01_VonTrapEstate;Karamelle/KM_Z02_CandyMountains
+	Karamelle/KM_Z00_HUB;Karamelle/KM_Z04_Sweetzburg
+	Karamelle/KM_Z00_HUB;Karamelle/KM_Z05_Nibbleheim
+		Karamelle/KM_Z05_Nibbleheim;Karamelle/KM_Z06_Mines
+	Karamelle/KM_Z00_HUB;Karamelle/KM_Z07_Gutenstadt
+	Karamelle/KM_Z00_HUB;Karamelle/KM_Z08_LicoriceForest
+		Karamelle/KM_Z08_LicoriceForest;Karamelle/Interiors/KM_Z08_ColaLake
+	Karamelle/KM_Z00_HUB;Karamelle/KM_Z09_CandyCornFarm
+	Karamelle/KM_Z00_HUB;Karamelle/KM_Z10_Gobblerton
+WORLD - Lemuria
+ZONEDOOR;Lemuria/LM_Z00_Hub
+	Lemuria/LM_Z00_Hub;Lemuria/LM_Z01_WildLands
+	Lemuria/LM_Z00_Hub;Lemuria/LM_Z02_UrsaiVillage
+	Lemuria/LM_Z00_Hub;Lemuria/LM_Z03_NightForest
+	Lemuria/LM_Z00_Hub;Lemuria/LM_Z04_Badlands
+	Lemuria/LM_Z00_Hub;Lemuria/LM_Z05_Mandoria
+	Lemuria/LM_Z00_Hub;Lemuria/LM_Z06_SkyCity
+	Lemuria/LM_Z00_Hub;Lemuria/LM_Z07_Heap
+	Lemuria/LM_Z00_Hub;Lemuria/Interiors/LM_Z00_I07_HallofHeroesOuter
+END
