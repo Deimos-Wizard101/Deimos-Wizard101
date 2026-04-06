@@ -590,33 +590,16 @@ class SprintyCombat(CombatHandler):
             if spell.name in ("pass", "none", "willcast", "discard"):
                 return spell.name
 
-            res = []
-            if castable:
-                if spell.is_literal:
-                    cards = await self.get_castable_cards_named(spell.name)
+            if spell.is_literal:
+                if castable:
+                    return await self.get_castable_card_named(spell.name, only_enchants)
                 else:
-                    cards = await self.get_castable_cards_vaguely_named(spell.name)
+                    return await self.get_card_named(spell.name)
             else:
-                all_cards = await self.get_cards()
-                if spell.is_literal:
-                    cards = [c for c in all_cards if await c.name() == spell.name]
+                if castable:
+                    return await self.get_castable_card_vaguely_named(spell.name, only_enchants)
                 else:
-                    cards = [c for c in all_cards if spell.name.lower() in (await c.name()).lower()]
-
-            for c in cards:
-                if only_enchants:
-                    effects = await c.get_spell_effects()
-                    if not any(await e.effect_target() is EffectTarget.spell for e in effects):
-                        continue
-                if only_enchantable and not await is_enchantable(c):
-                    continue
-                res.append(c)
-
-            if len(res) > 0:
-                if multi:
-                    return res
-                return res[0]
-            return None
+                    return await self.get_card_vaguely_named(spell.name)
 
         elif isinstance(spell, TemplateSpell):
             spell: TemplateSpell
@@ -844,7 +827,7 @@ class SprintyCombat(CombatHandler):
                 try:
                     if isinstance(target, Spell):
                         card_count = await self.get_num_card_windows()
-                        target = await self.try_get_spell(target, castable=False, multi=True, only_enchantable=True)
+                        target = await self.try_get_spell(target, castable=False, multi=True)
                         if target:
                             if type(target) is list:
                                 for targ in target:
