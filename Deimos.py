@@ -2433,6 +2433,19 @@ async def main():
 		if not rpc_status:
 			return
 
+		async def _close_rpc(rpc):
+			"""Close RPC and its underlying transport to avoid ResourceWarning."""
+			try:
+				if hasattr(rpc, 'sock_writer') and rpc.sock_writer:
+					rpc.sock_writer.close()
+					await rpc.sock_writer.wait_closed()
+			except Exception:
+				pass
+			try:
+				await rpc.close()
+			except Exception:
+				pass
+
 		rpc = None
 		client: Client = None
 		while True:
@@ -2443,6 +2456,7 @@ async def main():
 					await rpc.connect()
 				except Exception as e:
 					logger.debug(f'Discord RPC connection failed: {e}')
+					await _close_rpc(rpc)
 					rpc = None
 					await asyncio.sleep(15)
 					continue
@@ -2456,10 +2470,7 @@ async def main():
 						await rpc.clear()
 					except Exception:
 						pass
-					try:
-						await rpc.close()
-					except Exception:
-						pass
+					await _close_rpc(rpc)
 					rpc = None
 				client = None
 				continue
@@ -2576,6 +2587,7 @@ async def main():
 				await rpc.update(state=f'{task_str}In {status_str}{end_zone}', details=details_pane)
 
 			except Exception:
+				await _close_rpc(rpc)
 				rpc = None
 
 
