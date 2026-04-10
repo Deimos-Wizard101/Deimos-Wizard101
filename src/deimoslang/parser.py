@@ -1,7 +1,7 @@
 from enum import Enum, auto
 from typing import Any
 
-from .tokenizer import Token, TokenKind, LineInfo, render_tokens
+from .tokenizer import LineInfo, Token, TokenKind, render_tokens
 from .types import *
 
 
@@ -47,6 +47,7 @@ class Parser:
             self.err(result, f"Expected token kinds {kinds} but got {result.kind}")
         self.i += 1
         return result
+
     def expect_consume(self, kind: TokenKind) -> Token:
         return self.expect_consume_any([kind])
 
@@ -61,21 +62,25 @@ class Parser:
 
     def consume_optional(self, kind: TokenKind) -> Token | None:
         return self.consume_any_optional([kind])
-    
+
     def parse_numeric_comparison(self, evaluated, player_selector):
-        if self.i < len(self.tokens) and self.tokens[self.i].kind in [TokenKind.greater, TokenKind.less, TokenKind.equals]:
+        if self.i < len(self.tokens) and self.tokens[self.i].kind in [
+            TokenKind.greater,
+            TokenKind.less,
+            TokenKind.equals,
+        ]:
             operator = self.tokens[self.i]
             self.i += 1
 
             target = self.parse_expression()
-            
+
             if operator.kind == TokenKind.greater:
                 return self.gen_greater_expression(evaluated, target, player_selector)
             elif operator.kind == TokenKind.less:
                 return self.gen_greater_expression(target, evaluated, player_selector)
             elif operator.kind == TokenKind.equals:
                 return self.gen_equivalent_expression(evaluated, target, player_selector)
-        
+
         elif self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.keyword_isbetween:
             self.i += 1
 
@@ -85,27 +90,31 @@ class Parser:
 
                 range_expr = IdentExpression(range_ident)
 
-                min_expr = self.gen_greater_expression(evaluated, 
-                            IndexAccessExpression(range_expr, NumberExpression(0)), player_selector)
+                min_expr = self.gen_greater_expression(
+                    evaluated, IndexAccessExpression(range_expr, NumberExpression(0)), player_selector
+                )
                 max_expr = self.gen_greater_expression(
-                            IndexAccessExpression(range_expr, NumberExpression(1)), evaluated, player_selector)
-                
+                    IndexAccessExpression(range_expr, NumberExpression(1)), evaluated, player_selector
+                )
+
                 return AndExpression([min_expr, max_expr])
             else:
                 range_str = self.expect_consume(TokenKind.string).value
-                
+
                 try:
-                    min_val, max_val = map(float, range_str.split('-'))
-                    
+                    min_val, max_val = map(float, range_str.split("-"))
+
                     min_expr = self.gen_greater_expression(evaluated, NumberExpression(min_val), player_selector)
                     max_expr = self.gen_greater_expression(NumberExpression(max_val), evaluated, player_selector)
-                    
+
                     return AndExpression([min_expr, max_expr])
                 except ValueError:
-                    self.err(self.tokens[self.i-1], f"Invalid range format: {range_str}. Expected format like '1-100'")
+                    self.err(
+                        self.tokens[self.i - 1], f"Invalid range format: {range_str}. Expected format like '1-100'"
+                    )
         else:
             return SelectorGroup(player_selector, evaluated)
-        
+
         return SelectorGroup(player_selector, evaluated)
 
     def parse_indexed_numeric_comparison(self, evaluated, player_selector):
@@ -113,112 +122,148 @@ class Parser:
         # This also works for single numbers
         # TODO: Maybe refactor this and parse_numeric_comparison to condense code?
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
-            self.i += 1 
-            
+            self.i += 1
+
             expressions = []
             index = 0
-            
+
             while self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.square_close:
                 if self.tokens[self.i].kind == TokenKind.comma:
                     self.i += 1
                     continue
-                    
+
                 indexed_eval = IndexAccessExpression(evaluated, NumberExpression(index))
-                
+
                 if self.tokens[self.i].kind in [TokenKind.greater, TokenKind.less, TokenKind.equals]:
                     operator = self.tokens[self.i]
                     self.i += 1
                     target = self.parse_expression()
-                    
+
                     if operator.kind == TokenKind.greater:
                         expressions.append(self.gen_greater_expression(indexed_eval, target, player_selector))
                     elif operator.kind == TokenKind.less:
                         expressions.append(self.gen_greater_expression(target, indexed_eval, player_selector))
                     else:  # equals
                         expressions.append(self.gen_equivalent_expression(indexed_eval, target, player_selector))
-                        
+
                 elif self.tokens[self.i].kind == TokenKind.keyword_isbetween:
                     self.i += 1
-    
+
                     if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier:
                         range_ident = self.tokens[self.i].literal
                         self.i += 1
-    
+
                         range_expr = IdentExpression(range_ident)
-    
+
                         # For a variable reference like BetweenVal, we need to:
                         # 1. Parse the string at runtime (e.g., "99-101")
                         # 2. Extract min and max values
                         # 3. Compare with the indexed value
-                        
+
                         # Create a special expression for range checking with a variable
-                        min_expr = self.gen_greater_expression(indexed_eval, 
-                                    RangeMinExpression(range_expr), player_selector)
+                        min_expr = self.gen_greater_expression(
+                            indexed_eval, RangeMinExpression(range_expr), player_selector
+                        )
                         max_expr = self.gen_greater_expression(
-                                    RangeMaxExpression(range_expr), indexed_eval, player_selector)
-                        
+                            RangeMaxExpression(range_expr), indexed_eval, player_selector
+                        )
+
                         expressions.append(AndExpression([min_expr, max_expr]))
                     else:
                         range_str = self.expect_consume(TokenKind.string).value
-                        
+
                         try:
-                            min_val, max_val = map(float, range_str.split('-'))
-                            min_expr = self.gen_greater_expression(indexed_eval, NumberExpression(min_val), player_selector)
-                            max_expr = self.gen_greater_expression(NumberExpression(max_val), indexed_eval, player_selector)
+                            min_val, max_val = map(float, range_str.split("-"))
+                            min_expr = self.gen_greater_expression(
+                                indexed_eval, NumberExpression(min_val), player_selector
+                            )
+                            max_expr = self.gen_greater_expression(
+                                NumberExpression(max_val), indexed_eval, player_selector
+                            )
                             expressions.append(AndExpression([min_expr, max_expr]))
                         except ValueError:
-                            self.err(self.tokens[self.i-1], f"Invalid range format: {range_str}. Expected format like '1-100'")
+                            self.err(
+                                self.tokens[self.i - 1],
+                                f"Invalid range format: {range_str}. Expected format like '1-100'",
+                            )
                 else:
-                    expressions.append(self.gen_equivalent_expression(indexed_eval, self.parse_expression(), player_selector))
-                    
+                    expressions.append(
+                        self.gen_equivalent_expression(indexed_eval, self.parse_expression(), player_selector)
+                    )
+
                 index += 1
-                
+
                 # Check for comma after each comparison
                 if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.comma:
                     self.i += 1
-            
+
             self.expect_consume(TokenKind.square_close)
-            
+
             # For multiple expressions, we need ALL of them to be true (AND)
             if len(expressions) == 1:
                 return expressions[0]
             return AndExpression(expressions)
-        
+
         return self.parse_numeric_comparison(IndexAccessExpression(evaluated, NumberExpression(0)), player_selector)
-    
-    def gen_range_check_expression(self, value: Expression, range_ident: IdentExpression, player_selector: PlayerSelector) -> Expression:
-        return SelectorGroup(player_selector, 
-                            ContainsStringExpression(range_ident, value))
-    
+
+    def gen_range_check_expression(
+        self, value: Expression, range_ident: IdentExpression, player_selector: PlayerSelector
+    ) -> Expression:
+        return SelectorGroup(player_selector, ContainsStringExpression(range_ident, value))
+
     def get_stat_eval_expression(self, token_kind: TokenKind, is_percent: bool) -> Expression:
-        if token_kind in [TokenKind.command_expr_health, TokenKind.command_expr_health_above, TokenKind.command_expr_health_below]:
+        if token_kind in [
+            TokenKind.command_expr_health,
+            TokenKind.command_expr_health_above,
+            TokenKind.command_expr_health_below,
+        ]:
             if is_percent:
                 return DivideExpression(Eval(EvalKind.health), Eval(EvalKind.max_health))
             else:
                 return Eval(EvalKind.health)
-        elif token_kind in [TokenKind.command_expr_mana, TokenKind.command_expr_mana_above, TokenKind.command_expr_mana_below]:
+        elif token_kind in [
+            TokenKind.command_expr_mana,
+            TokenKind.command_expr_mana_above,
+            TokenKind.command_expr_mana_below,
+        ]:
             if is_percent:
                 return DivideExpression(Eval(EvalKind.mana), Eval(EvalKind.max_mana))
             else:
                 return Eval(EvalKind.mana)
-        elif token_kind in [TokenKind.command_expr_energy, TokenKind.command_expr_energy_above, TokenKind.command_expr_energy_below]:
+        elif token_kind in [
+            TokenKind.command_expr_energy,
+            TokenKind.command_expr_energy_above,
+            TokenKind.command_expr_energy_below,
+        ]:
             if is_percent:
                 return DivideExpression(Eval(EvalKind.energy), Eval(EvalKind.max_energy))
             else:
                 return Eval(EvalKind.energy)
-        elif token_kind in [TokenKind.command_expr_bagcount, TokenKind.command_expr_bagcount_above, TokenKind.command_expr_bagcount_below]:
+        elif token_kind in [
+            TokenKind.command_expr_bagcount,
+            TokenKind.command_expr_bagcount_above,
+            TokenKind.command_expr_bagcount_below,
+        ]:
             if is_percent:
                 return DivideExpression(Eval(EvalKind.bagcount), Eval(EvalKind.max_bagcount))
             else:
                 return Eval(EvalKind.bagcount)
-        elif token_kind in [TokenKind.command_expr_gold, TokenKind.command_expr_gold_above, TokenKind.command_expr_gold_below]:
+        elif token_kind in [
+            TokenKind.command_expr_gold,
+            TokenKind.command_expr_gold_above,
+            TokenKind.command_expr_gold_below,
+        ]:
             if is_percent:
                 return DivideExpression(Eval(EvalKind.gold), Eval(EvalKind.max_gold))
             else:
                 return Eval(EvalKind.gold)
         elif token_kind == TokenKind.command_expr_account_level:
             return Eval(EvalKind.account_level)
-        elif token_kind in [TokenKind.command_expr_potion_count, TokenKind.command_expr_potion_countbelow, TokenKind.command_expr_potion_countabove]:
+        elif token_kind in [
+            TokenKind.command_expr_potion_count,
+            TokenKind.command_expr_potion_countbelow,
+            TokenKind.command_expr_potion_countabove,
+        ]:
             if is_percent:
                 return DivideExpression(Eval(EvalKind.potioncount), Eval(EvalKind.max_potioncount))
             else:
@@ -226,26 +271,30 @@ class Parser:
         elif token_kind == TokenKind.command_expr_playercount:
             return Eval(EvalKind.playercount)
         elif token_kind == TokenKind.command_expr_window_text:
-            return Eval(EvalKind.windowtext, self.parse_value(['window_path']))
+            return Eval(EvalKind.windowtext, self.parse_value(["window_path"]))
         elif token_kind == TokenKind.command_expr_window_num:
-            return Eval(EvalKind.windownum, self.parse_value(['window_path']))
+            return Eval(EvalKind.windownum, self.parse_value(["window_path"]))
         elif token_kind == TokenKind.command_expr_duel_round:
             return Eval(EvalKind.duel_round)
         else:
-            self.err(self.tokens[self.i-1], f"Unexpected token kind: {token_kind}")
+            self.err(self.tokens[self.i - 1], f"Unexpected token kind: {token_kind}")
             return Eval(EvalKind.health)
 
     def parse_atom(self) -> NumberExpression | StringExpression | ListExpression | IdentExpression:
-        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier and self.tokens[self.i].literal.startswith('$'):
+        if (
+            self.i < len(self.tokens)
+            and self.tokens[self.i].kind == TokenKind.identifier
+            and self.tokens[self.i].literal.startswith("$")
+        ):
             constant_name = self.tokens[self.i].literal[1:]
             self.i += 1
             return ConstantReferenceExpression(constant_name)
-        
+
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.boolean_true:
             token = self.tokens[self.i]
             self.i += 1
             return ConstantExpression(token.literal, StringExpression("true"))
-        
+
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.boolean_false:
             token = self.tokens[self.i]
             self.i += 1
@@ -253,7 +302,7 @@ class Parser:
 
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
             return self.parse_list()
-        
+
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.path:
             return self.parse_zone_path_expression()
 
@@ -264,7 +313,7 @@ class Parser:
             tok = self.tokens[self.i]
             self.i += 1
             return IdentExpression(tok.literal)
-        
+
         tok = self.expect_consume_any([TokenKind.number, TokenKind.string, TokenKind.percent])
         match tok.kind:
             case TokenKind.number:
@@ -284,23 +333,27 @@ class Parser:
         else:
             return self.parse_atom()
 
-    def gen_greater_expression(self, left:Expression, right:Expression, player_selector: PlayerSelector):
+    def gen_greater_expression(self, left: Expression, right: Expression, player_selector: PlayerSelector):
         return SelectorGroup(player_selector, GreaterExpression(left, right))
 
-    def gen_equivalent_expression(self, left:Expression, right:Expression, player_selector: PlayerSelector):
+    def gen_equivalent_expression(self, left: Expression, right: Expression, player_selector: PlayerSelector):
         return SelectorGroup(player_selector, EquivalentExpression(left, right))
-    
+
     def parse_value(self, expected_types=None) -> Expression:
         if expected_types is None:
             expected_types = [TokenKind.number, TokenKind.string, TokenKind.percent, TokenKind.identifier]
 
-        if TokenKind.identifier in expected_types or 'window_path' in expected_types:
+        if TokenKind.identifier in expected_types or "window_path" in expected_types:
             if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier:
                 ident = self.tokens[self.i].literal
                 self.i += 1
                 return IdentExpression(ident)
-        
-        if 'window_path' in expected_types and self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
+
+        if (
+            "window_path" in expected_types
+            and self.i < len(self.tokens)
+            and self.tokens[self.i].kind == TokenKind.square_open
+        ):
             return self.parse_list()
 
         # Special handling for zone paths - accept both path tokens and identifiers
@@ -320,7 +373,7 @@ class Parser:
         valid_types = [t for t in expected_types if t in [TokenKind.number, TokenKind.string, TokenKind.percent]]
         if not valid_types:
             self.err(self.tokens[self.i], f"Expected one of {expected_types} but none are basic token types")
-        
+
         tok = self.expect_consume_any(valid_types)
         match tok.kind:
             case TokenKind.number:
@@ -334,76 +387,81 @@ class Parser:
 
     def parse_numeric_stat_expression(self, token_kind: TokenKind, player_selector: PlayerSelector) -> Expression:
         self.i += 1
-        
+
         # Handle "is between" case
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.keyword_isbetween:
             return self._handle_between_comparison(token_kind, player_selector)
-        
+
         # Handle explicit comparison operators
-        if self.i < len(self.tokens) and self.tokens[self.i].kind in [TokenKind.greater, TokenKind.less, TokenKind.equals]:
+        if self.i < len(self.tokens) and self.tokens[self.i].kind in [
+            TokenKind.greater,
+            TokenKind.less,
+            TokenKind.equals,
+        ]:
             return self._handle_explicit_comparison(token_kind, player_selector)
-        
+
         # Handle implicit comparison based on token type
         return self._handle_implicit_comparison(token_kind, player_selector)
-    
+
     def _handle_between_comparison(self, token_kind: TokenKind, player_selector: PlayerSelector) -> Expression:
         self.i += 1
-        
+
         min_value = self.parse_value([TokenKind.number, TokenKind.percent, TokenKind.identifier])
         max_value = self.parse_value([TokenKind.number, TokenKind.percent, TokenKind.identifier])
-        
-        is_percent = (isinstance(min_value, NumberExpression) and self.tokens[self.i-2].kind == TokenKind.percent) or \
-                     (isinstance(max_value, NumberExpression) and self.tokens[self.i-1].kind == TokenKind.percent)
-        
+
+        is_percent = (
+            isinstance(min_value, NumberExpression) and self.tokens[self.i - 2].kind == TokenKind.percent
+        ) or (isinstance(max_value, NumberExpression) and self.tokens[self.i - 1].kind == TokenKind.percent)
+
         evaluated = self.get_stat_eval_expression(token_kind, is_percent)
-        
+
         min_expr = self.gen_greater_expression(evaluated, min_value, player_selector)
         max_expr = self.gen_greater_expression(max_value, evaluated, player_selector)
-        
+
         return AndExpression([min_expr, max_expr])
-    
+
     def _handle_explicit_comparison(self, token_kind: TokenKind, player_selector: PlayerSelector) -> Expression:
         operator = self.tokens[self.i]
         self.i += 1
-        
+
         target = self.parse_value([TokenKind.number, TokenKind.percent, TokenKind.identifier])
         evaluated = self.get_stat_eval_expression(token_kind, False)
-        
+
         if operator.kind == TokenKind.greater:
             return self.gen_greater_expression(evaluated, target, player_selector)
         elif operator.kind == TokenKind.less:
             return self.gen_greater_expression(target, evaluated, player_selector)
         else:  # equals
             return self.gen_equivalent_expression(evaluated, target, player_selector)
-    
+
     def _handle_implicit_comparison(self, token_kind: TokenKind, player_selector: PlayerSelector) -> Expression:
         value_expr = self.parse_value([TokenKind.number, TokenKind.percent])
-        
+
         if not isinstance(value_expr, NumberExpression):
-            self.err(self.tokens[self.i-1], f"Expected number or percent, got {value_expr}")
-            
-        is_percent = self.tokens[self.i-1].kind == TokenKind.percent
+            self.err(self.tokens[self.i - 1], f"Expected number or percent, got {value_expr}")
+
+        is_percent = self.tokens[self.i - 1].kind == TokenKind.percent
         evaluated = self.get_stat_eval_expression(token_kind, is_percent)
-        
+
         # Define token groups for comparison types
         above_tokens = [
-            TokenKind.command_expr_health_above, 
-            TokenKind.command_expr_mana_above, 
-            TokenKind.command_expr_energy_above, 
-            TokenKind.command_expr_bagcount_above, 
-            TokenKind.command_expr_gold_above, 
-            TokenKind.command_expr_potion_countabove
+            TokenKind.command_expr_health_above,
+            TokenKind.command_expr_mana_above,
+            TokenKind.command_expr_energy_above,
+            TokenKind.command_expr_bagcount_above,
+            TokenKind.command_expr_gold_above,
+            TokenKind.command_expr_potion_countabove,
         ]
-        
+
         below_tokens = [
-            TokenKind.command_expr_health_below, 
-            TokenKind.command_expr_mana_below, 
-            TokenKind.command_expr_energy_below, 
-            TokenKind.command_expr_bagcount_below, 
-            TokenKind.command_expr_gold_below, 
-            TokenKind.command_expr_potion_countbelow
+            TokenKind.command_expr_health_below,
+            TokenKind.command_expr_mana_below,
+            TokenKind.command_expr_energy_below,
+            TokenKind.command_expr_bagcount_below,
+            TokenKind.command_expr_gold_below,
+            TokenKind.command_expr_potion_countbelow,
         ]
-        
+
         if token_kind in above_tokens:
             return self.gen_greater_expression(evaluated, value_expr, player_selector)
         elif token_kind in below_tokens:
@@ -413,27 +471,31 @@ class Parser:
 
     def parse_command_expression(self) -> Expression:
         result = Command()
-        player_selector  = self.parse_player_selector()
+        player_selector = self.parse_player_selector()
         result.player_selector = player_selector
 
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier:
             ident = self.tokens[self.i].literal
             self.i += 1
-            
+
             if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.equals:
                 self.i += 1
-                
+
                 # Check for boolean literals first
                 if self.i < len(self.tokens):
                     if self.tokens[self.i].kind == TokenKind.boolean_true:
                         token = self.tokens[self.i]
                         self.i += 1
-                        return ConstantCheckExpression(ident, ConstantExpression(token.literal, StringExpression("true")))
+                        return ConstantCheckExpression(
+                            ident, ConstantExpression(token.literal, StringExpression("true"))
+                        )
                     elif self.tokens[self.i].kind == TokenKind.boolean_false:
                         token = self.tokens[self.i]
                         self.i += 1
-                        return ConstantCheckExpression(ident, ConstantExpression(token.literal, StringExpression("false")))
-                
+                        return ConstantCheckExpression(
+                            ident, ConstantExpression(token.literal, StringExpression("false"))
+                        )
+
                 # Otherwise parse as normal expression
                 value = self.parse_expression()
                 return ConstantCheckExpression(ident, value)
@@ -449,7 +511,7 @@ class Parser:
 
                 if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_to:
                     self.i += 1
-                    text = self.parse_value([TokenKind.path, TokenKind.identifier]) # type: ignore
+                    text = self.parse_value([TokenKind.path, TokenKind.identifier])  # type: ignore
                     if isinstance(text, StringExpression):
                         result.data = [ExprKind.zone_changed, text.string.lower()]
                     elif isinstance(text, IdentExpression):
@@ -464,7 +526,7 @@ class Parser:
 
                 if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_to:
                     self.i += 1
-                    text = self.parse_value([TokenKind.string, TokenKind.identifier]) # type: ignore
+                    text = self.parse_value([TokenKind.string, TokenKind.identifier])  # type: ignore
                     if isinstance(text, StringExpression):
                         result.data = [ExprKind.goal_changed, text.string.lower()]
                     elif isinstance(text, IdentExpression):
@@ -479,7 +541,7 @@ class Parser:
 
                 if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_to:
                     self.i += 1
-                    text = self.parse_value([TokenKind.string, TokenKind.identifier]) # type: ignore
+                    text = self.parse_value([TokenKind.string, TokenKind.identifier])  # type: ignore
                     if isinstance(text, StringExpression):
                         result.data = [ExprKind.quest_changed, text.string.lower()]
                     elif isinstance(text, IdentExpression):
@@ -502,11 +564,11 @@ class Parser:
                         if isinstance(item_expr, StringExpression):
                             items.append(item_expr.string.lower())
                         else:
-                            self.err(self.tokens[self.i-1], f"Expected string in item list, got {item_expr}")
+                            self.err(self.tokens[self.i - 1], f"Expected string in item list, got {item_expr}")
 
                     result.data = [ExprKind.items_dropped, items]
                 else:
-                    item = self.parse_value([TokenKind.string, TokenKind.identifier]) # type: ignore
+                    item = self.parse_value([TokenKind.string, TokenKind.identifier])  # type: ignore
                     if isinstance(item, StringExpression):
                         result.data = [ExprKind.items_dropped, item.string.lower()]
                     elif isinstance(item, IdentExpression):
@@ -516,7 +578,7 @@ class Parser:
             case TokenKind.command_expr_window_visible:
                 result.kind = CommandKind.expr
                 self.i += 1
-                result.data = [ExprKind.window_visible, self.parse_value(['window_path'])]  # type: ignore
+                result.data = [ExprKind.window_visible, self.parse_value(["window_path"])]  # type: ignore
             case TokenKind.command_expr_in_zone:
                 result.kind = CommandKind.expr
                 self.i += 1
@@ -544,7 +606,7 @@ class Parser:
             case TokenKind.command_expr_has_quest:
                 result.kind = CommandKind.expr
                 self.i += 1
-                text = self.parse_value([TokenKind.string, TokenKind.identifier]) # type: ignore
+                text = self.parse_value([TokenKind.string, TokenKind.identifier])  # type: ignore
                 if isinstance(text, StringExpression):
                     result.data = [ExprKind.has_quest, text.string.lower()]
                 elif isinstance(text, IdentExpression):
@@ -603,60 +665,74 @@ class Parser:
                 self.i += 1
                 window_path = self.parse_window_path()
                 contains = self.consume_optional(TokenKind.contains)
-            
+
                 if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.square_open:
                     string_list = self.parse_list()
-            
+
                     if contains:
-                        return SelectorGroup(player_selector, ContainsStringExpression(
-                            Eval(EvalKind.windowtext, [window_path]), 
-                            ListExpression(string_list)
-                        ))
+                        return SelectorGroup(
+                            player_selector,
+                            ContainsStringExpression(
+                                Eval(EvalKind.windowtext, [window_path]), ListExpression(string_list)
+                            ),
+                        )
                     else:
                         or_expressions = []
                         window_text_eval = Eval(EvalKind.windowtext, [window_path])
-                        
+
                         if isinstance(string_list, ListExpression):
                             items_to_iterate = string_list.items
                         else:
                             items_to_iterate = string_list
-                            
+
                         for string_expr in items_to_iterate:
                             if isinstance(string_expr, StringExpression):
-                                or_expressions.append(EquivalentExpression(
-                                    window_text_eval, 
-                                    StringExpression(string_expr.string.lower())
-                                ))
+                                or_expressions.append(
+                                    EquivalentExpression(window_text_eval, StringExpression(string_expr.string.lower()))
+                                )
                             elif isinstance(string_expr, IdentExpression):
-                                or_expressions.append(EquivalentExpression(
-                                    window_text_eval, 
-                                    string_expr
-                                ))
-                        
+                                or_expressions.append(EquivalentExpression(window_text_eval, string_expr))
+
                         if len(or_expressions) == 1:
                             return SelectorGroup(player_selector, or_expressions[0])
-                        
+
                         return SelectorGroup(player_selector, OrExpression(or_expressions))
                 else:
                     target_expr = self.parse_value([TokenKind.string, TokenKind.identifier])
-            
+
                     if isinstance(target_expr, StringExpression):
                         string_value = target_expr.string.lower()
                     elif isinstance(target_expr, IdentExpression):
                         if contains:
-                            return SelectorGroup(player_selector, ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), target_expr))
+                            return SelectorGroup(
+                                player_selector,
+                                ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), target_expr),
+                            )
                         else:
-                            return SelectorGroup(player_selector, EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), target_expr))
+                            return SelectorGroup(
+                                player_selector,
+                                EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), target_expr),
+                            )
                     else:
-                        self.err(self.tokens[self.i-1], f"Expected string or identifier, got {target_expr}")
+                        self.err(self.tokens[self.i - 1], f"Expected string or identifier, got {target_expr}")
                         string_value = ""  # Default value in case of error
-                        
-                    assert(type(window_path) == list)
-                    
+
+                    assert type(window_path) == list
+
                     if contains:
-                        return SelectorGroup(player_selector, ContainsStringExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(string_value)))
+                        return SelectorGroup(
+                            player_selector,
+                            ContainsStringExpression(
+                                Eval(EvalKind.windowtext, [window_path]), StringExpression(string_value)
+                            ),
+                        )
                     else:
-                        return SelectorGroup(player_selector, EquivalentExpression(Eval(EvalKind.windowtext, [window_path]), StringExpression(string_value)))
+                        return SelectorGroup(
+                            player_selector,
+                            EquivalentExpression(
+                                Eval(EvalKind.windowtext, [window_path]), StringExpression(string_value)
+                            ),
+                        )
             case TokenKind.command_expr_window_num:
                 self.i += 1
                 window_path = self.parse_window_path()
@@ -672,11 +748,11 @@ class Parser:
             case TokenKind.command_expr_window_disabled:
                 result.kind = CommandKind.expr
                 self.i += 1
-                result.data = [ExprKind.window_disabled, self.parse_value(['window_path'])]  # type: ignore
+                result.data = [ExprKind.window_disabled, self.parse_value(["window_path"])]  # type: ignore
             case TokenKind.command_expr_in_range:
                 result.kind = CommandKind.expr
                 self.i += 1
-                text = self.parse_value([TokenKind.string, TokenKind.identifier]) # type: ignore
+                text = self.parse_value([TokenKind.string, TokenKind.identifier])  # type: ignore
                 if isinstance(text, StringExpression):
                     result.data = [ExprKind.in_range, text.string.lower()]
                 elif isinstance(text, IdentExpression):
@@ -690,7 +766,7 @@ class Parser:
             case TokenKind.command_expr_tracking_quest:
                 result.kind = CommandKind.expr
                 self.i += 1
-                text = self.parse_value([TokenKind.string]) # type: ignore
+                text = self.parse_value([TokenKind.string])  # type: ignore
                 if isinstance(text, StringExpression):
                     result.data = [ExprKind.tracking_quest, text.string.lower()]
                 elif isinstance(text, IdentExpression):
@@ -700,7 +776,7 @@ class Parser:
             case TokenKind.command_expr_tracking_goal:
                 result.kind = CommandKind.expr
                 self.i += 1
-                text = self.parse_value([TokenKind.string]) # type: ignore
+                text = self.parse_value([TokenKind.string])  # type: ignore
                 if isinstance(text, StringExpression):
                     result.data = [ExprKind.tracking_goal, text.string.lower()]
                 elif isinstance(text, IdentExpression):
@@ -734,24 +810,39 @@ class Parser:
             self.i += 1
             # Parse the right-hand side expression
             right = self.parse_negation_expression()
-            
+
             if operator.kind == TokenKind.keyword_and:
                 expr = AndExpression([expr, right])
             else:  # TokenKind.keyword_or
                 expr = OrExpression([expr, right])
-        
+
         return expr
 
     def parse_expression(self) -> Expression:
         if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_and:
             self.err(self.tokens[self.i], "Expected an expression before &&")
-            
+
         return self.parse_logical_expression()
 
     def parse_player_selector(self) -> PlayerSelector:
         result = PlayerSelector()
-        valid_toks = [TokenKind.keyword_same_any, TokenKind.keyword_any_player, TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard, TokenKind.colon]
-        expected_toks = [TokenKind.keyword_same_any, TokenKind.keyword_any_player, TokenKind.keyword_mass, TokenKind.keyword_except, TokenKind.player_num, TokenKind.player_wildcard]
+        valid_toks = [
+            TokenKind.keyword_same_any,
+            TokenKind.keyword_any_player,
+            TokenKind.keyword_mass,
+            TokenKind.keyword_except,
+            TokenKind.player_num,
+            TokenKind.player_wildcard,
+            TokenKind.colon,
+        ]
+        expected_toks = [
+            TokenKind.keyword_same_any,
+            TokenKind.keyword_any_player,
+            TokenKind.keyword_mass,
+            TokenKind.keyword_except,
+            TokenKind.player_num,
+            TokenKind.player_wildcard,
+        ]
         while self.i < len(self.tokens) and self.tokens[self.i].kind in valid_toks:
             if self.tokens[self.i].kind not in expected_toks:
                 self.err(self.tokens[self.i], f"Invalid player selector encountered: {self.tokens[self.i]}")
@@ -788,7 +879,7 @@ class Parser:
         result.validate()
         if len(result.player_nums) == 0 and not result.wildcard and not result.any_player and not result.same_any:
             result.mass = True
-        result.validate() # sanity check
+        result.validate()  # sanity check
         return result
 
     def parse_key(self) -> KeyExpression:
@@ -845,42 +936,43 @@ class Parser:
     def parse_zone_path(self) -> list[str] | None:
         res = self.parse_zone_path_optional()
         if res is None:
-            self.err(
-                self.tokens[self.i] if self.i < len(self.tokens) else self.tokens[-1],
-                "Failed to parse zone path"
-            )
+            self.err(self.tokens[self.i] if self.i < len(self.tokens) else self.tokens[-1], "Failed to parse zone path")
         return res
-    
+
     def parse_zone_path_expression(self) -> Expression:
         self.i += 1  # Consume the path token
-        path_str = self.tokens[self.i-1].literal
+        path_str = self.tokens[self.i - 1].literal
         return StringExpression(path_str)
 
     def parse_list(self) -> ListExpression:
         self.expect_consume(TokenKind.square_open)
-        
+
         items = []
         while self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.square_close:
             if self.tokens[self.i].kind == TokenKind.comma:
                 self.i += 1
                 continue
-                
+
             items.append(self.parse_expression())
-            
+
             if self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.square_close:
                 self.expect_consume(TokenKind.comma)
-        
+
         self.expect_consume(TokenKind.square_close)
         return ListExpression(items)
 
     def parse_window_path(self) -> list[str] | Expression:
         # Check if this is a variable reference with $ prefix
-        if self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.identifier and self.tokens[self.i].literal.startswith('$'):
+        if (
+            self.i < len(self.tokens)
+            and self.tokens[self.i].kind == TokenKind.identifier
+            and self.tokens[self.i].literal.startswith("$")
+        ):
             ident = self.tokens[self.i].literal
             self.i += 1
             const_name = ident[1:]  # Remove the $ prefix
             return IdentExpression(const_name)
-        
+
         # Original list parsing logic
         list_expr = self.parse_list()
         result = []
@@ -902,14 +994,14 @@ class Parser:
     def parse_command(self):
         commands = []
         commands.append(self._parse_simple_command())
-        
+
         while self.i < len(self.tokens) and self.tokens[self.i].kind == TokenKind.logical_and:
-            self.i += 1 
+            self.i += 1
             commands.append(self._parse_simple_command())
 
         if len(commands) == 1:
             return commands[0]
-        
+
         return ParallelCommandStmt(commands)
 
     def _parse_simple_command(self) -> Command:
@@ -953,6 +1045,7 @@ class Parser:
                 self.i += 1
                 kind = self.tokens[self.i].kind
                 result.kind = CommandKind.log
+
                 def print_literal():
                     final_str = ""
                     while self.tokens[self.i].kind != TokenKind.END_LINE:
@@ -964,15 +1057,19 @@ class Parser:
                                 final_str += f"{tok.literal} "
                         self.i += 1
                     result.data = [LogKind.single, StringExpression(final_str)]
+
                 match kind:
                     case TokenKind.identifier:
                         if self.tokens[self.i].literal == "window":
                             self.i += 1
                             window_path = self.parse_window_path()
-                            result.data = [LogKind.multi, StrFormatExpression("windowtext: %s", Eval(EvalKind.windowtext, window_path))]
+                            result.data = [
+                                LogKind.multi,
+                                StrFormatExpression("windowtext: %s", Eval(EvalKind.windowtext, window_path)),
+                            ]
                         else:
                             # Check if it's a variable reference with $ prefix
-                            if self.tokens[self.i].literal.startswith('$'):
+                            if self.tokens[self.i].literal.startswith("$"):
                                 ident = self.tokens[self.i].literal
                                 self.i += 1
                                 const_name = ident[1:]  # Remove the $ prefix
@@ -981,32 +1078,63 @@ class Parser:
                                 print_literal()
                     case TokenKind.command_expr_bagcount:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("bagcount: %d/%d", Eval(EvalKind.bagcount),Eval(EvalKind.max_bagcount))]
+                        result.data = [
+                            LogKind.multi,
+                            StrFormatExpression(
+                                "bagcount: %d/%d", Eval(EvalKind.bagcount), Eval(EvalKind.max_bagcount)
+                            ),
+                        ]
                     case TokenKind.command_expr_mana:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("mana: %d/%d", Eval(EvalKind.mana), Eval(EvalKind.max_mana))]
+                        result.data = [
+                            LogKind.multi,
+                            StrFormatExpression("mana: %d/%d", Eval(EvalKind.mana), Eval(EvalKind.max_mana)),
+                        ]
                     case TokenKind.command_expr_energy:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("energy: %d/%d", Eval(EvalKind.energy), Eval(EvalKind.max_energy))]
+                        result.data = [
+                            LogKind.multi,
+                            StrFormatExpression("energy: %d/%d", Eval(EvalKind.energy), Eval(EvalKind.max_energy)),
+                        ]
                     case TokenKind.command_expr_health:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("health: %d/%d", Eval(EvalKind.health), Eval(EvalKind.max_health))]
+                        result.data = [
+                            LogKind.multi,
+                            StrFormatExpression("health: %d/%d", Eval(EvalKind.health), Eval(EvalKind.max_health)),
+                        ]
                     case TokenKind.command_expr_gold:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("gold: %d/%d", Eval(EvalKind.gold), Eval(EvalKind.max_gold))]
+                        result.data = [
+                            LogKind.multi,
+                            StrFormatExpression("gold: %d/%d", Eval(EvalKind.gold), Eval(EvalKind.max_gold)),
+                        ]
                     case TokenKind.command_expr_potion_count:
                         self.i += 1
-                        result.data = [LogKind.multi, StrFormatExpression("potioncount: %d/%d", Eval(EvalKind.potioncount), Eval(EvalKind.max_potioncount))]
+                        result.data = [
+                            LogKind.multi,
+                            StrFormatExpression(
+                                "potioncount: %d/%d", Eval(EvalKind.potioncount), Eval(EvalKind.max_potioncount)
+                            ),
+                        ]
                     case TokenKind.command_expr_playercount:
                         self.i += 1
-                        result.data = [LogKind.single, StrFormatExpression("playercount: %d", Eval(EvalKind.playercount))]
+                        result.data = [
+                            LogKind.single,
+                            StrFormatExpression("playercount: %d", Eval(EvalKind.playercount)),
+                        ]
                     case TokenKind.command_expr_window_text:
                         self.i += 1
                         window_path = self.parse_window_path()
-                        result.data = [LogKind.multi, StrFormatExpression("windowtext: %s", Eval(EvalKind.windowtext, [window_path]))]
+                        result.data = [
+                            LogKind.multi,
+                            StrFormatExpression("windowtext: %s", Eval(EvalKind.windowtext, [window_path])),
+                        ]
                     case TokenKind.command_expr_any_player_list:
                         self.i += 1
-                        result.data = [LogKind.single, StrFormatExpression("clients using anyplayer: %s", Eval(EvalKind.any_player_list))]
+                        result.data = [
+                            LogKind.single,
+                            StrFormatExpression("clients using anyplayer: %s", Eval(EvalKind.any_player_list)),
+                        ]
                     case TokenKind.string:
                         print_literal()
                     case _:
@@ -1120,7 +1248,7 @@ class Parser:
                     health_expr = IdentExpression(health_ident.literal)
                 else:
                     health_arg = None
-                
+
                 if health_arg is not None:
                     self.skip_comma()
 
@@ -1130,9 +1258,9 @@ class Parser:
                     elif self.tokens[self.i].kind == TokenKind.identifier:
                         mana_ident = self.expect_consume(TokenKind.identifier)
                         mana_expr = IdentExpression(mana_ident.literal)
-                    
+
                     result.data = [health_expr, mana_expr]
-                
+
                 self.end_line()
             case TokenKind.command_buypotions:
                 result.kind = CommandKind.buypotions
@@ -1153,9 +1281,9 @@ class Parser:
                     x_expr = NumberExpression(x.value)
                 elif self.tokens[self.i].kind == TokenKind.identifier:
                     x = self.expect_consume(TokenKind.identifier)
-                    x_expr = IdentExpression(x.literal)  
+                    x_expr = IdentExpression(x.literal)
 
-                if x_expr is not None:                  
+                if x_expr is not None:
                     self.skip_comma()
 
                     if self.tokens[self.i].kind == TokenKind.number:
@@ -1177,9 +1305,9 @@ class Parser:
                     x_expr = NumberExpression(x.value)
                 elif self.tokens[self.i].kind == TokenKind.identifier:
                     x = self.expect_consume(TokenKind.identifier)
-                    x_expr = IdentExpression(x.literal)  
+                    x_expr = IdentExpression(x.literal)
 
-                if x_expr is not None:                  
+                if x_expr is not None:
                     self.skip_comma()
 
                     if self.tokens[self.i].kind == TokenKind.number:
@@ -1209,13 +1337,13 @@ class Parser:
             case TokenKind.command_entitytp:
                 result.kind = CommandKind.teleport
                 self.i += 1
-                
+
                 # Check for optional 'nav' parameter
                 nav_mode = False
                 if self.tokens[self.i].kind == TokenKind.command_nav:
-                    self.i += 1 
+                    self.i += 1
                     nav_mode = True
-                
+
                 arg = self.consume_optional(TokenKind.string)
                 if arg is not None:
                     result.data = [TeleportKind.entity_literal, arg.value]
@@ -1269,9 +1397,13 @@ class Parser:
             case TokenKind.command_select_friend:
                 result.kind = CommandKind.select_friend
                 self.i += 1
-                if self.tokens[self.i].kind == TokenKind.identifier and self.i + 1 < len(self.tokens) and self.tokens[self.i + 1].kind == TokenKind.END_LINE:
+                if (
+                    self.tokens[self.i].kind == TokenKind.identifier
+                    and self.i + 1 < len(self.tokens)
+                    and self.tokens[self.i + 1].kind == TokenKind.END_LINE
+                ):
                     ident = self.expect_consume(TokenKind.identifier)
-                    result.data = [ident.literal]  
+                    result.data = [ident.literal]
                 else:
                     name_parts = []
                     while self.i < len(self.tokens) and self.tokens[self.i].kind != TokenKind.END_LINE:
@@ -1305,7 +1437,11 @@ class Parser:
 
     def consume_any_ident(self) -> IdentExpression:
         result = self.tokens[self.i]
-        if result.kind != TokenKind.identifier and "keyword" not in result.kind.name and "command" not in result.kind.name:
+        if (
+            result.kind != TokenKind.identifier
+            and "keyword" not in result.kind.name
+            and "command" not in result.kind.name
+        ):
             self.err(result, "Unable to consume an identifier")
         self.i += 1
         return IdentExpression(result.literal)
@@ -1364,7 +1500,10 @@ class Parser:
                 true_body = self.parse_block()
                 elif_body_stack: list[IfStmt] = []
                 else_body = StmtList([])
-                while self.i < len(self.tokens) and self.tokens[self.i].kind in [TokenKind.keyword_else, TokenKind.keyword_elif]:
+                while self.i < len(self.tokens) and self.tokens[self.i].kind in [
+                    TokenKind.keyword_else,
+                    TokenKind.keyword_elif,
+                ]:
                     if self.tokens[self.i].kind == TokenKind.keyword_else:
                         self.i += 1
                         else_body = self.parse_block()
@@ -1398,61 +1537,65 @@ class Parser:
             case _:
                 return CommandStmt(self.parse_command())
 
-    
     def parse(self) -> list[Stmt]:
         result = []
         while self.i < len(self.tokens):
             stmt = self.parse_stmt()
             if stmt:
                 result.append(stmt)
-        
+
         return result
+
+
 def add_indent(string, indent):
     for _ in range(indent):
-        string += '    '
+        string += "    "
     return string
 
-def print_cmd(input_str:str):
+
+def print_cmd(input_str: str):
     final_string = ""
     indent = 0
     idx = 0
 
     while idx < len(input_str):
         ch = input_str[idx]
-        if ch == '{':
+        if ch == "{":
             indent += 1
-            final_string += f'{ch}\n'
+            final_string += f"{ch}\n"
             final_string = add_indent(final_string, indent)
-        elif ch == '}':
-            if idx < len(input_str)-1 and (ch=='}' and input_str[idx+1] == ';'):
+        elif ch == "}":
+            if idx < len(input_str) - 1 and (ch == "}" and input_str[idx + 1] == ";"):
                 indent -= 1
-                final_string += '\n'
+                final_string += "\n"
                 final_string = add_indent(final_string, indent)
-                final_string += f'{ch}'
-                final_string += f'{input_str[idx+1]}\n'
-                idx+=1
+                final_string += f"{ch}"
+                final_string += f"{input_str[idx + 1]}\n"
+                idx += 1
                 final_string = add_indent(final_string, indent)
             else:
                 indent -= 1
-                final_string += '\n'
+                final_string += "\n"
                 final_string = add_indent(final_string, indent)
-                final_string += f'{ch}\n'
+                final_string += f"{ch}\n"
                 final_string = add_indent(final_string, indent)
-        elif ch == ';':
-            final_string += f'{ch}\n'
+        elif ch == ";":
+            final_string += f"{ch}\n"
             final_string = add_indent(final_string, indent)
         else:
             final_string += ch
 
-        idx+=1
+        idx += 1
     print(final_string)
 
+
 if __name__ == "__main__":
-    from .tokenizer import Tokenizer
     from pathlib import Path
+
+    from .tokenizer import Tokenizer
 
     toks = Tokenizer().tokenize(Path("./deimoslang/testbot.txt").read_text())
     parser = Parser(toks)
-    parsed = (parser.parse())
+    parsed = parser.parse()
     for parse in parsed:
         print_cmd(str(parse))

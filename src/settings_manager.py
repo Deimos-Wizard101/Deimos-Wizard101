@@ -3,7 +3,6 @@ import os
 import shutil
 from pathlib import Path
 
-
 DEFAULT_THEME = {
     "bg_color": "#1e1e1e",
     "alt_bg": "#2d2d2d",
@@ -124,6 +123,7 @@ class DeimosSettings:
             settings_dir = Path(appdata) / "Deimos"
             settings_dir.mkdir(parents=True, exist_ok=True)
             self._path = settings_dir / "settings.json"
+
         else:
             self._path = Path(settings_path)
 
@@ -136,6 +136,7 @@ class DeimosSettings:
                 self._data = json.loads(self._path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 self._data = {}
+
         if "hotkeys" not in self._data:
             self._data["hotkeys"] = dict(DEFAULT_HOTKEYS)
             self._save()
@@ -184,8 +185,10 @@ class DeimosSettings:
     def add_recent_import(self, category: str, filepath: str, max_recent: int = 10):
         ri = self._data.setdefault("recent_imports", {})
         recent = ri.setdefault(category, [])
+
         if filepath in recent:
             recent.remove(filepath)
+
         recent.insert(0, filepath)
         del recent[max_recent:]
         self._save()
@@ -199,9 +202,11 @@ class DeimosSettings:
                 theme.update(data)
             except (json.JSONDecodeError, OSError):
                 pass
+
         else:
             tp.parent.mkdir(parents=True, exist_ok=True)
             tp.write_text(json.dumps(theme, indent=2), encoding="utf-8")
+
         return theme
 
     def set_theme(self, theme_dict: dict):
@@ -217,32 +222,42 @@ class DeimosSettings:
         try:
             data = json.loads(Path(filepath).read_text(encoding="utf-8"))
             theme.update(data)
+
         except (json.JSONDecodeError, OSError):
             pass
+
         self.set_theme(theme)
         return theme
 
     def migrate_theme_from_settings(self):
         """One-time migration: derive theme file from old settings keys."""
         tp = _theme_path()
+
         if tp.exists():
             return
+
         s = self._data.get("settings", {})
         old_theme = s.get("theme")
         old_text = s.get("text_color")
         old_btn = s.get("button_color")
+
         if old_theme is None and old_text is None and old_btn is None:
             return
+
         t = old_theme.lower() if isinstance(old_theme, str) else "black"
+
         if t in ("black", "dark"):
             bg = "#1e1e1e"
             alt = "#2d2d2d"
+
         else:
             bg = "#f0f0f0"
             alt = "#ffffff"
+
         tc = old_text if isinstance(old_text, str) else "#ffffff"
         bc = old_btn if isinstance(old_btn, str) else "#4a019e"
         sc = tc if tc else ("#e0e0e0" if t in ("black", "dark") else "#333333")
+
         theme = {
             "bg_color": bg,
             "alt_bg": alt,
@@ -252,8 +267,10 @@ class DeimosSettings:
             "titlebar_bg": bg,
         }
         self.set_theme(theme)
+
         for k in ("theme", "text_color", "button_color"):
             s.pop(k, None)
+
         self._save()
 
     def migrate_settings_from_ini(self, parser):
@@ -262,22 +279,28 @@ class DeimosSettings:
             return
 
         migrated = dict(DEFAULT_SETTINGS)
+
         for (section, ini_key), (settings_key, typ) in _INI_SETTINGS_MAP.items():
             raw = parser.get(section, ini_key, fallback=None)
+
             if raw is None:
                 continue
+
             if typ is bool:
                 migrated[settings_key] = raw.lower() in ("true", "yes", "1", "on")
+
             elif typ is float:
                 try:
                     migrated[settings_key] = float(raw)
                 except ValueError:
                     pass
+
             elif typ is int:
                 try:
                     migrated[settings_key] = int(raw)
                 except ValueError:
                     pass
+
             else:
                 val = raw.strip()
                 migrated[settings_key] = val if val else None
@@ -304,15 +327,18 @@ class DeimosSettings:
         hotkeys = dict(DEFAULT_HOTKEYS)
         for ini_key, action_id in _INI_KEY_MAP.items():
             value = parser.get("hotkeys", ini_key, fallback=None)
+
             if value is not None:
                 # The ini stores just the key name (no modifier info)
                 # Special case: dialogue also has shift variant
                 if action_id == "toggle_dialogue":
                     hotkeys["toggle_dialogue"] = {"key": value, "modifiers": []}
                     # hotkeys["toggle_dialogue_side_quests"] = {"key": value, "modifiers": ["SHIFT"]}
+
                 elif action_id == "toggle_freecam":
                     hotkeys["toggle_freecam"] = {"key": value, "modifiers": []}
                     hotkeys["freecam_tp"] = {"key": value, "modifiers": ["SHIFT"]}
+
                 else:
                     hotkeys[action_id] = {"key": value, "modifiers": []}
 

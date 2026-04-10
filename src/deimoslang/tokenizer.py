@@ -5,6 +5,7 @@ from typing import Any
 class TokenizerError(Exception):
     pass
 
+
 class Percent(float):
     pass
 
@@ -16,7 +17,7 @@ class TokenKind(Enum):
     number = auto()
     contains = auto()
     percent = auto()
-    path = auto() # A/B/C
+    path = auto()  # A/B/C
     logical_and = auto()
     logical_to = auto()
     logical_from = auto()
@@ -90,9 +91,9 @@ class TokenKind(Enum):
     command_tozone = auto()
     command_load_playstyle = auto()
     command_set_yaw = auto()
-    command_nav = auto()  
+    command_nav = auto()
     command_setdeck = auto()
-    command_getdeck = auto() 
+    command_getdeck = auto()
     command_select_friend = auto()
     command_autopet = auto()
     command_set_goal = auto()
@@ -101,7 +102,7 @@ class TokenKind(Enum):
     command_toggle_combat = auto()
     command_restart_bot = auto()
     command_move_cursor = auto()
-    command_move_cursor_window = auto() 
+    command_move_cursor_window = auto()
 
     # command expressions
     command_expr_window_visible = auto()
@@ -152,7 +153,7 @@ class TokenKind(Enum):
     command_expr_zone_changed = auto()
     command_expr_account_level = auto()
 
-    colon = auto() # :
+    colon = auto()  # :
     comma = auto()
 
     plus = auto()
@@ -163,20 +164,23 @@ class TokenKind(Enum):
     slash_slash = auto()
     star_star = auto()
 
-    paren_open = auto() # (
-    paren_close = auto() # )
-    square_open = auto() # [
-    square_close = auto() # ]
-    curly_open = auto() # {
-    curly_close = auto() # }
+    paren_open = auto()  # (
+    paren_close = auto()  # )
+    square_open = auto()  # [
+    square_close = auto()  # ]
+    curly_open = auto()  # {
+    curly_close = auto()  # }
 
     identifier = auto()
 
     END_LINE = auto()
     END_FILE = auto()
 
+
 class LineInfo:
-    def __init__(self, line: int, column: int, last_column: int, last_line: int | None = None, filename: str | None = None):
+    def __init__(
+        self, line: int, column: int, last_column: int, last_line: int | None = None, filename: str | None = None
+    ):
         self.line = line
         self.column = column
         self.last_column = last_column
@@ -187,6 +191,7 @@ class LineInfo:
         if self.filename != None:
             return f"{self.filename}:{self.line}:{self.column}-{self.last_column}"
         return f"{self.line}:{self.column}-{self.last_column}"
+
 
 class Token:
     def __init__(self, kind: TokenKind, literal: str, line_info: LineInfo, value: Any | None = None):
@@ -225,12 +230,12 @@ class Tokenizer:
 
         def put_simple(kind: TokenKind, literal: str, value: Any = None):
             nonlocal result, line_num, i, filename
-            line_info = LineInfo(line=line_num, column=i+1, last_column=i+len(literal)+1, filename=filename)
+            line_info = LineInfo(line=line_num, column=i + 1, last_column=i + len(literal) + 1, filename=filename)
             result.append(Token(kind, literal, line_info, value))
 
         def err(message: str, column_start: int):
             indent_start = " " * column_start
-            raise TokenizerError(f"{message}\n{l}\n{indent_start}^\nLine: {line_num} | Column: {column_start+1}")
+            raise TokenizerError(f"{message}\n{l}\n{indent_start}^\nLine: {line_num} | Column: {column_start + 1}")
 
         while i < len(l):
             c = l[i]
@@ -240,7 +245,14 @@ class Tokenizer:
                 if c == "`":
                     self._multiline_start_line_info.last_column = i + 1
                     self._multiline_start_line_info.last_line = line_num + 1
-                    result.append(Token(TokenKind.string, self._multiline_buffer, self._multiline_start_line_info, self._multiline_buffer[1:-1]))
+                    result.append(
+                        Token(
+                            TokenKind.string,
+                            self._multiline_buffer,
+                            self._multiline_start_line_info,
+                            self._multiline_buffer[1:-1],
+                        )
+                    )
                     self._in_multiline_string = False
                     self._multiline_buffer = ""
                 i += 1
@@ -324,7 +336,9 @@ class Tokenizer:
                     case "`":
                         self._multiline_buffer = c
                         self._in_multiline_string = True
-                        self._multiline_start_line_info = LineInfo(line=line_num, column=i+1, last_column=i+1, filename=filename)
+                        self._multiline_start_line_info = LineInfo(
+                            line=line_num, column=i + 1, last_column=i + 1, filename=filename
+                        )
                         i += 1
                     case "#":
                         break
@@ -342,9 +356,9 @@ class Tokenizer:
                             if len(full) == 0:
                                 pass
                             elif all([x.isnumeric() or x in ".e-%" for x in full]):
-                                if '%' in full:
+                                if "%" in full:
                                     try:
-                                        put_simple(TokenKind.percent, full, Percent(float(full[:-1])/100))
+                                        put_simple(TokenKind.percent, full, Percent(float(full[:-1]) / 100))
                                     except ValueError:
                                         err("Unable to convert to percent", i)
                                 else:
@@ -356,10 +370,10 @@ class Tokenizer:
                                 if full.endswith("/"):
                                     err("Invalid path", i)
                                 put_simple(TokenKind.path, full, full.split("/"))
-                            elif full[0].lower() == "p" and full[1:len(full)].isnumeric():
-                                put_simple(TokenKind.player_num, full, int(full[1:len(full)]))
+                            elif full[0].lower() == "p" and full[1 : len(full)].isnumeric():
+                                put_simple(TokenKind.player_num, full, int(full[1 : len(full)]))
                             # TODO: Implement wildcards in all stages
-                            #elif full.lower() == "p?":
+                            # elif full.lower() == "p?":
                             #    put_simple(TokenKind.player_wildcard, full)
                             else:
                                 match normalize_ident(full):
@@ -493,11 +507,11 @@ class Tokenizer:
                                     case "turncam" | "setcamyaw":
                                         put_simple(TokenKind.command_set_yaw, full)
                                     case "nav" | "navtp":
-                                        put_simple(TokenKind.command_nav, full) 
+                                        put_simple(TokenKind.command_nav, full)
                                     case "getdeck":
                                         put_simple(TokenKind.command_getdeck, full)
                                     case "setdeck":
-                                        put_simple(TokenKind.command_setdeck, full) 
+                                        put_simple(TokenKind.command_setdeck, full)
                                     case "selectfriend" | "choosefriend":
                                         put_simple(TokenKind.command_select_friend, full)
                                     case "plustp" | "plusteleport":
@@ -517,7 +531,7 @@ class Tokenizer:
                                     case "cursor" | "movecursor" | "mousexy" | "movemouse":
                                         put_simple(TokenKind.command_move_cursor, full)
                                     case "cursorwindow" | "mousewindow":
-                                        put_simple(TokenKind.command_move_cursor_window, full) 
+                                        put_simple(TokenKind.command_move_cursor_window, full)
 
                                     # expression commands
                                     case "contains":
@@ -626,7 +640,7 @@ class Tokenizer:
     def tokenize(self, contents: str, filename: str | None = None) -> list[Token]:
         result = []
         for line_num, line in enumerate(contents.splitlines()):
-            toks = self.tokenize_line(line, line_num+1, filename=filename)
+            toks = self.tokenize_line(line, line_num + 1, filename=filename)
             if self._in_multiline_string:
                 self._multiline_buffer += "\n"
             elif len(toks) == 1:
@@ -634,12 +648,15 @@ class Tokenizer:
                 continue
             result.extend(toks)
         if self._in_multiline_string:
-            raise TokenizerError(f"Unclosed multiline string: {self._multiline_buffer} {self._multiline_start_line_info}")
+            raise TokenizerError(
+                f"Unclosed multiline string: {self._multiline_buffer} {self._multiline_start_line_info}"
+            )
         return result
 
 
 if __name__ == "__main__":
     from pathlib import Path
+
     tokenizer = Tokenizer()
     toks = tokenizer.tokenize(Path("testbot.txt").read_text(), filename="testbot.txt")
     for i in toks:

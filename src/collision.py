@@ -22,7 +22,8 @@ from io import BytesIO
 from pathlib import Path
 from typing import TypeAlias
 from xml.etree import ElementTree as etree
-from wizwalker import Wad, Client, XYZ
+
+from wizwalker import XYZ, Client, Wad
 
 Matrix3x3: TypeAlias = tuple[
     float, float, float,
@@ -36,7 +37,7 @@ Vector3D: TypeAlias = tuple[float, float, float]
 
 class StructIO(BytesIO):
     def read_string(self) -> str:
-        length, = self.unpack("<i")
+        (length,) = self.unpack("<i")
         return self.read(length).decode()
 
     def unpack(self, fmt: str) -> tuple:
@@ -82,24 +83,34 @@ class CollisionFlag(Flag):
     def xml_value(self) -> str:
         if CollisionFlag.WALKABLE in self:
             return "CT_Walkable"
+
         elif CollisionFlag.WATER in self:
             return "CT_Water"
+
         elif CollisionFlag.TRIGGER in self:
             return "CT_Trigger"
+
         elif CollisionFlag.OBJECT in self:
             return "CT_Object"
+
         elif CollisionFlag.LOCAL_PLAYER in self:
             return "CT_LocalPlayer"
+
         elif CollisionFlag.HITSCAN in self:
             return "CT_Hitscan"
+
         elif CollisionFlag.FOG in self:
             return "CT_Fog"
+
         elif CollisionFlag.CLIENT_OBJECT in self:
             return "CT_ClientObject"
+
         elif CollisionFlag.GOO in self:
             return "CT_Goo"
+
         elif CollisionFlag.FISH in self:
             return "CT_Fish"
+
         else:
             return "CT_None"
 
@@ -257,25 +268,32 @@ class ProxyGeometry:
         self.name = stream.read_string()
         self.rotation = stream.unpack("<fffffffff")
         self.location = stream.unpack("<fff")
-        self.scale, = stream.unpack("<f")
+        (self.scale,) = stream.unpack("<f")
         self.material = stream.read_string()
         self.proxy = ProxyType(*stream.unpack("<i"))
 
         match ProxyType(self.proxy):
             case ProxyType.BOX:
                 self.params = BoxGeomParams.from_stream(stream)
+
             case ProxyType.RAY:
                 self.params = RayGeomParams.from_stream(stream)
+
             case ProxyType.SPHERE:
                 self.params = SphereGeomParams.from_stream(stream)
+
             case ProxyType.CYLINDER:
                 self.params = CylinderGeomParams.from_stream(stream)
+
             case ProxyType.TUBE:
                 self.params = TubeGeomParams.from_stream(stream)
+
             case ProxyType.PLANE:
                 self.params = PlaneGeomParams.from_stream(stream)
+
             case ProxyType.MESH:
                 self.params = MeshGeomParams.from_stream(stream)
+
             case _:
                 raise ValueError(f"Invalid proxy type: {self.proxy}")
 
@@ -320,6 +338,7 @@ class ProxyMesh(ProxyGeometry):
 
     def load(self, stream: StructIO) -> None:
         vertex_count, face_count = stream.unpack("<ii")
+
         for _ in range(vertex_count):
             self.vertices.append(stream.unpack("<fff"))
 
@@ -339,6 +358,7 @@ class ProxyMesh(ProxyGeometry):
             "vertexlist",
             {"size": str(len(self.vertices))},
         )
+
         for x, y, z in self.vertices:
             etree.SubElement(
                 vertexlist,
@@ -351,6 +371,7 @@ class ProxyMesh(ProxyGeometry):
             "facelist",
             {"size": str(len(self.faces))},
         )
+
         for a, b, c in self.faces:
             etree.SubElement(facelist, "face", {"a": str(a), "b": str(b), "c": str(c)})
 
@@ -363,8 +384,8 @@ class CollisionWorld:
 
     def load(self, raw_data: bytes) -> None:
         stream = StructIO(raw_data)
+        (geometry_count,) = stream.unpack("<i")
 
-        geometry_count, = stream.unpack("<i")
         for _ in range(geometry_count):
             # category_bits and collide_bits are for Open Dynamics Engine
             geometry_type, category_bits, collide_bits = stream.unpack("<iII")
@@ -383,11 +404,13 @@ class CollisionWorld:
 
     def save_xml(self, path: str | Path) -> etree.Element:
         world = etree.Element("world")
+
         for obj in self.objects:
             obj.save_xml(world)
 
         etree.indent(world)
         path.parent.mkdir(exist_ok=True, parents=True)
+
         with path.open("w") as file:
             file.write('<?xml version="1.0" encoding="utf-8" ?>\n')
             file.write(etree.tostring(world, encoding="unicode", xml_declaration=False))
@@ -403,7 +426,7 @@ async def get_collision_data(client: Client = None, zone_name: str = None) -> by
         zone_name = await client.zone_name()
 
     elif not zone_name and not client:
-        raise Exception('Client and/or zone name not provided, cannot read collision.bcd.')
+        raise Exception("Client and/or zone name not provided, cannot read collision.bcd.")
 
     wad = await load_wad(zone_name)
     collision_data = await wad.get_file("collision.bcd")

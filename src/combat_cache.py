@@ -1,9 +1,10 @@
-from typing import Dict, Any, Tuple, Iterable, List
+from typing import Any, Dict, Iterable, List, Tuple
 
 Cache = Dict[str, Any]
 
+
 def cache_get(cache: Cache, path: str, seperator: str = ".") -> Any:
-    '''Retreives the subcache or value from a path string.'''
+    """Retreives the subcache or value from a path string."""
     # attr = cache
     for p in path.split(seperator):
         if isinstance(cache, list) and p.isnumeric():
@@ -13,22 +14,26 @@ def cache_get(cache: Cache, path: str, seperator: str = ".") -> Any:
         if not isinstance(cache, dict):
             break
 
-        cache = cache.get(p) #TODO: Potential flaw: If we're matching for None with a data structure that might not exist, we will return a correct match regardless, as get() defaults to none.
+        cache = cache.get(
+            p
+        )  # TODO: Potential flaw: If we're matching for None with a data structure that might not exist, we will return a correct match regardless, as get() defaults to none.
 
     return cache
 
 
 def cache_get_multi(cache: Cache, paths: Iterable[str], seperator: str = ".") -> Iterable[Any]:
-    '''Retreives the subcaches or values from any number of path strings.'''
+    """Retreives the subcaches or values from any number of path strings."""
     return type(paths)(cache_get(cache, p, seperator) for p in paths)
 
 
 def cache_remove(cache: Cache, path_str: str, seperator: str = "."):
-    '''Removes an entry from a cache in-place, by a string path.'''
+    """Removes an entry from a cache in-place, by a string path."""
     split_path = path_str.split(seperator)
+
     def _inner_cache_remove(cache: Cache, path: List[str]):
         if len(path) == 1:
             end_key = path[0]
+
             if isinstance(cache, list) and end_key.isnumeric():
                 end_key = int(end_key)
 
@@ -36,6 +41,7 @@ def cache_remove(cache: Cache, path_str: str, seperator: str = "."):
 
         else:
             cur_key = split_path.pop(0)
+
             if isinstance(cache, list) and cur_key.isnumeric():
                 cur_key = int(cur_key)
 
@@ -45,11 +51,13 @@ def cache_remove(cache: Cache, path_str: str, seperator: str = "."):
 
 
 def cache_modify(cache: Cache, new_value: Any, path_str: str, seperator: str = "."):
-    '''Modifies an entry in a cache based on a string path.'''
+    """Modifies an entry in a cache based on a string path."""
     split_path = path_str.split(seperator)
+
     def _inner_cache_modify(cache: Cache, new_value: Any, path: List[str]):
         if len(path) == 1:
             end_key = path[0]
+
             if isinstance(cache, list) and end_key.isnumeric():
                 end_key = int(end_key)
 
@@ -65,13 +73,15 @@ def cache_modify(cache: Cache, new_value: Any, path_str: str, seperator: str = "
     _inner_cache_modify(cache, new_value, split_path)
 
 
-def filter_caches(caches: Iterable[Cache], match: Dict[str, Any], exclusive: bool = False, either_or: bool = False) -> Tuple[List[Cache], List[int]]:
-    '''Intakes an iterable of caches and a dict of path strings to values, and returns the same type of iterable but only the matches, along with their indices. Exclusive argument will only return mismatches when enabled.'''
+def filter_caches(
+    caches: Iterable[Cache], match: Dict[str, Any], exclusive: bool = False, either_or: bool = False
+) -> Tuple[List[Cache], List[int]]:
+    """Intakes an iterable of caches and a dict of path strings to values, and returns the same type of iterable but only the matches, along with their indices. Exclusive argument will only return mismatches when enabled."""
     matches = []
     match_indices = []
 
     def _cache_match(cache: Cache, m_path: str, m_value: Any) -> bool:
-        matched: bool = cache_get(cache, m_path) == m_value #Retreives the value we want to match against
+        matched: bool = cache_get(cache, m_path) == m_value  # Retreives the value we want to match against
         return not ((exclusive and matched) or (not exclusive and not matched))
 
     for i, cache in enumerate(caches):
@@ -88,4 +98,7 @@ def filter_caches(caches: Iterable[Cache], match: Dict[str, Any], exclusive: boo
             matches.append(cache)
             match_indices.append(i)
 
-    return (matches, match_indices) #Returns the iterable of matched caches. Also returns indices of the matches within the origin list.
+    return (
+        matches,
+        match_indices,
+    )  # Returns the iterable of matched caches. Also returns indices of the matches within the origin list.

@@ -1,11 +1,19 @@
 import re
-import pyperclip
 
+import pyperclip
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QLineEdit, QListWidget, QListWidgetItem, QWidget, QMenu,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, QSize
 
 from src.gui.commands import GUICommand, GUICommandType
 
@@ -17,12 +25,13 @@ def show_ui_tree_popup(parent, send_queue, ui_tree_content, text_dict, copy_btn_
     path_stack = []
 
     for line in ui_tree_list:
-        indent = len(line) - len(line.lstrip('-'))
-        clean_line = line.lstrip('- ')
+        indent = len(line) - len(line.lstrip("-"))
+        clean_line = line.lstrip("- ")
 
-        name_match = re.search(r'\[(.*?)\]', clean_line)
+        name_match = re.search(r"\[(.*?)\]", clean_line)
         if name_match:
             name = name_match.group(1)
+
         else:
             name = clean_line.split()[0]
 
@@ -36,14 +45,14 @@ def show_ui_tree_popup(parent, send_queue, ui_tree_content, text_dict, copy_btn_
         path_stack.append(name)
 
     dialog = QDialog(parent)
-    dialog.setWindowTitle(tl('ui_tree') if tl else "UI Tree")
+    dialog.setWindowTitle(tl("ui_tree") if tl else "UI Tree")
     dialog.resize(700, 500)
     layout = QVBoxLayout(dialog)
 
-    layout.addWidget(QLabel(tl('ui_tree_hint') if tl else "Click the path needed to copy it to clipboard."))
+    layout.addWidget(QLabel(tl("ui_tree_hint") if tl else "Click the path needed to copy it to clipboard."))
 
     search_input = QLineEdit()
-    search_input.setPlaceholderText(tl('search') if tl else "Search")
+    search_input.setPlaceholderText(tl("search") if tl else "Search")
     layout.addWidget(search_input)
 
     listbox = QListWidget()
@@ -52,10 +61,11 @@ def show_ui_tree_popup(parent, send_queue, ui_tree_content, text_dict, copy_btn_
 
     def _populate(lines):
         listbox.clear()
+
         for line in lines:
             item = QListWidgetItem()
             path = path_dict.get(line)
-            item.setData(Qt.ItemDataRole.UserRole, {'path': path, 'text': text_dict.get(line)})
+            item.setData(Qt.ItemDataRole.UserRole, {"path": path, "text": text_dict.get(line)})
 
             row_widget = QWidget()
             row_layout = QHBoxLayout(row_widget)
@@ -67,7 +77,11 @@ def show_ui_tree_popup(parent, send_queue, ui_tree_content, text_dict, copy_btn_
             if line in text_dict:
                 text_to_copy = text_dict[line]
                 btn = copy_btn_factory(lambda _=False, t=text_to_copy: pyperclip.copy(t))
-                _prefix = tl('copy_text').format(text_to_copy[:50] + ('...' if len(text_to_copy) > 50 else '')) if tl else f"Copy text: {text_to_copy[:50]}{'...' if len(text_to_copy) > 50 else ''}"
+                _prefix = (
+                    tl("copy_text").format(text_to_copy[:50] + ("..." if len(text_to_copy) > 50 else ""))
+                    if tl
+                    else f"Copy text: {text_to_copy[:50]}{'...' if len(text_to_copy) > 50 else ''}"
+                )
                 btn.setToolTip(_prefix)
                 row_layout.addWidget(btn)
 
@@ -84,8 +98,9 @@ def show_ui_tree_popup(parent, send_queue, ui_tree_content, text_dict, copy_btn_
     def on_hover(item):
         if item:
             data = item.data(Qt.ItemDataRole.UserRole)
-            if data and data.get('path'):
-                send_queue.put(GUICommand(GUICommandType.HighlightUIWindow, data['path']))
+
+            if data and data.get("path"):
+                send_queue.put(GUICommand(GUICommandType.HighlightUIWindow, data["path"]))
 
     def _clear_highlight():
         send_queue.put(GUICommand(GUICommandType.ClearHighlight))
@@ -93,14 +108,19 @@ def show_ui_tree_popup(parent, send_queue, ui_tree_content, text_dict, copy_btn_
     def on_select(item):
         if item:
             data = item.data(Qt.ItemDataRole.UserRole)
-            if data and data.get('path'):
-                pyperclip.copy(str(data['path']))
+
+            if data and data.get("path"):
+                pyperclip.copy(str(data["path"]))
+
             else:
                 widget = listbox.itemWidget(item)
+
                 if widget:
                     label = widget.findChild(QLabel)
+
                     if label:
                         pyperclip.copy(label.text())
+
             _clear_highlight()
             dialog.close()
 
@@ -109,18 +129,22 @@ def show_ui_tree_popup(parent, send_queue, ui_tree_content, text_dict, copy_btn_
     listbox.itemClicked.connect(on_select)
 
     orig_leave = listbox.leaveEvent
+
     def _leave_event(event):
         _clear_highlight()
         orig_leave(event)
+
     listbox.leaveEvent = _leave_event
 
     orig_close = dialog.closeEvent
+
     def _close_event(event):
         _clear_highlight()
         orig_close(event)
+
     dialog.closeEvent = _close_event
 
-    close_btn = QPushButton(tl('close') if tl else "Close")
+    close_btn = QPushButton(tl("close") if tl else "Close")
     close_btn.clicked.connect(dialog.close)
     layout.addWidget(close_btn)
 
@@ -129,14 +153,14 @@ def show_ui_tree_popup(parent, send_queue, ui_tree_content, text_dict, copy_btn_
 
 def show_entity_list_popup(parent, send_queue, widget_tags, tabs, dev_tab, camera_tab, tl=None):
     dialog = QDialog(parent)
-    dialog.setWindowTitle(tl('entity_list') if tl else "Entity List")
+    dialog.setWindowTitle(tl("entity_list") if tl else "Entity List")
     dialog.resize(450, 400)
     layout = QVBoxLayout(dialog)
 
-    layout.addWidget(QLabel(tl('entity_list_hint') if tl else "Click to copy. Right-click for TP / Camera options."))
+    layout.addWidget(QLabel(tl("entity_list_hint") if tl else "Click to copy. Right-click for TP / Camera options."))
 
     search_input = QLineEdit()
-    search_input.setPlaceholderText(tl('search') if tl else "Search")
+    search_input.setPlaceholderText(tl("search") if tl else "Search")
     layout.addWidget(search_input)
 
     listbox = QListWidget()
@@ -147,23 +171,31 @@ def show_entity_list_popup(parent, send_queue, widget_tags, tabs, dev_tab, camer
 
     def _populate(entries):
         listbox.clear()
+
         for entry in entries:
-            item = QListWidgetItem(entry['display'])
-            item.setData(Qt.ItemDataRole.UserRole, {
-                'x': entry['x'], 'y': entry['y'], 'z': entry['z'],
-                'height': entry.get('height', 170.0),
-                'gid': entry.get('gid', 0),
-                'distance': entry.get('distance', 0.0),
-            })
+            item = QListWidgetItem(entry["display"])
+            item.setData(
+                Qt.ItemDataRole.UserRole,
+                {
+                    "x": entry["x"],
+                    "y": entry["y"],
+                    "z": entry["z"],
+                    "height": entry.get("height", 170.0),
+                    "gid": entry.get("gid", 0),
+                    "distance": entry.get("distance", 0.0),
+                },
+            )
             listbox.addItem(item)
 
     def update_entities(entity_data):
         nonlocal all_entities
         all_entities = entity_data
         search_text = search_input.text()
+
         if search_text:
-            filtered = [e for e in all_entities if search_text.lower() in e['display'].lower()]
+            filtered = [e for e in all_entities if search_text.lower() in e["display"].lower()]
             _populate(filtered)
+
         else:
             _populate(all_entities)
 
@@ -171,16 +203,20 @@ def show_entity_list_popup(parent, send_queue, widget_tags, tabs, dev_tab, camer
 
     def on_search(text):
         if text:
-            filtered = [e for e in all_entities if text.lower() in e['display'].lower()]
+            filtered = [e for e in all_entities if text.lower() in e["display"].lower()]
             _populate(filtered)
+
         else:
             _populate(all_entities)
 
     def on_hover(item):
         if item:
             data = item.data(Qt.ItemDataRole.UserRole)
+
             if data:
-                send_queue.put(GUICommand(GUICommandType.HighlightEntity, (data['x'], data['y'], data['z'], data['height'])))
+                send_queue.put(
+                    GUICommand(GUICommandType.HighlightEntity, (data["x"], data["y"], data["z"], data["height"]))
+                )
 
     def on_select(item):
         if item:
@@ -192,31 +228,42 @@ def show_entity_list_popup(parent, send_queue, widget_tags, tabs, dev_tab, camer
         send_queue.put(GUICommand(GUICommandType.ClearHighlight))
 
     listbox.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+
     def on_context_menu(pos):
         item = listbox.itemAt(pos)
+
         if not item:
             return
+
         data = item.data(Qt.ItemDataRole.UserRole)
+
         if not data:
             return
-        gid_str = str(data.get('gid', ''))
+
+        gid_str = str(data.get("gid", ""))
 
         menu = QMenu(listbox)
-        tp_action = menu.addAction(tl('tp_to_entity') if tl else "Teleport to Entity")
-        anchor_action = menu.addAction(tl('anchor_cam_to_entity') if tl else "Anchor Camera to Entity")
+        tp_action = menu.addAction(tl("tp_to_entity") if tl else "Teleport to Entity")
+        anchor_action = menu.addAction(tl("anchor_cam_to_entity") if tl else "Anchor Camera to Entity")
 
         action = menu.exec(listbox.mapToGlobal(pos))
+
         if action == tp_action:
-            gid_widget = widget_tags.get('EntityTPGIDInput')
+            gid_widget = widget_tags.get("EntityTPGIDInput")
+
             if gid_widget:
                 gid_widget.setText(gid_str)
+
             tabs.setCurrentWidget(dev_tab)
             send_queue.put(GUICommand(GUICommandType.ClearHighlight))
             dialog.close()
+
         elif action == anchor_action:
-            gid_widget = widget_tags.get('CamEntityGIDInput')
+            gid_widget = widget_tags.get("CamEntityGIDInput")
+
             if gid_widget:
                 gid_widget.setText(gid_str)
+
             tabs.setCurrentWidget(camera_tab)
             send_queue.put(GUICommand(GUICommandType.ClearHighlight))
             dialog.close()
@@ -228,19 +275,23 @@ def show_entity_list_popup(parent, send_queue, widget_tags, tabs, dev_tab, camer
     listbox.itemClicked.connect(on_select)
 
     orig_leave = listbox.leaveEvent
+
     def _leave_event(event):
         _clear_highlight()
         orig_leave(event)
+
     listbox.leaveEvent = _leave_event
 
     orig_close = dialog.closeEvent
+
     def _close_event(event):
         _clear_highlight()
         send_queue.put(GUICommand(GUICommandType.StopEntityStream))
         orig_close(event)
+
     dialog.closeEvent = _close_event
 
-    close_btn = QPushButton(tl('close') if tl else "Close")
+    close_btn = QPushButton(tl("close") if tl else "Close")
     close_btn.clicked.connect(dialog.close)
     layout.addWidget(close_btn)
 

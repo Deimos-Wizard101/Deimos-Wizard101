@@ -1,16 +1,19 @@
-from typing import List, Coroutine, Any
 import math
+from dataclasses import dataclass
+from typing import Any, Coroutine, List
+
 from wizwalker import Client
 from wizwalker.combat import CombatMember
-from wizwalker.memory.memory_objects.spell_effect import DynamicSpellEffect, SpellEffects, SpellEffect
-from src.combat_objects import get_total_effects, id_to_member, school_list_ids, opposite_school_ids
+from wizwalker.memory.memory_objects.spell_effect import DynamicSpellEffect, SpellEffect, SpellEffects
+
+from src.combat_objects import get_total_effects, id_to_member, opposite_school_ids, school_list_ids
 from src.combat_utils import add_universal_stat
-from dataclasses import dataclass
 
 
 @dataclass
 class EffectAttributes:
     """A non-async cache of spell effect attributes used in dmg calculations"""
+
     effect_param: int
     effect_type: SpellEffects
     damage_type: int
@@ -24,7 +27,7 @@ class EffectAttributes:
             await effect.effect_type(),
             await effect.damage_type(),
             await effect.spell_template_id(),
-            await effect.enchantment_spell_template_id()
+            await effect.enchantment_spell_template_id(),
         )
 
 
@@ -32,7 +35,6 @@ async def real_stat(stat_func: Coroutine[Any, Any, List[float]], uni_func: Corou
     # Handles adding two stat reading coroutines
     base_stats = await stat_func()
     uni_stat = await uni_func()
-
     return add_universal_stat(base_stats, uni_stat)
 
 
@@ -92,10 +94,20 @@ def spell_effect_stacking_id(spell_template_id: int, enchantment_spell_template_
 
     if enchantment_spell_template_id in enchantments_not_stackable_with_unenchanted:
         enchantment_spell_template_id = 0  # For stacking purposes, these are the same as unenchanted.
+
     return (spell_template_id, enchantment_spell_template_id)
 
 
-async def base_damage_calculation_from_id(client: Client, members: List[CombatMember], caster_id: int, target_id: int, damage: float, damage_type: int, global_effect: DynamicSpellEffect = None, force_crit: bool = False) -> float:
+async def base_damage_calculation_from_id(
+    client: Client,
+    members: List[CombatMember],
+    caster_id: int,
+    target_id: int,
+    damage: float,
+    damage_type: int,
+    global_effect: DynamicSpellEffect = None,
+    force_crit: bool = False,
+) -> float:
     # Calculates damage from given base damage value, and is the basis for both exact and damage potential calculation. Works based off of IDs.
 
     # Get base objects from ID arguments
@@ -161,10 +173,13 @@ async def base_damage_calculation_from_id(client: Client, members: List[CombatMe
     seen_caster_effect_stacking_ids = set()
     for effect_atr in caster_effect_atrs:
         stacking_id = spell_effect_stacking_id(effect_atr.spell_template_id, effect_atr.enchantment_spell_template_id)
+
         # only consider effects that matches the school or are universal
-        if stacking_id not in seen_caster_effect_stacking_ids \
-                and (effect_atr.damage_type == damage_type or effect_atr.damage_type == 80289):
+        if stacking_id not in seen_caster_effect_stacking_ids and (
+            effect_atr.damage_type == damage_type or effect_atr.damage_type == 80289
+        ):
             seen_caster_effect_stacking_ids.add(stacking_id)
+
             match effect_atr.effect_type:
                 case SpellEffects.modify_outgoing_damage:
                     damage *= (effect_atr.effect_param / 100) + 1
@@ -185,20 +200,27 @@ async def base_damage_calculation_from_id(client: Client, members: List[CombatMe
     seen_target_effect_stacking_ids = set()
     for effect_atr in target_effect_atrs:
         stacking_id = spell_effect_stacking_id(effect_atr.spell_template_id, effect_atr.enchantment_spell_template_id)
-        if stacking_id not in seen_target_effect_stacking_ids \
-                and (effect_atr.damage_type == damage_type or effect_atr.damage_type == 80289):
+
+        if stacking_id not in seen_target_effect_stacking_ids and (
+            effect_atr.damage_type == damage_type or effect_atr.damage_type == 80289
+        ):
             seen_target_effect_stacking_ids.add(stacking_id)
+
             match effect_atr.effect_type:
                 # traps/shields, and pierce handling
                 case SpellEffects.modify_incoming_damage:
                     ward_param = effect_atr.effect_param
+
                     if ward_param < 0:
                         ward_param += caster_pierce
                         caster_pierce += effect_atr.effect_param
+
                         if ward_param > 0:
                             ward_param = 0
+
                         if caster_pierce < 0:
                             caster_pierce = 0
+
                     damage *= (ward_param / 100) + 1
 
                 case SpellEffects.intercept:
@@ -237,9 +259,9 @@ async def base_damage_calculation_from_id(client: Client, members: List[CombatMe
         if caster_level > 100:
             caster_level = 100
 
-        crit_damage_multiplier = (2 - (target_block / ((caster_crit / 3) + target_block)))
-        client_school_critical = (0.03 * caster_level * caster_crit)
-        mob_block = (3 * caster_crit + target_block)
+        crit_damage_multiplier = 2 - (target_block / ((caster_crit / 3) + target_block))
+        client_school_critical = 0.03 * caster_level * caster_crit
+        mob_block = 3 * caster_crit + target_block
         crit_chance = client_school_critical / mob_block
 
         # applying the crit multiplier if the chance is above a certain threshold
@@ -254,10 +276,12 @@ async def base_damage_calculation_from_id(client: Client, members: List[CombatMe
     # apply resist, accounting for pierce and potential boost
     if curved_target_resist > 0:
         curved_target_resist -= caster_pierce
+
         if curved_target_resist <= 0:
             curved_target_resist = 1
         else:
             curved_target_resist = 1 - curved_target_resist
+
     else:
         curved_target_resist = abs(curved_target_resist) + 1
 

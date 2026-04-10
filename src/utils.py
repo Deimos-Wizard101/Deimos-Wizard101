@@ -1,66 +1,98 @@
+import ast
 import asyncio
 import ctypes
+import inspect
 import logging
+import os
+import re
 import time
 import traceback
-import requests
-import re
-import os
+import typing
+from enum import Enum
+from typing import Any, Coroutine, Iterable, List, Optional, Union, get_type_hints
 
+import requests
 import wizwalker.errors
-from wizwalker import Client, Keycode, XYZ, Primitive, kernel32
-from wizwalker.memory.memory_objects.character_registry import DynamicMemoryObject
-from wizwalker.utils import get_all_wizard_handles, override_wiz_install_location, get_pid_from_handle
-from wizwalker.extensions.scripting.utils import _maybe_get_named_window, _cycle_to_online_friends, _click_on_friend, _teleport_to_friend, _friend_list_entry
+import yaml
+from loguru import logger
+from wizwalker import XYZ, Client, Keycode, Primitive, kernel32
+from wizwalker.combat import CombatMember
+from wizwalker.extensions.scripting.utils import (
+    _click_on_friend,
+    _cycle_to_online_friends,
+    _friend_list_entry,
+    _maybe_get_named_window,
+    _teleport_to_friend,
+)
 from wizwalker.extensions.wizsprinter.wiz_navigator import toZone
 from wizwalker.memory import ObjectType, Window, WindowFlags
-from wizwalker.combat import CombatMember
-from loguru import logger
+from wizwalker.memory.memory_objects.character_registry import DynamicMemoryObject
+from wizwalker.utils import get_all_wizard_handles, get_pid_from_handle, override_wiz_install_location
 
 from src.dance_game_hook import attempt_deactivate_dance_hook
 from src.paths import *
 from src.sprinty_client import SprintyClient
-import typing
-from typing import List, Optional, Coroutine, Union, get_type_hints, Any, Iterable
-from enum import Enum
-
-import os
-import yaml
-
-import inspect
-import ast
 
 # from src.teleport_math import calc_Distance
 
-streamportal_locations = ["aeriel", "zanadu", "outer athanor", "inner athanor", "sepidious", "mandalla", "chaos jungle", "reverie", "nimbus", "port aero", "husk"]
-nanavator_locations = ["karamelle city", "sweetzburg", "nibbleheim", "gutenstadt", "black licorice forest", "candy corn farm", "gobblerton"]
+streamportal_locations = [
+    "aeriel",
+    "zanadu",
+    "outer athanor",
+    "inner athanor",
+    "sepidious",
+    "mandalla",
+    "chaos jungle",
+    "reverie",
+    "nimbus",
+    "port aero",
+    "husk",
+]
+nanavator_locations = [
+    "karamelle city",
+    "sweetzburg",
+    "nibbleheim",
+    "gutenstadt",
+    "black licorice forest",
+    "candy corn farm",
+    "gobblerton",
+]
+
 
 def get_ui_tree_text(file_path):
     try:
-        with open(file_path, 'r') as file:
+        with open(file_path, "r") as file:
             return file.read()
+
     except FileNotFoundError:
         return f"UI tree file '{file_path}' not found."
+
     except Exception as e:
         return f"Error reading UI tree file: {str(e)}"
-    
+
+
 def get_entity_text(file_path):
     try:
-        with open(file_path, 'r') as file:
+        with open(file_path, "r") as file:
             return file.read()
+
     except FileNotFoundError:
         return f"Entity file '{file_path}' not found."
+
     except Exception as e:
         return f"Error reading entity file: {str(e)}"
+
 
 async def get_window_from_path(root_window: Window, name_path: list[str]) -> Window:
     # FULL CREDIT TO SIROLAF FOR THIS FUNCTION
     async def _recurse_follow_path(window, path):
         if len(path) == 0:
             return window
+
         for child in await window.children():
             if await child.name() == path[0]:
                 found_window = await _recurse_follow_path(child, path[1:])
+
                 if not found_window is False:
                     return found_window
 
@@ -74,6 +106,7 @@ async def is_visible_by_path(client: Client, path: list[str]):
     # checks visibility of a window from the path
     root = client.root_window
     windows = await get_window_from_path(root, path)
+
     if windows == False:
         return False
     elif await windows.is_visible():
@@ -89,7 +122,7 @@ async def read_control_checkbox_text(checkbox: Window) -> str:
 # Teleport to given world through spiral door
 async def go_to_new_world(p, destinationWorld, open_window: bool = True):
     if open_window:
-        while not await get_popup_title(p) == 'World Gate' and not await is_visible_by_path(p, spiral_door_path):
+        while not await get_popup_title(p) == "World Gate" and not await is_visible_by_path(p, spiral_door_path):
             await asyncio.sleep(0.1)
 
         while not await is_visible_by_path(p, spiral_door_path):
@@ -98,7 +131,7 @@ async def go_to_new_world(p, destinationWorld, open_window: bool = True):
 
     while await p.is_in_npc_range():
         await p.send_key(Keycode.X, 0.1)
-        await asyncio.sleep(.4)
+        await asyncio.sleep(0.4)
 
     while not await is_visible_by_path(p, spiral_door_path):
         await asyncio.sleep(0.1)
@@ -106,13 +139,70 @@ async def go_to_new_world(p, destinationWorld, open_window: bool = True):
 
     async with p.mouse_handler:
         # each worldList item (in-file name for a world) correlates to a zoneDoorOptions (in-file name for the buttons in the spiral door)
-        worldList = ["WizardCity", "Krokotopia", "Marleybone", "MooShu", "DragonSpire", "Grizzleheim", "Celestia", "Wysteria", "Zafaria", "Avalon", "Azteca", "Khrysalis", "Polaris", "Arcanum", "Mirage", "Empyrea", "Karamelle", "Lemuria"]
-        zoneDoorOptions = ["wbtnWizardCity", "wbtnKrokotopia", "wbtnMarleybone", "wbtnMooShu", "wbtnDragonSpire", "wbtnGrizzleheim", "wbtnCelestia", "wbtnWysteria", "wbtnZafaria", "wbtnAvalon", "wbtnAzteca", "wbtnKhrysalis", "wbtnPolaris", "wbtnArcanum", "wbtnMirage", "wbtnEmpyrea", "wbtnKaramelle", "wbtnLemuria"]
-        zoneDoorNameList = ["Wizard City", "Krokotopia", "Marleybone", "MooShu", "DragonSpire", "Grizzleheim", "Celestia", "Wysteria", "Zafaria", "Avalon", "Azteca", "Khrysalis", "Polaris", "Arcanum", "Mirage", "Empyrea", "Karamelle", "Lemuria"]
+        worldList = [
+            "WizardCity",
+            "Krokotopia",
+            "Marleybone",
+            "MooShu",
+            "DragonSpire",
+            "Grizzleheim",
+            "Celestia",
+            "Wysteria",
+            "Zafaria",
+            "Avalon",
+            "Azteca",
+            "Khrysalis",
+            "Polaris",
+            "Arcanum",
+            "Mirage",
+            "Empyrea",
+            "Karamelle",
+            "Lemuria",
+        ]
+        zoneDoorOptions = [
+            "wbtnWizardCity",
+            "wbtnKrokotopia",
+            "wbtnMarleybone",
+            "wbtnMooShu",
+            "wbtnDragonSpire",
+            "wbtnGrizzleheim",
+            "wbtnCelestia",
+            "wbtnWysteria",
+            "wbtnZafaria",
+            "wbtnAvalon",
+            "wbtnAzteca",
+            "wbtnKhrysalis",
+            "wbtnPolaris",
+            "wbtnArcanum",
+            "wbtnMirage",
+            "wbtnEmpyrea",
+            "wbtnKaramelle",
+            "wbtnLemuria",
+        ]
+        zoneDoorNameList = [
+            "Wizard City",
+            "Krokotopia",
+            "Marleybone",
+            "MooShu",
+            "DragonSpire",
+            "Grizzleheim",
+            "Celestia",
+            "Wysteria",
+            "Zafaria",
+            "Avalon",
+            "Azteca",
+            "Khrysalis",
+            "Polaris",
+            "Arcanum",
+            "Mirage",
+            "Empyrea",
+            "Karamelle",
+            "Lemuria",
+        ]
         # user could be on any of the three pages when opening the world door depending on what their active quest is
         # switch all the way to the first page to standardize it
         for i in range(6):
-            await p.mouse_handler.click_window_with_name('leftButton')
+            await p.mouse_handler.click_window_with_name("leftButton")
             await asyncio.sleep(0.2)
 
         option_window = await p.root_window.get_windows_with_name("optionWindow")
@@ -120,22 +210,23 @@ async def go_to_new_world(p, destinationWorld, open_window: bool = True):
         assert len(option_window) == 1, str(option_window)
 
         for child in await option_window[0].children():
-            if await child.name() == 'pageCount':
+            if await child.name() == "pageCount":
                 pageCount = await child.maybe_text()
                 pageCount = pageCount[8:-9]
-                currentPage = pageCount.split('/', 1)[0]
-                maxPage = pageCount.split('/', 1)[1]
+                currentPage = pageCount.split("/", 1)[0]
+                maxPage = pageCount.split("/", 1)[1]
                 break
 
         # ensure we are on page 1 (and if not click over again)
-        while str(currentPage) != '1':
-            await p.mouse_handler.click_window_with_name('leftButton')
+        while str(currentPage) != "1":
+            await p.mouse_handler.click_window_with_name("leftButton")
             await asyncio.sleep(0.2)
+
             for child in await option_window[0].children():
-                if await child.name() == 'pageCount':
+                if await child.name() == "pageCount":
                     pageCount = await child.maybe_text()
                     pageCount = pageCount[8:-9]
-                    currentPage = pageCount.split('/', 1)[0]
+                    currentPage = pageCount.split("/", 1)[0]
 
         worldIndex = worldList.index(destinationWorld)
         spiralGateName = zoneDoorNameList[worldIndex]
@@ -144,12 +235,13 @@ async def go_to_new_world(p, destinationWorld, open_window: bool = True):
 
         for i in range(int(maxPage)):
             for child in await option_window[0].children():
-                if await child.name() in ['opt0', 'opt1', 'opt2', 'opt3']:
+                if await child.name() in ["opt0", "opt1", "opt2", "opt3"]:
                     name = await read_control_checkbox_text(child)
+
                     if name == spiralGateName:
                         await p.mouse_handler.click_window_with_name(zoneDoorOptions[worldIndex])
-                        await asyncio.sleep(.4)
-                        await p.mouse_handler.click_window_with_name('teleportButton')
+                        await asyncio.sleep(0.4)
+                        await p.mouse_handler.click_window_with_name("teleportButton")
                         await p.wait_for_zone_change()
 
                         # move away from the spiral door so we dont accidentally click on it again after teleporting later
@@ -162,60 +254,68 @@ async def go_to_new_world(p, destinationWorld, open_window: bool = True):
             if not isChildFound:
                 previousPage = currentPage
                 loopCount = 0
+
                 while currentPage == previousPage and loopCount < 30:
                     loopCount += 1
-                    await p.mouse_handler.click_window_with_name('rightButton')
+                    await p.mouse_handler.click_window_with_name("rightButton")
 
                     # ensure that wizwalker didn't misclick and that we actually changed pages
                     for child in await option_window[0].children():
-                        if await child.name() == 'pageCount':
+                        if await child.name() == "pageCount":
                             pageCount = await child.maybe_text()
                             pageCount = pageCount[8:-9]
-                            currentPage = pageCount.split('/', 1)[0]
+                            currentPage = pageCount.split("/", 1)[0]
 
-async def new_portals_cycle( client: Client, location: str):
-        option_window = await client.root_window.get_windows_with_name("optionWindow")
-        assert len(option_window) == 1, str(option_window)
+
+async def new_portals_cycle(client: Client, location: str):
+    option_window = await client.root_window.get_windows_with_name("optionWindow")
+    assert len(option_window) == 1, str(option_window)
+
+    for child in await option_window[0].children():
+        if await child.name() == "pageCount":
+            pageCount = await child.maybe_text()
+            pageCount = pageCount[8:-9]
+            currentPage = pageCount.split("/", 1)[0]
+            maxPage = pageCount.split("/", 1)[1]
+            break
+
+    spiralGateName = location
+
+    isChildFound = False
+
+    for _ in range(int(maxPage)):
         for child in await option_window[0].children():
-            if await child.name() == 'pageCount':
-                pageCount = await child.maybe_text()
-                pageCount = pageCount[8:-9]
-                currentPage = pageCount.split('/', 1)[0]
-                maxPage = pageCount.split('/', 1)[1]
-                break
+            if await child.name() in ["opt0", "opt1", "opt2", "opt3"]:
+                name = await read_control_checkbox_text(child)
 
-        spiralGateName = location
-
-        isChildFound = False
-
-        for _ in range(int(maxPage)):
-            for child in await option_window[0].children():
-                if await child.name() in ['opt0', 'opt1', 'opt2', 'opt3']:
-                    name = await read_control_checkbox_text(child)
-                    if name.lower() == spiralGateName.lower():
-                        async with client.mouse_handler:
-                            await client.mouse_handler.click_window_with_name(await child.name())
-                            await asyncio.sleep(.4)
-                            await client.mouse_handler.click_window_with_name('teleportButton')
-                            await client.wait_for_zone_change()
-
-                        isChildFound = True
-                        break
-
-            # correct world was not found - check the next page
-            if not isChildFound:
-                previousPage = currentPage
-                loopCount = 0
-                while currentPage == previousPage and loopCount < 30:
-                    loopCount += 1
+                if name.lower() == spiralGateName.lower():
                     async with client.mouse_handler:
-                        await client.mouse_handler.click_window_with_name('rightButton')
-                    # ensure that wizwalker didn't misclick and that we actually changed pages
-                    for child in await option_window[0].children():
-                        if await child.name() == 'pageCount':
-                            pageCount = await child.maybe_text()
-                            pageCount = pageCount[8:-9]
-                            currentPage = pageCount.split('/', 1)[0]
+                        await client.mouse_handler.click_window_with_name(await child.name())
+                        await asyncio.sleep(0.4)
+                        await client.mouse_handler.click_window_with_name("teleportButton")
+                        await client.wait_for_zone_change()
+
+                    isChildFound = True
+                    break
+
+        # correct world was not found - check the next page
+        if not isChildFound:
+            previousPage = currentPage
+            loopCount = 0
+
+            while currentPage == previousPage and loopCount < 30:
+                loopCount += 1
+
+                async with client.mouse_handler:
+                    await client.mouse_handler.click_window_with_name("rightButton")
+
+                # ensure that wizwalker didn't misclick and that we actually changed pages
+                for child in await option_window[0].children():
+                    if await child.name() == "pageCount":
+                        pageCount = await child.maybe_text()
+                        pageCount = pageCount[8:-9]
+                        currentPage = pageCount.split("/", 1)[0]
+
 
 async def generate_tfc(client: Client):
     async with client.mouse_handler:
@@ -223,18 +323,19 @@ async def generate_tfc(client: Client):
         for i in range(5):
             try:
                 await click_window_by_path(client, close_real_friend_list_button_path)
-                await asyncio.sleep(.1)
+                await asyncio.sleep(0.1)
+
             except ValueError:
-                await asyncio.sleep(.1)
+                await asyncio.sleep(0.1)
 
         for i in range(2):
             await client.send_key(Keycode.F, 0.1)
-            await asyncio.sleep(.2)
+            await asyncio.sleep(0.2)
 
         if await is_visible_by_path(client, enter_true_friend_code_button_path):
             await click_window_by_path(client, enter_true_friend_code_button_path)
 
-        await asyncio.sleep(.3)
+        await asyncio.sleep(0.3)
 
         if await is_visible_by_path(client, generate_true_friend_code_path):
             await click_window_by_path(client, generate_true_friend_code_path)
@@ -244,6 +345,7 @@ async def generate_tfc(client: Client):
         try:
             tfc_window = await get_window_from_path(client.root_window, true_friend_code_text_path)
             tfc = await tfc_window.maybe_text()
+
         except:
             print(traceback.print_exc())
             tfc = None
@@ -260,25 +362,26 @@ async def accept_tfc(client: Client, tfc: str):
     async with client.mouse_handler:
         for i in range(2):
             await client.send_key(Keycode.F, 0.1)
-            await asyncio.sleep(.2)
+            await asyncio.sleep(0.2)
 
         if await is_visible_by_path(client, enter_true_friend_code_button_path):
             await click_window_by_path(client, enter_true_friend_code_button_path)
 
-        await asyncio.sleep(.3)
+        await asyncio.sleep(0.3)
 
         # *** This does not work ***
         for i in range(len(tfc)):
             # convert characters to keycodes, press each one
             await client.send_key(Keycode.W)
-            await asyncio.sleep(.15)
+            await asyncio.sleep(0.15)
 
-        #if await is_visible_by_path(client, )
+        # if await is_visible_by_path(client, )
 
 
 async def exit_menus(c: Client, paths):
     for i in paths:
         click_button = await get_window_from_path(c.root_window, i)
+
         if click_button:
             if await click_button.is_visible():
                 async with c.mouse_handler:
@@ -291,16 +394,15 @@ async def safe_click_window(client: Client, path):
             await click_window_by_path(client, path)
 
 
-
 async def click_window_by_path(client: Client, path: list[str], hooks: bool = False):
     # FULL CREDIT TO SIROLAF FOR THIS FUNCTION, notfaj was here :3
     # clicks window from path, must actually exist in the UI tree
     root = client.root_window
     windows = await get_window_from_path(root, path)
+
     if windows:
         async with client.mouse_handler:
             await client.mouse_handler.click_window(windows)
-
 
 
 async def text_from_path(client: Client, path: list[str]) -> str:
@@ -311,16 +413,20 @@ async def text_from_path(client: Client, path: list[str]) -> str:
 
 async def wait_for_loading_screen(client: Client):
     # Wait for a loading screen, then wait until the loading screen has finished.
-    logger.debug(f'Client {client.title} - Awaiting loading')
+    logger.debug(f"Client {client.title} - Awaiting loading")
+
     while not await client.is_loading():
         await asyncio.sleep(0.1)
+
     while await client.is_loading():
         await asyncio.sleep(0.1)
 
 
-async def wait_for_zone_change(client: Client, current_zone: str = None, to_zone: str = None, loading_only: bool = False):
+async def wait_for_zone_change(
+    client: Client, current_zone: str = None, to_zone: str = None, loading_only: bool = False
+):
     # Wait for zone to change, allows for waiting in team up forever without any extra checks
-    logger.debug(f'Client {client.title} - Awaiting loading')
+    logger.debug(f"Client {client.title} - Awaiting loading")
     if not loading_only:
         # if to_zone is present, wait until we reach the selected zone
         if to_zone is not None:
@@ -343,7 +449,9 @@ async def wait_for_zone_change(client: Client, current_zone: str = None, to_zone
 async def spiral_door(client: Client, open_window: bool = True, cycles: int = 0, opt: int = 0):
     # optionally open the spiral door window
     if open_window:
-        while not await get_popup_title(client) == 'World Gate' and not await is_visible_by_path(client, spiral_door_path):
+        while not await get_popup_title(client) == "World Gate" and not await is_visible_by_path(
+            client, spiral_door_path
+        ):
             await asyncio.sleep(0.1)
 
         while not await is_visible_by_path(client, spiral_door_path):
@@ -357,7 +465,7 @@ async def spiral_door(client: Client, open_window: bool = True, cycles: int = 0,
 
     # navigate menu to proper world
     world_path = spiral_door_path.copy()
-    world_path.append(f'opt{opt}')
+    world_path.append(f"opt{opt}")
     await asyncio.sleep(0.5)
     for i in range(cycles):
         if i != 0:
@@ -377,18 +485,20 @@ async def navigate_to_ravenwood(client: Client):
 
     await client.send_key(Keycode.HOME, 0.1)
     await client.send_key(Keycode.HOME, 0.1)
-
     await wait_for_zone_change(client, current_zone=current_zone)
     await asyncio.sleep(3)
     use_spiral_door = False
     bartleby_navigation = True
     current_zone = await client.zone_name()
+
     match current_zone:
         # Handling for dorm room
         case "WizardCity/Interiors/WC_Housing_Dorm_Interior":
             await client.goto(70.15016174316406, 9.419374465942383)
+
             while not await client.is_loading():
                 await client.send_key(Keycode.S, 0.1)
+
             await wait_for_zone_change(client, current_zone=current_zone)
             await asyncio.sleep(3)
             bartleby_navigation = False
@@ -397,6 +507,7 @@ async def navigate_to_ravenwood(client: Client):
         case "Housing_AR_Dormroom/Interior":
             while not await client.is_loading():
                 await client.send_key(Keycode.S, 0.1)
+
             await wait_for_zone_change(client, current_zone=current_zone)
             await asyncio.sleep(3)
             await client.teleport(XYZ(x=-19.1153507232666, y=-6312.8994140625, z=-2.00579833984375))
@@ -413,6 +524,7 @@ async def navigate_to_ravenwood(client: Client):
         while not await is_visible_by_path(client, spiral_door_teleport_path):
             await client.send_key(Keycode.X, 0.1)
             await asyncio.sleep(2)
+
         await spiral_door(client)
 
     # Navigate through bartleby if needed
@@ -435,13 +547,16 @@ async def navigate_to_commons_from_ravenwood(client: Client):
 
 async def navigate_to_potions(client: Client):
     hilda = XYZ(-4398.70654296875, 1016.1954345703125, 229.00079345703125)
-     # make sure client is not loading
+
+    # make sure client is not loading
     while await client.is_loading():
         await asyncio.sleep(0.1)
-    #Teleports to Hilda if not already in range
+
+    # Teleports to Hilda if not already in range
     while not await client.is_in_npc_range():
         await client.teleport(hilda)
         await asyncio.sleep(2)
+
     # Teleport to hilda brewer
 
 
@@ -449,6 +564,7 @@ async def buy_potions(client: Client, recall: bool = True, original_zone=None):
     try:
         await asyncio.sleep(1.0)
         max_potions = await client.stats.potion_max()
+
         # buy potions and close the potions menu, and recall if needed
         for i in range(2):
             original_potion_count = await client.stats.potion_charge()
@@ -458,6 +574,7 @@ async def buy_potions(client: Client, recall: bool = True, original_zone=None):
             while current_potion_count == original_potion_count and current_potion_count < max_potions:
                 while not await is_visible_by_path(client, potion_shop_base_path):
                     await client.send_key(Keycode.X, 0.1)
+
                 await asyncio.sleep(0.5)
 
                 await click_window_by_path(client, potion_fill_all_path, True)
@@ -471,13 +588,13 @@ async def buy_potions(client: Client, recall: bool = True, original_zone=None):
                     await asyncio.sleep(0.125)
 
                 current_potion_count = await client.stats.potion_charge()
-                await asyncio.sleep(.5)
+                await asyncio.sleep(0.5)
 
             if i == 0:
                 if await client.stats.potion_charge() >= 1.0:
                     original_potion_count = await client.stats.potion_charge()
 
-                    logger.debug(f'Client {client.title} - Using potion')
+                    logger.debug(f"Client {client.title} - Using potion")
                     await click_window_by_path(client, potion_usage_path, True)
                     await asyncio.sleep(3.0)
 
@@ -485,7 +602,7 @@ async def buy_potions(client: Client, recall: bool = True, original_zone=None):
         print(traceback.print_exc())
         raise KeyboardInterrupt
 
-# Put an extra check here in case Starrfox becomes a time traveller or someone is using cheat engine at 100x speed, causing this logic to somehow fail
+    # Put an extra check here in case Starrfox becomes a time traveller or someone is using cheat engine at 100x speed, causing this logic to somehow fail
     if recall:
         current_zone = await client.zone_name()
 
@@ -502,9 +619,46 @@ async def buy_potions(client: Client, recall: bool = True, original_zone=None):
                 except LoadingScreenNotFound:
                     pass
 
+
 async def to_world(clients, destinationWorld):
-    world_hub_zones = ['WizardCity/WC_Hub', 'Krokotopia/KT_Hub', 'Marleybone/MB_Hub', 'MooShu/MS_Hub', 'DragonSpire/DS_Hub_Cathedral', 'Grizzleheim/GH_MainHub', 'Celestia/CL_Hub', 'Wysteria/PA_Hub', 'Zafaria/ZF_Z00_Hub', 'Avalon/AV_Z00_Hub', 'Azteca/AZ_Z00_Zocalo', 'Khrysalis/KR_Z00_Hub', 'Polaris/PL_Z00_Walruskberg', 'Mirage/MR_Z00_Hub', 'Empyrea/EM_Z00_Aeriel_HUB', 'Karamelle/KM_Z00_HUB', 'Lemuria/LM_Z00_Hub']
-    world_list = ["WizardCity", "Krokotopia", "Marleybone", "MooShu", "DragonSpire", "Grizzleheim", "Celestia", "Wysteria", "Zafaria", "Avalon", "Azteca", "Khrysalis", "Polaris", "Mirage", "Empyrea", "Karamelle", "Lemuria"]
+    world_hub_zones = [
+        "WizardCity/WC_Hub",
+        "Krokotopia/KT_Hub",
+        "Marleybone/MB_Hub",
+        "MooShu/MS_Hub",
+        "DragonSpire/DS_Hub_Cathedral",
+        "Grizzleheim/GH_MainHub",
+        "Celestia/CL_Hub",
+        "Wysteria/PA_Hub",
+        "Zafaria/ZF_Z00_Hub",
+        "Avalon/AV_Z00_Hub",
+        "Azteca/AZ_Z00_Zocalo",
+        "Khrysalis/KR_Z00_Hub",
+        "Polaris/PL_Z00_Walruskberg",
+        "Mirage/MR_Z00_Hub",
+        "Empyrea/EM_Z00_Aeriel_HUB",
+        "Karamelle/KM_Z00_HUB",
+        "Lemuria/LM_Z00_Hub",
+    ]
+    world_list = [
+        "WizardCity",
+        "Krokotopia",
+        "Marleybone",
+        "MooShu",
+        "DragonSpire",
+        "Grizzleheim",
+        "Celestia",
+        "Wysteria",
+        "Zafaria",
+        "Avalon",
+        "Azteca",
+        "Khrysalis",
+        "Polaris",
+        "Mirage",
+        "Empyrea",
+        "Karamelle",
+        "Lemuria",
+    ]
 
     world_index = world_list.index(destinationWorld)
     destinationZone = world_hub_zones[world_index]
@@ -512,15 +666,15 @@ async def to_world(clients, destinationWorld):
     zoneChanged = await toZone(clients, destinationZone)
 
     if zoneChanged == 0:
-        logger.debug('Reached destination world: ' + destinationWorld)
+        logger.debug("Reached destination world: " + destinationWorld)
     else:
-        logger.error('Failed to go to zone.  It may be spelled incorrectly, or may not be supported.')
+        logger.error("Failed to go to zone.  It may be spelled incorrectly, or may not be supported.")
 
 
 async def use_potion(client: Client):
     # Uses a potion if we have one
     if await client.stats.potion_charge() >= 1.0:
-        logger.debug(f'Client {client.title} - Using potion')
+        logger.debug(f"Client {client.title} - Using potion")
         await click_window_by_path(client, potion_usage_path, True)
 
 
@@ -531,8 +685,10 @@ async def is_potion_needed(client: Client, minimum_mana: int = 16):
     health = await client.stats.current_hitpoints()
     max_health = await client.stats.max_hitpoints()
     client_level = await client.stats.reference_level()
+
     if minimum_mana > await client.stats.reference_level():
         minimum_mana = client_level
+
     combined_minimum_mana = int(0.23 * max_mana) + minimum_mana
 
     if max_health == 0:
@@ -548,13 +704,16 @@ async def auto_potions_force_buy(client: Client, mark: bool = False, minimum_man
     # If we have any missing potions, get potions
     if await client.stats.potion_charge() < await client.stats.potion_max():
         # do not recall from potion buy if we were already in the commons - wait for zone change will fail
-        if await client.zone_name() == 'WizardCity/WC_Hub':
+        if await client.zone_name() == "WizardCity/WC_Hub":
             recall = False
+
         else:
             recall = True
+
             # mark if needed
             if mark:
                 await client.send_key(Keycode.PAGE_DOWN, 0.1)
+
         # Navigate to ravenwood
         await navigate_to_ravenwood(client)
         # Navigate to commons
@@ -589,38 +748,54 @@ async def change_equipment_set(client: Client, set_number: int):
         # Click open equipment page button.  Corrects for failed clicks
         while await is_visible_by_path(client, backpack_title_path):
             while not await is_visible_by_path(client, equipment_set_manager_title_path):
-                await client.mouse_handler.click_window_with_name('EquipmentManager')
+                await client.mouse_handler.click_window_with_name("EquipmentManager")
 
         # Click specific set
         individual_equipment_set = individual_equipment_set_parent_path.copy()
-        individual_equipment_set.append('equippedIcon' + str(set_number))
+        individual_equipment_set.append("equippedIcon" + str(set_number))
+
         for i in range(8):
             await click_window_by_path(client, individual_equipment_set)
 
         # Click equipment set button.  Corrects for failed clicks
-        while await is_visible_by_path(client, backpack_title_path) or await is_visible_by_path(client, equipment_set_manager_title_path):
+        while await is_visible_by_path(client, backpack_title_path) or await is_visible_by_path(
+            client, equipment_set_manager_title_path
+        ):
             await client.send_key(Keycode.B, 0.1)
 
 
 class FriendBusyOrInstanceClosed(Exception):
-    def __init__(self, msg='Friend was busy / has teleports disabled, or you attempted to enter an area that is no longer accessible', *args, **kwargs):
+    def __init__(
+        self,
+        msg="Friend was busy / has teleports disabled, or you attempted to enter an area that is no longer accessible",
+        *args,
+        **kwargs,
+    ):
         super().__init__(msg, *args, **kwargs)
-
 
 
 class LoadingScreenNotFound(Exception):
-    def __init__(self, msg='The client never entered a loading screen and safe_wait_for_zone_change timed out', *args, **kwargs):
+    def __init__(
+        self, msg="The client never entered a loading screen and safe_wait_for_zone_change timed out", *args, **kwargs
+    ):
         super().__init__(msg, *args, **kwargs)
 
 
-
-async def safe_wait_for_zone_change(self: Client, name: Optional[str] = None, *, sleep_time: Optional[float] = 0.5, timeout=10.0, handle_hooks_if_needed=True):
+async def safe_wait_for_zone_change(
+    self: Client,
+    name: Optional[str] = None,
+    *,
+    sleep_time: Optional[float] = 0.5,
+    timeout=10.0,
+    handle_hooks_if_needed=True,
+):
     # you should generally provide a zone name via the parameter to prevent a race condition
     if name is None:
         name = await self.zone_name()
 
     start_time = time.time()
     client_was_in_loading = False
+
     while await self.zone_name() == name:
         # check so we know if the client ever actually entered a loading screen
         if await self.is_loading():
@@ -637,6 +812,7 @@ async def safe_wait_for_zone_change(self: Client, name: Optional[str] = None, *,
             if time.time() > start_time + timeout and not client_was_in_loading:
                 if await self.is_loading():
                     client_was_in_loading = True
+
                 # if after X seconds we have not entered a loading screen and have not seen a friend is busy popup, we're in the same zone
                 else:
                     raise LoadingScreenNotFound
@@ -649,6 +825,7 @@ async def click_window_until_closed(client: Client, path):
         async with client.mouse_handler:
             while await is_visible_by_path(client, path):
                 await click_window_by_path(client, path)
+
         return True
 
     else:
@@ -658,41 +835,46 @@ async def click_window_until_closed(client: Client, path):
 async def refill_potions(client: Client, mark: bool = False, recall: bool = True, original_zone=None):
     if await client.stats.reference_level() >= 6:
         if mark:
-            if await client.zone_name() != 'WizardCity/WC_Hub':
-                
+            if await client.zone_name() != "WizardCity/WC_Hub":
                 # Handles niche case scenario of teleport just being used before needing to buy potions such as teleporting out of a dungeon
                 recall_timer_window = await get_window_from_path(client.root_window, teleport_mark_recall_timer_path)
                 recall_timer = await recall_timer_window.maybe_text()
 
                 if recall_timer != "":
-                    logger.debug(f'Client {client.title} - Waiting out recall timer before going to buy potions.')
+                    logger.debug(f"Client {client.title} - Waiting out recall timer before going to buy potions.")
                     recall_timer = int((recall_timer.replace("<center>", "")).replace("</center>", ""))
 
                     # Sleeping for most of the timer to avoid spamming calls, then checking it every .1 seconds
                     if recall_timer > 5:
                         await asyncio.sleep(recall_timer - 2)
+
                     while True:
                         new_timer = await recall_timer_window.maybe_text()
-                        if new_timer == "" or int((str(new_timer).replace("<center>", "")).replace("</center>", "")) <= 0:
+                        if (
+                            new_timer == ""
+                            or int((str(new_timer).replace("<center>", "")).replace("</center>", "")) <= 0
+                        ):
                             break
                         await asyncio.sleep(0.1)
+
                     await asyncio.sleep(1)
-                
+
                 recall_window = await get_window_from_path(client.root_window, teleport_mark_recall_path)
                 had_mark_before = False
+
                 if recall_window and not await recall_window.is_control_grayed():
                     had_mark_before = True
-                    logger.debug(f'Client {client.title} - Already had a mark before placing a new one')
+                    logger.debug(f"Client {client.title} - Already had a mark before placing a new one")
 
                 # press the mark hotkey once and waiting 2s for recall UI to update
                 await client.send_key(Keycode.PAGE_DOWN, 0.1)
                 await asyncio.sleep(2.0)
 
                 # re-check the recall button
-                recall_window = await get_window_from_path(client.root_window,teleport_mark_recall_path)
+                recall_window = await get_window_from_path(client.root_window, teleport_mark_recall_path)
 
                 if not recall_window:
-                    logger.debug(f'Client {client.title} - Could not find Recall button after marking')
+                    logger.debug(f"Client {client.title} - Could not find Recall button after marking")
                 else:
                     still_has_mark = not await recall_window.is_control_grayed()
 
@@ -701,7 +883,7 @@ async def refill_potions(client: Client, mark: bool = False, recall: bool = True
                         await client.send_key(Keycode.PAGE_DOWN, 0.1)
                         await asyncio.sleep(1.0)
                     else:
-                        logger.debug(f'Client {client.title} - Mark state is valid (has_mark={still_has_mark})')
+                        logger.debug(f"Client {client.title} - Mark state is valid (has_mark={still_has_mark})")
 
         # Navigate to ravenwood
         await navigate_to_ravenwood(client)
@@ -721,6 +903,7 @@ async def refill_potions_if_needed(p: Client, mark: bool = False, recall: bool =
 async def auto_potions(client: Client, mark: bool = False, minimum_mana: int = 16, buy: bool = True):
     if await is_potion_needed(client, minimum_mana):
         await use_potion(client)
+
     # If we have less than 1 potion left, get potions
     if await client.stats.potion_charge() < 1.0 and buy:
         await refill_potions(client, mark=mark)
@@ -729,6 +912,7 @@ async def auto_potions(client: Client, mark: bool = False, minimum_mana: int = 1
 async def wait_for_window_by_path(client: Client, path: list[str], hooks: bool = False, click: bool = True):
     while not await is_visible_by_path(client, path):
         await asyncio.sleep(0.1)
+
     if click or hooks:
         await click_window_by_path(client, path, hooks)
 
@@ -738,16 +922,20 @@ async def maybe_find_window_by_name(parent, name):
     for child in await parent.children():
         if await child.name() == name:
             return child
+
     return None
 
 
 # From peechez's dance game bot
 async def wait_and_return_window_by_path(parent, *path):
     window = parent
+
     for name in path:
         while (maybe_window := await maybe_find_window_by_name(window, name)) is None:
             pass
+
         window = maybe_window
+
     return window
 
 
@@ -764,9 +952,12 @@ async def logout_and_in(client: Client):
     await client.send_key(Keycode.ESC, 0.1)
     await wait_for_window_by_path(client, quit_button_path, True)
     await asyncio.sleep(0.25)
+
     if await is_visible_by_path(client, dungeon_warning_path):
         await client.send_key(Keycode.ENTER, 0.1)
+
     await wait_for_window_by_path(client, play_button_path, True)
+
     # TODO: Find a better solution to waiting for load in screen to end
     await asyncio.sleep(4)
     if await client.is_loading():
@@ -775,18 +966,23 @@ async def logout_and_in(client: Client):
 
 async def is_free(client: Client):
     # Returns True if not in combat, loading screen, or in dialogue.
-    return not any([await client.is_loading(), await client.in_battle(), await is_visible_by_path(client, advance_dialog_path)])
+    return not any(
+        [await client.is_loading(), await client.in_battle(), await is_visible_by_path(client, advance_dialog_path)]
+    )
 
 
 async def get_quest_name(client: Client):
     while not await is_free(client):
         await asyncio.sleep(0.1)
+
     quest_name_window = await get_window_from_path(client.root_window, quest_name_path)
+
     while not await is_visible_by_path(client, quest_name_path):
         await asyncio.sleep(0.1)
+
     quest_objective = await quest_name_window.maybe_text()
-    quest_objective = quest_objective.replace('<center>', '')
-    quest_objective = quest_objective.replace('</center>', '')
+    quest_objective = quest_objective.replace("<center>", "")
+    quest_objective = quest_objective.replace("</center>", "")
     return quest_objective
 
 
@@ -796,30 +992,31 @@ async def select_quest_from_questbook(client: Client, quest_book_sort: list[str]
 
     while not await is_visible_by_path(client, quest_book_sort):
         await client.send_key(Keycode.Q)
-        await asyncio.sleep(.5)
+        await asyncio.sleep(0.5)
 
     if await is_visible_by_path(client, quest_book_sort):
         await click_window_by_path(client, quest_book_sort)
 
-    await asyncio.sleep(.5)
+    await asyncio.sleep(0.5)
 
     quest_number_path = quest_buttons_parent_path[:]
-    quest_number_path.append('wndQuestInfo' + str(quest_number))
-    quest_number_path.append('questInfoWindow')
-    quest_number_path.append('wndQuestInfo')
-    quest_number_path.append('txtGoal')
+    quest_number_path.append("wndQuestInfo" + str(quest_number))
+    quest_number_path.append("questInfoWindow")
+    quest_number_path.append("wndQuestInfo")
+    quest_number_path.append("txtGoal")
     print(quest_number_path)
 
     for i in range(5):
         if await is_visible_by_path(client, quest_number_path):
             await click_window_by_path(client, quest_number_path)
-        await asyncio.sleep(.1)
 
-    await asyncio.sleep(.5)
+        await asyncio.sleep(0.1)
+
+    await asyncio.sleep(0.5)
 
     while await is_visible_by_path(client, quest_book_sort):
         await client.send_key(Keycode.Q)
-        await asyncio.sleep(.5)
+        await asyncio.sleep(0.5)
 
 
 async def get_popup_title(client: Client) -> str:
@@ -829,8 +1026,8 @@ async def get_popup_title(client: Client) -> str:
         popup_str = await popup_window.maybe_text()
 
         try:
-            popup_str = popup_str.replace('<center>', '')
-            popup_str = popup_str.replace('</center>', '')
+            popup_str = popup_str.replace("<center>", "")
+            popup_str = popup_str.replace("</center>", "")
         except:
             await asyncio.sleep(0.1)
 
@@ -846,8 +1043,10 @@ async def is_popup_title_relevant(client: Client, quest_info: str = None) -> boo
 
     popup_text = await get_window_from_path(client.root_window, popup_title_path)
     maybe_collect_item = await popup_text.maybe_text()
+
     if maybe_collect_item.lower() in str(quest_info).lower():
         return True
+
     return False
 
 
@@ -869,7 +1068,6 @@ async def sync_camera(client: Client, xyz: XYZ = None, yaw: float = None):
         yaw = await client.body.yaw()
 
     xyz.z += 200
-
     camera = await client.game_client.free_camera_controller()
     await camera.write_position(xyz)
     await camera.write_yaw(yaw)
@@ -891,11 +1089,7 @@ async def _cycle_friends_list(client, right_button, friends_list, icon, icon_lis
         friend_name = (friend_entry.group("name")).lower()
 
         if icon is not None and icon_list is not None and name:
-            if (
-                friend_icon == icon
-                and friend_icon_list == icon_list
-                and friend_name == name
-            ):
+            if friend_icon == icon and friend_icon_list == icon_list and friend_name == name:
                 match = friend_entry
                 break
 
@@ -923,9 +1117,7 @@ async def _cycle_friends_list(client, right_button, friends_list, icon, icon_lis
 
 
 # TODO: add error if friend is busy message pops up
-async def teleport_to_friend_from_list(
-    client, *, icon_list: int = None, icon_index: int = None, name: str = None
-):
+async def teleport_to_friend_from_list(client, *, icon_list: int = None, icon_index: int = None, name: str = None):
     """
     Teleport to a friend from the client's friend list
 
@@ -935,29 +1127,21 @@ async def teleport_to_friend_from_list(
         icon_index: Index of the icon or None
         name: Name of the player or None
     """
-    if (
-        icon_list is None
-        and icon_index is not None
-        or icon_list is not None
-        and icon_index is None
-    ):
+    if icon_list is None and icon_index is not None or icon_list is not None and icon_index is None:
         raise ValueError("Icon list and icon index must both be defined or not defined")
 
     if all(i is None for i in (icon_list, icon_index, name)):
         raise ValueError("Must specify icon_list and icon_index or name or all")
 
     try:
-        friends_window = await _maybe_get_named_window(
-            client.root_window, "NewFriendsListWindow"
-        )
+        friends_window = await _maybe_get_named_window(client.root_window, "NewFriendsListWindow")
+
     except ValueError:
         # friend's list isn't open so open it
         friend_button = await _maybe_get_named_window(client.root_window, "btnFriends")
         await client.mouse_handler.click_window(friend_button)
+        friends_window = await _maybe_get_named_window(client.root_window, "NewFriendsListWindow")
 
-        friends_window = await _maybe_get_named_window(
-            client.root_window, "NewFriendsListWindow"
-        )
     else:
         if not await friends_window.is_visible():
             # friend's list isn't open so open it
@@ -980,10 +1164,7 @@ async def teleport_to_friend_from_list(
 
     current_page, _ = map(
         int,
-        page_number_text.replace("<center>", "")
-        .replace("</center>", "")
-        .replace(" ", "")
-        .split("/"),
+        page_number_text.replace("<center>", "").replace("</center>", "").replace(" ", "").split("/"),
     )
 
     friend, friend_index = await _cycle_friends_list(
@@ -997,9 +1178,7 @@ async def teleport_to_friend_from_list(
     )
 
     if friend is None:
-        raise ValueError(
-            f"Could not find friend with icon {icon_index} icon list {icon_list} and/or name {name}"
-        )
+        raise ValueError(f"Could not find friend with icon {icon_index} icon list {icon_list} and/or name {name}")
 
     await _click_on_friend(client, friends_list_window, friend_index)
 
@@ -1014,23 +1193,23 @@ async def teleport_to_friend_from_list(
 async def check_for_multiple_friends_in_list(client: Client, friend_names: list[str]):
 
     async with client.mouse_handler:
-
         # if some form of friend list or friend popup is already open, close it
         # This fails consistently, even when the friends list is actually open.  Detecting whether the friends list is open is also horrifically inconsistent so just brute force it
         for i in range(5):
             try:
                 await click_window_by_path(client, close_real_friend_list_button_path)
-                await asyncio.sleep(.1)
+                await asyncio.sleep(0.1)
+
             except ValueError:
-                await asyncio.sleep(.1)
+                await asyncio.sleep(0.1)
 
         # try:
-        #	friends_window = await _maybe_get_named_window(client.root_window, "NewFriendsListWindow")
+        # friends_window = await _maybe_get_named_window(client.root_window, "NewFriendsListWindow")
         # except:
 
         friend_button = await _maybe_get_named_window(client.root_window, "btnFriends")
         await client.mouse_handler.click_window(friend_button)
-        await asyncio.sleep(.4)
+        await asyncio.sleep(0.4)
         friends_window = await _maybe_get_named_window(client.root_window, "NewFriendsListWindow")
 
         await _cycle_to_online_friends(client, friends_window)
@@ -1044,10 +1223,7 @@ async def check_for_multiple_friends_in_list(client: Client, friend_names: list[
 
         current_page, _ = map(
             int,
-            page_number_text.replace("<center>", "")
-                .replace("</center>", "")
-                .replace(" ", "")
-                .split("/"),
+            page_number_text.replace("<center>", "").replace("</center>", "").replace(" ", "").split("/"),
         )
 
         for friend_name in friend_names:
@@ -1072,9 +1248,10 @@ async def check_for_multiple_friends_in_list(client: Client, friend_names: list[
         for i in range(3):
             try:
                 await click_window_by_path(client, close_real_friend_list_button_path)
-                await asyncio.sleep(.1)
+                await asyncio.sleep(0.1)
+
             except ValueError:
-                await asyncio.sleep(.1)
+                await asyncio.sleep(0.1)
 
     return True
 
@@ -1086,17 +1263,18 @@ async def check_for_friend_in_list(client: Client, friend_name: str):
         for i in range(5):
             try:
                 await click_window_by_path(client, close_real_friend_list_button_path)
-                await asyncio.sleep(.1)
+                await asyncio.sleep(0.1)
+
             except ValueError:
-                await asyncio.sleep(.1)
+                await asyncio.sleep(0.1)
 
         # try:
-        #	friends_window = await _maybe_get_named_window(client.root_window, "NewFriendsListWindow")
+        # friends_window = await _maybe_get_named_window(client.root_window, "NewFriendsListWindow")
         # except:
 
         friend_button = await _maybe_get_named_window(client.root_window, "btnFriends")
         await client.mouse_handler.click_window(friend_button)
-        await asyncio.sleep(.4)
+        await asyncio.sleep(0.4)
         friends_window = await _maybe_get_named_window(client.root_window, "NewFriendsListWindow")
 
         await _cycle_to_online_friends(client, friends_window)
@@ -1110,10 +1288,7 @@ async def check_for_friend_in_list(client: Client, friend_name: str):
 
         current_page, _ = map(
             int,
-            page_number_text.replace("<center>", "")
-                .replace("</center>", "")
-                .replace(" ", "")
-                .split("/"),
+            page_number_text.replace("<center>", "").replace("</center>", "").replace(" ", "").split("/"),
         )
 
         friend, friend_index = await _cycle_friends_list(
@@ -1134,18 +1309,21 @@ async def check_for_friend_in_list(client: Client, friend_name: str):
         for i in range(3):
             try:
                 await click_window_by_path(client, close_real_friend_list_button_path)
-                await asyncio.sleep(.1)
+                await asyncio.sleep(0.1)
+
             except ValueError:
-                await asyncio.sleep(.1)
+                await asyncio.sleep(0.1)
 
     if friend is None:
         return False
+
     else:
         return True
 
+
 # requires that the character screen is already open
 async def set_wizard_name_from_character_screen(client: Client):
-    option_window = await client.root_window.get_windows_with_name('TitleScroll')
+    option_window = await client.root_window.get_windows_with_name("TitleScroll")
     assert len(option_window) == 1, str(option_window)
 
     # for child in await option_window[0].children():
@@ -1155,6 +1333,7 @@ async def set_wizard_name_from_character_screen(client: Client):
 
     client.wizard_name = wizard_name
 
+
 # requires that the character screen is already open
 async def return_wizard_energy_from_character_screen(client: Client):
     energy_txt_window = await get_window_from_path(client.root_window, energy_amount_path)
@@ -1162,8 +1341,8 @@ async def return_wizard_energy_from_character_screen(client: Client):
     energy_txt = await energy_txt_window.maybe_text()
     current_energy = energy_txt[8:]
     total_energy = energy_txt[8:]
-    current_energy = current_energy.split('/', 1)[0]
-    total_energy = total_energy.split('/', 1)[1]
+    current_energy = current_energy.split("/", 1)[0]
+    total_energy = total_energy.split("/", 1)[1]
     current_energy = int(current_energy)
     total_energy = int(total_energy)
 
@@ -1177,25 +1356,26 @@ async def get_friend_popup_wizard_name(client: Client):
         try:
             assert len(option_window) == 1, str(option_window)
         except:
-            await asyncio.sleep(.1)
+            await asyncio.sleep(0.1)
 
         wizard_name = await option_window[0].maybe_text()
         wizard_name = wizard_name[8:-9]
-
         return wizard_name
+
     else:
-        return ''
+        return ""
 
 
 async def collect_wisps(client: Client, nothing_but_safe_entities=True):
     # Collects all the wisps in the current area, only works within the entity draw distance.
     entities = []
-    entities = await SprintyClient(client).get_base_entities_with_vague_name('WispHealth')
-    entities += await SprintyClient(client).get_base_entities_with_vague_name('WispMana')
-    entities += await SprintyClient(client).get_base_entities_with_vague_name('WispGold')
+    entities = await SprintyClient(client).get_base_entities_with_vague_name("WispHealth")
+    entities += await SprintyClient(client).get_base_entities_with_vague_name("WispMana")
+    entities += await SprintyClient(client).get_base_entities_with_vague_name("WispGold")
 
     if nothing_but_safe_entities:
         safe_entities = await SprintyClient(client).find_safe_entities_from(entities)
+
     else:
         safe_entities = entities
 
@@ -1209,8 +1389,8 @@ async def collect_wisps(client: Client, nothing_but_safe_entities=True):
 async def collect_wisps_with_limit(client: Client, limit=3):
     # Collects all the wisps in the current area, only works within the entity draw distance.
     entities = []
-    entities = await SprintyClient(client).get_base_entities_with_vague_name('WispHealth')
-    entities += await SprintyClient(client).get_base_entities_with_vague_name('WispMana')
+    entities = await SprintyClient(client).get_base_entities_with_vague_name("WispHealth")
+    entities += await SprintyClient(client).get_base_entities_with_vague_name("WispMana")
 
     total_collected = 0
 
@@ -1254,6 +1434,7 @@ async def try_task_coro(coro: Coroutine, clients: List[Client], deactive_mousele
     except asyncio.CancelledError:
         for p in clients:
             p.feeding_pet_status = False
+
         await asyncio.gather(*[attempt_deactivate_dance_hook(p) for p in clients])
         pass
 
@@ -1287,20 +1468,20 @@ def read_webpage(url) -> Union[List, None]:
 
 
 def assign_pet_level(destinationLevel):
-    pet_world_tracks = ['btnTrack0', 'btnTrack1', 'btnTrack2', 'btnTrack3', 'btnTrack4']
-    pet_world_list = ['WizardCity', 'Krokotopia', 'Marleybone', 'Mooshu', 'Dragonspyre']
+    pet_world_tracks = ["btnTrack0", "btnTrack1", "btnTrack2", "btnTrack3", "btnTrack4"]
+    pet_world_list = ["WizardCity", "Krokotopia", "Marleybone", "Mooshu", "Dragonspyre"]
 
     pet_world_index = pet_world_list.index(destinationLevel)
     selected_track = pet_world_tracks[pet_world_index]
 
     if selected_track is not None:
         for index, track in enumerate(wizard_city_dance_game_path):
-            if (track in pet_world_tracks):
+            if track in pet_world_tracks:
                 wizard_city_dance_game_path[index] = selected_track
 
 
 def required_params(signature: inspect.Signature) -> int:
-    '''Counts the number of params required for a function, based off of its function signature.'''
+    """Counts the number of params required for a function, based off of its function signature."""
     req_params = 0
 
     for param in signature.parameters.values():
@@ -1311,25 +1492,27 @@ def required_params(signature: inspect.Signature) -> int:
 
 
 async def conditional_await(func, args: dict = {}) -> Any:
-    '''Awaits any function that returns something if async, runs normally if sync.'''
+    """Awaits any function that returns something if async, runs normally if sync."""
     if inspect.iscoroutinefunction(func):
         return await func(**args)
 
     else:
         return func(**args)
 
+
 # To track seen objects and avoid circular references
 seen_objects = {}
 
+
 async def class_snapshot(
-    instance, 
-    recurse: bool = True, 
-    current_depth: int = 0, 
-    max_depth: int = 25, 
-    types_blacklist: tuple = (inspect._empty, Window, wizwalker.memory.DynamicWindow), 
-    edge_cases: dict = {}
+    instance,
+    recurse: bool = True,
+    current_depth: int = 0,
+    max_depth: int = 25,
+    types_blacklist: tuple = (inspect._empty, Window, wizwalker.memory.DynamicWindow),
+    edge_cases: dict = {},
 ) -> dict:
-    '''Recursively calls every function in a class, async or not. Assembles a dict containing the outputs for these, referenced by function name. Only does functions that have no arguments.'''
+    """Recursively calls every function in a class, async or not. Assembles a dict containing the outputs for these, referenced by function name. Only does functions that have no arguments."""
     snapshot_data = {}
 
     # Limit recursion depth to prevent stack overflow
@@ -1366,9 +1549,12 @@ async def class_snapshot(
         if name in edge_cases:
             edge_case_args = edge_cases[name]
             is_func_compat = True
+
         else:
             edge_case_args = {}
-            is_func_compat = (not name.startswith('__') and not len(signature.parameters) and not _is_return_type_blacklisted(func))
+            is_func_compat = (
+                not name.startswith("__") and not len(signature.parameters) and not _is_return_type_blacklisted(func)
+            )
 
         if is_func_compat:  # Skip built-in methods and only consider functions without arguments
             try:
@@ -1388,15 +1574,20 @@ async def class_snapshot(
             elif _is_valid_type(output, iter_types):  # If the output is iterable, check everything inside it
                 if isinstance(output, dict):  # Dict handling, checks both the keys and values
                     output_dict = {}
+
                     for o_k, o_v in output.items():
                         snapshot_k = o_k
                         snapshot_v = o_v
 
                         if not _is_valid_type(o_k):  # If this isn't a built-in type, recurse
-                            snapshot_k = await class_snapshot(o_k, recurse, current_depth, max_depth, types_blacklist, edge_cases)
+                            snapshot_k = await class_snapshot(
+                                o_k, recurse, current_depth, max_depth, types_blacklist, edge_cases
+                            )
 
                         if not _is_valid_type(o_v):
-                            snapshot_v = await class_snapshot(o_v, recurse, current_depth, max_depth, types_blacklist, edge_cases)
+                            snapshot_v = await class_snapshot(
+                                o_v, recurse, current_depth, max_depth, types_blacklist, edge_cases
+                            )
 
                         output_dict[snapshot_k] = snapshot_v
 
@@ -1405,22 +1596,35 @@ async def class_snapshot(
 
                 else:  # Iterable output handling
                     output_iterable = []
+
                     for o in output:
                         if _is_valid_type(o):
                             output_iterable.append(o)
+
                         else:
-                            o_snapshot = await class_snapshot(o, recurse, current_depth, max_depth, types_blacklist, edge_cases)
+                            o_snapshot = await class_snapshot(
+                                o, recurse, current_depth, max_depth, types_blacklist, edge_cases
+                            )
                             output_iterable.append(o_snapshot)
 
                     snapshot_data[name] = type(output)(output_iterable)
 
             else:
-                snapshot_data[name] = await class_snapshot(output, recurse, current_depth, max_depth, types_blacklist, edge_cases)
+                snapshot_data[name] = await class_snapshot(
+                    output, recurse, current_depth, max_depth, types_blacklist, edge_cases
+                )
 
     return snapshot_data
 
 
-async def class_snapshot_iterable(instances: Iterable, recurse: bool = True, current_depth: int = 0, max_depth: int = 25, types_blacklist = (inspect._empty, Window, wizwalker.memory.DynamicWindow), edge_cases: dict = {}):
+async def class_snapshot_iterable(
+    instances: Iterable,
+    recurse: bool = True,
+    current_depth: int = 0,
+    max_depth: int = 25,
+    types_blacklist=(inspect._empty, Window, wizwalker.memory.DynamicWindow),
+    edge_cases: dict = {},
+):
     snapshots = []
     for inst in instances:
         snapshots.append(await class_snapshot(inst, recurse, current_depth, max_depth, types_blacklist, edge_cases))
@@ -1428,13 +1632,13 @@ async def class_snapshot_iterable(instances: Iterable, recurse: bool = True, cur
     return snapshots
 
 
-def override_wiz_install_using_handle(max_size = 100):
+def override_wiz_install_using_handle(max_size=100):
     """
     This function allows you to automatically override your wiz install location, provided that wizard101 is open.
     """
     path = ctypes.create_unicode_buffer(max_size)
     pid = get_pid_from_handle(get_all_wizard_handles()[0])
-    handle = kernel32.OpenProcess(0x410, 0, pid) # PROCESS_QUERY_INFORMATION and PROCESS_VM_READ
+    handle = kernel32.OpenProcess(0x410, 0, pid)  # PROCESS_QUERY_INFORMATION and PROCESS_VM_READ
     ctypes.windll.psapi.GetModuleFileNameExW(handle, None, ctypes.byref(path), max_size)
     kernel32.CloseHandle(handle)
     install_location = path.value.replace("\\Bin\\WizardGraphicalClient.exe", "")

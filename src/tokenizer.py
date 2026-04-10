@@ -1,4 +1,3 @@
-
 class TokenizerError(Exception):
     pass
 
@@ -18,20 +17,24 @@ def tokenize(l: str) -> list[str]:
         nonlocal result
         nonlocal bracket_list
         nonlocal in_brackets
+
         if not literal:
             s = s.strip()
+
         if len(s) == 0 and not allow_empty:
             return
+
         if in_brackets:
             bracket_list.append(s)
+
         else:
             result.append(s)
 
-    def advance(off = 1):
+    def advance(off=1):
         nonlocal i
         i += off
 
-    def can_read(off = 0) -> bool:
+    def can_read(off=0) -> bool:
         nonlocal i
         nonlocal l
         return i + off < len(l)
@@ -39,21 +42,25 @@ def tokenize(l: str) -> list[str]:
     def read() -> str:
         nonlocal i
         nonlocal l
+
         if can_read():
             s = l[i]
             advance()
             return s
 
-    def read_until(c: str, illegal_chars = ['#']):
+    def read_until(c: str, illegal_chars=["#"]):
         assert len(c) == 1
         nonlocal i
         nonlocal l
         res = read()
+
         while can_read():
             x = read()
             res += x
+
             if x == c:
                 break
+
         for illegal in illegal_chars:
             if illegal in res:
                 error(f"Found {illegal} at illegal position")
@@ -66,44 +73,53 @@ def tokenize(l: str) -> list[str]:
     word = ""
     while can_read():
         c = l[i]
-        
+
         match c:
-            case '#':
-                break        
-            case '(':
-                add_token(word + read_until(')'))
+            case "#":
+                break
+
+            case "(":
+                add_token(word + read_until(")"))
                 word = ""
-            case ')':
+
+            case ")":
                 error("Closing ) without opening (")
-            case '[':
+
+            case "[":
                 if in_brackets:
                     error("Nested [] are not allowed")
+
                 in_brackets = True
                 advance()
-            case ']':
+
+            case "]":
                 if not in_brackets:
                     error("Found closing ] without opening [")
+
                 add_token(word)
                 word = ""
                 result.append(bracket_list)
                 bracket_list = []
                 in_brackets = False
                 advance()
+
             case '"' | "'":
                 s = read_until(c, illegal_chars=[])[1:-1]
                 add_token(s, literal=True, allow_empty=True)
+
             case _:
-                if c == ',' or c.isspace():
+                if c == "," or c.isspace():
                     add_token(word)
                     word = ""
                     advance()
+
                 else:
                     word += read()
-    
+
     if in_brackets:
         error("Could not find closing ]")
-    add_token(word)
 
+    add_token(word)
     return result
 
 

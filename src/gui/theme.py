@@ -1,16 +1,16 @@
-from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QApplication
 
 from src.gui.helpers import build_shared_svgs
 
 
 def compute_styles(theme: dict, font: str = None, font_size: int = None) -> dict:
     """Pure function: from a 6-color theme dict, compute all stylesheet strings."""
-    bg = theme['bg_color']
-    alt = theme['alt_bg']
-    tc = theme['text_color']
-    bc = theme['button_color']
-    tb = theme['titlebar_bg']
+    bg = theme["bg_color"]
+    alt = theme["alt_bg"]
+    tc = theme["text_color"]
+    bc = theme["button_color"]
+    tb = theme["titlebar_bg"]
 
     font_css = (f" font-family: '{font}';" if font else "") + (f" font-size: {font_size}pt;" if font_size else "")
 
@@ -37,7 +37,7 @@ def compute_styles(theme: dict, font: str = None, font_size: int = None) -> dict
         "}"
     )
 
-    _hex = bc.lstrip('#') if isinstance(bc, str) else "4a019e"
+    _hex = bc.lstrip("#") if isinstance(bc, str) else "4a019e"
     btn_r, btn_g, btn_b = int(_hex[0:2], 16), int(_hex[2:4], 16), int(_hex[4:6], 16)
 
     btn_style = (
@@ -49,10 +49,10 @@ def compute_styles(theme: dict, font: str = None, font_size: int = None) -> dict
         f"  border-radius: 4px;"
         f"}}"
         f"QPushButton:hover {{"
-        f"  background-color: rgb({min(btn_r+30,255)},{min(btn_g+30,255)},{min(btn_b+30,255)});"
+        f"  background-color: rgb({min(btn_r + 30, 255)},{min(btn_g + 30, 255)},{min(btn_b + 30, 255)});"
         f"}}"
         f"QPushButton:pressed {{"
-        f"  background-color: rgb({max(btn_r-20,0)},{max(btn_g-20,0)},{max(btn_b-20,0)});"
+        f"  background-color: rgb({max(btn_r - 20, 0)},{max(btn_g - 20, 0)},{max(btn_b - 20, 0)});"
         f"}}"
     )
 
@@ -71,11 +71,11 @@ def compute_styles(theme: dict, font: str = None, font_size: int = None) -> dict
     titlebar_style = f"QWidget {{ background-color: {tb}; }}"
 
     return {
-        'app_style': app_style,
-        'groupbox_style': groupbox_style,
-        'btn_style': btn_style,
-        'icon_btn_style': icon_btn_style,
-        'titlebar_style': titlebar_style,
+        "app_style": app_style,
+        "groupbox_style": groupbox_style,
+        "btn_style": btn_style,
+        "icon_btn_style": icon_btn_style,
+        "titlebar_style": titlebar_style,
     }
 
 
@@ -83,13 +83,13 @@ def apply_theme(ctx, theme: dict):
     """Apply a theme dict to the running GUI at runtime."""
     styles = compute_styles(theme, ctx.gui_font, ctx.gui_font_size)
 
-    bg = theme['bg_color']
-    tc = theme['text_color']
-    sc = theme['stroke_color']
-    bc = theme['button_color']
+    bg = theme["bg_color"]
+    tc = theme["text_color"]
+    sc = theme["stroke_color"]
+    bc = theme["button_color"]
 
     # Determine light/dark
-    _hex = bg.lstrip('#')
+    _hex = bg.lstrip("#")
     r, g, b = int(_hex[0:2], 16), int(_hex[2:4], 16), int(_hex[4:6], 16)
     is_dark = (r + g + b) < 384
 
@@ -101,15 +101,17 @@ def apply_theme(ctx, theme: dict):
     ctx.stroke_color = sc
     ctx.btn_color_hex = bc
     ctx.theme = "dark" if is_dark else "light"
-    ctx.btn_style = styles['btn_style']
-    ctx.icon_btn_style = styles['icon_btn_style']
+    ctx.btn_style = styles["btn_style"]
+    ctx.icon_btn_style = styles["icon_btn_style"]
 
     # Apply stylesheets
     app = QApplication.instance()
+
     if app:
-        app.setStyleSheet(styles['app_style'])
-    ctx.window.setStyleSheet(styles['groupbox_style'])
-    ctx.titlebar.setStyleSheet(styles['titlebar_style'])
+        app.setStyleSheet(styles["app_style"])
+
+    ctx.window.setStyleSheet(styles["groupbox_style"])
+    ctx.titlebar.setStyleSheet(styles["titlebar_style"])
 
     # Update title label color
     ctx.title_label.setStyleSheet(f"QLabel {{ color: {tc}; font-weight: bold; background: transparent; }}")
@@ -118,14 +120,12 @@ def apply_theme(ctx, theme: dict):
     ctx.svgs = build_shared_svgs(sc)
 
     # Re-style tracked buttons via registry
-    ctx.registry.restyle_all(
-        styles['btn_style'], styles['icon_btn_style'],
-        ctx.titlebar_svg_icon, old_stroke, sc
-    )
+    ctx.registry.restyle_all(styles["btn_style"], styles["icon_btn_style"], ctx.titlebar_svg_icon, old_stroke, sc)
 
     # Re-style helper-created tracked icon buttons
     from src.gui.helpers import restyle_tracked_buttons
-    restyle_tracked_buttons(ctx, styles['icon_btn_style'], ctx.titlebar_svg_icon, old_stroke, sc)
+
+    restyle_tracked_buttons(ctx, styles["icon_btn_style"], ctx.titlebar_svg_icon, old_stroke, sc)
 
     # Re-render titlebar SVG buttons (use stroke_color)
     for btn, svg_str in ctx.titlebar_buttons:
@@ -152,29 +152,37 @@ def apply_theme(ctx, theme: dict):
     updated_labels = []
     for entry in ctx.tracked_svg_labels:
         widget, svg_str, size, mode = entry
+
         try:
             new_svg = svg_str.replace(old_stroke, sc)
             rendered = ctx.titlebar_svg_icon(new_svg, size)
-            if mode == 'pixmap':
+
+            if mode == "pixmap":
                 widget.setPixmap(rendered.pixmap(size, size))
+
             else:
                 widget.setIcon(rendered)
+
             updated_labels.append([widget, new_svg, size, mode])
+
         except RuntimeError:
             pass
+
     ctx.tracked_svg_labels = updated_labels
 
     # Re-render play/kill toggle buttons (read current SVGs dynamically)
     for btn, running_ref, size in ctx.tracked_toggle_btns:
         try:
-            svg = ctx.svgs['kill'] if running_ref[0] else ctx.svgs['play']
+            svg = ctx.svgs["kill"] if running_ref[0] else ctx.svgs["play"]
             btn.setIcon(ctx.titlebar_svg_icon(svg, size))
+
         except RuntimeError:
             pass
 
     # Re-theme tab exports (stroke_color-dependent styles)
-    for export_key in ('dev_utils', 'hotkeys'):
-        retheme = ctx.exports.get(export_key, {}).get('retheme')
+    for export_key in ("dev_utils", "hotkeys"):
+        retheme = ctx.exports.get(export_key, {}).get("retheme")
+
         if retheme:
             retheme()
 

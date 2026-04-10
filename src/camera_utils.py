@@ -2,10 +2,12 @@ import asyncio
 import math
 from time import perf_counter
 from typing import List
-from wizwalker import XYZ, Orient, Client
+
+from wizwalker import XYZ, Client, Orient
 from wizwalker.memory.memory_objects.camera_controller import CameraController
-from src.teleport_math import calculate_yaw, calculate_pitch
+
 from src.sprinty_client import SprintyClient
+from src.teleport_math import calculate_pitch, calculate_yaw
 
 
 async def point_to_xyz(camera: CameraController, xyz: XYZ):
@@ -37,7 +39,9 @@ async def toggle_player_invis(client: Client, default_scale: float = 1.0):
         await client.body.write_scale(default_scale)
 
 
-async def glide_to(camera: CameraController, xyz_1: XYZ, xyz_2: XYZ, orientation: Orient, time: float, focus_xyz: XYZ = None):
+async def glide_to(
+    camera: CameraController, xyz_1: XYZ, xyz_2: XYZ, orientation: Orient, time: float, focus_xyz: XYZ = None
+):
     pitch, roll, yaw = orientation
     roll = await camera.roll()
 
@@ -52,6 +56,7 @@ async def glide_to(camera: CameraController, xyz_1: XYZ, xyz_2: XYZ, orientation
 
     start_time = perf_counter()
     prev_time = start_time
+
     while perf_counter() - start_time < time:
         now = perf_counter()
         dt = now - prev_time
@@ -67,6 +72,7 @@ async def glide_to(camera: CameraController, xyz_1: XYZ, xyz_2: XYZ, orientation
             yaw = calculate_yaw(cur_xyz, focus_xyz)
             pitch = calculate_pitch(cur_xyz, focus_xyz)
             await camera.update_orientation(Orient(pitch, roll, yaw))
+
         else:
             await camera.update_orientation(Orient(pitch, roll, yaw))
 
@@ -75,7 +81,7 @@ async def glide_to(camera: CameraController, xyz_1: XYZ, xyz_2: XYZ, orientation
         await asyncio.sleep(0)
 
 
-async def rotating_glide_to(camera: CameraController, xyz_1: XYZ, xyz_2: XYZ, time: float, degrees = Orient(0, 0, 0)):
+async def rotating_glide_to(camera: CameraController, xyz_1: XYZ, xyz_2: XYZ, time: float, degrees=Orient(0, 0, 0)):
     rotation_velocity = Orient(
         math.radians(degrees.pitch) / time,
         math.radians(degrees.roll) / time,
@@ -95,6 +101,7 @@ async def rotating_glide_to(camera: CameraController, xyz_1: XYZ, xyz_2: XYZ, ti
 
     start_time = perf_counter()
     prev_time = start_time
+
     while perf_counter() - start_time < time:
         now = perf_counter()
         dt = now - prev_time
@@ -126,6 +133,7 @@ async def orbit(camera: CameraController, xyz_1: XYZ, xyz_2: XYZ, degrees: float
 
     start_time = perf_counter()
     prev_time = start_time
+
     while perf_counter() - start_time < time:
         now = perf_counter()
         dt = now - prev_time
@@ -133,11 +141,7 @@ async def orbit(camera: CameraController, xyz_1: XYZ, xyz_2: XYZ, degrees: float
 
         cur_angle += angle_velocity * dt
 
-        cur_xyz = XYZ(
-            xyz_2.x - xy_radius * math.cos(cur_angle),
-            xyz_2.y - xy_radius * math.sin(cur_angle),
-            xyz_1.z
-        )
+        cur_xyz = XYZ(xyz_2.x - xy_radius * math.cos(cur_angle), xyz_2.y - xy_radius * math.sin(cur_angle), xyz_1.z)
 
         await camera.write_position(cur_xyz)
 

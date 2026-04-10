@@ -38,4 +38,14 @@ wizsprinter = { workspace = true }
 wizlaunch = { workspace = true }
 
 [dependency-groups]
-dev = ["pyinstaller>=6.0"]
+dev = [
+    "pyinstaller>=6.0",
+    "ruff>=0.15.9",
+]
+
+[tool.ruff]
+line-length = 120
+exclude = ["libs/"]
+
+[tool.ruff.lint]
+select = ["I"]

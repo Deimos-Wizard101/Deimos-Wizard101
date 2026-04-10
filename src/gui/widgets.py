@@ -1,24 +1,41 @@
+import ctypes
+import ctypes.wintypes
 import math
 import re
 import time
-import ctypes
-import ctypes.wintypes
 
 import pyperclip
-from PyQt6.QtWidgets import (
-    QWidget, QTabWidget, QTabBar, QCheckBox, QStackedWidget, QDialog,
-    QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QPlainTextEdit,
-    QToolTip,
-)
 from PyQt6.QtCore import (
-    QTimer, Qt, QMetaObject, Q_ARG, pyqtSlot, pyqtSignal,
-    QPropertyAnimation, QEasingCurve, QPoint, QParallelAnimationGroup,
+    Q_ARG,
+    QEasingCurve,
+    QMetaObject,
+    QParallelAnimationGroup,
+    QPoint,
+    QPropertyAnimation,
     QRectF,
+    Qt,
+    QTimer,
+    pyqtSignal,
+    pyqtSlot,
 )
-from PyQt6.QtGui import QPixmap, QIcon, QPainter, QColor, QPen, QBrush, QFont, QFontMetrics
+from PyQt6.QtGui import QBrush, QColor, QFont, QFontMetrics, QIcon, QPainter, QPen, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QPushButton,
+    QStackedWidget,
+    QTabBar,
+    QTabWidget,
+    QToolTip,
+    QVBoxLayout,
+    QWidget,
+)
 
-from src.gui.commands import _QT_KEY_TO_KEYCODE, _MODIFIER_KEYS, _format_binding
+from src.gui.commands import _MODIFIER_KEYS, _QT_KEY_TO_KEYCODE, _format_binding
 
 
 class ToggleNameLabel(QLabel):
@@ -58,6 +75,7 @@ class BoldSelectedTabBar(QTabBar):
 
 class AnimatedTabWidget(QTabWidget):
     """QTabWidget with horizontal slide animation between tabs."""
+
     def __init__(self, duration=200, parent=None):
         super().__init__(parent)
         self.setTabBar(BoldSelectedTabBar())
@@ -72,17 +90,20 @@ class AnimatedTabWidget(QTabWidget):
 
         prev = self._prev_index
         self._prev_index = index
+
         if prev == index:
             return
 
         self._animating = True
         stack = self.findChild(QStackedWidget)
+
         if not stack:
             self._animating = False
             return
 
         current_widget = stack.widget(index)
         prev_widget = stack.widget(prev)
+
         if not current_widget or not prev_widget:
             self._animating = False
             return
@@ -128,21 +149,33 @@ class AnimatedTabWidget(QTabWidget):
 
 class ToggleSwitch(QCheckBox):
     """A styled toggle switch widget with two SVG icons. Supports horizontal or vertical orientation."""
+
     _ICON_SIZE = 16
     _GAP = 2
     _PAD = 4
 
-    def __init__(self, left_svg="", right_svg="", left_tooltip="", right_tooltip="", vertical=False, button_color=None, parent=None):
+    def __init__(
+        self,
+        left_svg="",
+        right_svg="",
+        left_tooltip="",
+        right_tooltip="",
+        vertical=False,
+        button_color=None,
+        parent=None,
+    ):
         super().__init__(parent)
         self._left_tooltip = left_tooltip
         self._right_tooltip = right_tooltip
         self._vertical = vertical
         self._button_color = button_color if button_color is not None else QColor(74, 1, 158)
         self._icon_cell = self._ICON_SIZE + self._PAD * 2
+
         if vertical:
             self.setFixedSize(self._icon_cell, self._icon_cell * 2 + self._GAP)
         else:
             self.setFixedSize(self._icon_cell * 2 + self._GAP, self._icon_cell)
+
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet("QCheckBox { spacing: 0px; } QCheckBox::indicator { width: 0px; height: 0px; }")
         self._left_pix = self._render_svg(left_svg, self._ICON_SIZE)
@@ -170,6 +203,7 @@ class ToggleSwitch(QCheckBox):
 
     def paintEvent(self, event):
         from PyQt6.QtGui import QBrush
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -185,13 +219,16 @@ class ToggleSwitch(QCheckBox):
                 painter.drawRoundedRect(0, cell + gap, cell, cell, 4, 4)
             else:
                 painter.drawRoundedRect(0, 0, cell, cell, 4, 4)
+
             painter.drawPixmap(pad, pad, self._left_pix)
             painter.drawPixmap(pad, cell + gap + pad, self._right_pix)
+
         else:
             if self.isChecked():
                 painter.drawRoundedRect(cell + gap, 0, cell, cell, 4, 4)
             else:
                 painter.drawRoundedRect(0, 0, cell, cell, 4, 4)
+
             painter.drawPixmap(pad, pad, self._left_pix)
             painter.drawPixmap(cell + gap + pad, pad, self._right_pix)
 
@@ -201,21 +238,26 @@ class ToggleSwitch(QCheckBox):
         if event.type() == event.Type.ToolTip:
             if self._vertical:
                 y = event.pos().y()
+
                 if y < self._icon_cell:
                     self.setToolTip(self._left_tooltip)
                 else:
                     self.setToolTip(self._right_tooltip)
+
             else:
                 x = event.pos().x()
+
                 if x < self._icon_cell:
                     self.setToolTip(self._left_tooltip)
                 else:
                     self.setToolTip(self._right_tooltip)
+
         return super().event(event)
 
 
 class AnimatedStackedWidget(QStackedWidget):
     """QStackedWidget with a horizontal slide animation between pages."""
+
     def __init__(self, duration=250, parent=None):
         super().__init__(parent)
         self._duration = duration
@@ -263,6 +305,7 @@ class AnimatedStackedWidget(QStackedWidget):
 
 class DuelCircleWidget(QWidget):
     """Custom widget that renders a radial duel circle with enemy/ally slots."""
+
     casterSelected = pyqtSignal(int)
     targetSelected = pyqtSignal(int)
     viewEnemy = pyqtSignal()
@@ -271,7 +314,15 @@ class DuelCircleWidget(QWidget):
 
     _SLOT_RADIUS = 14
 
-    def __init__(self, stroke_color='#e0e0e0', text_color='#ffffff', bg_color='#1e1e1e', button_color='#4a019e', tl=None, parent=None):
+    def __init__(
+        self,
+        stroke_color="#e0e0e0",
+        text_color="#ffffff",
+        bg_color="#1e1e1e",
+        button_color="#4a019e",
+        tl=None,
+        parent=None,
+    ):
         super().__init__(parent)
         self._tl = tl or (lambda k: k)
         self._stroke_color = QColor(stroke_color)
@@ -296,6 +347,7 @@ class DuelCircleWidget(QWidget):
         _hostile_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 16s-1.5-2-4-2-4 2-4 2"/><path d="M7.5 8 10 9"/><path d="m14 9 2.5-1"/><path d="M9 10h.01"/><path d="M15 10h.01"/></svg>'
         _stunned_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>'
         _dead_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
+
         self._friendly_icon = self._render_svg(_friendly_svg, 10)
         self._hostile_icon = self._render_svg(_hostile_svg, 10)
         self._stunned_icon = self._render_svg(_stunned_svg, 10)
@@ -325,6 +377,7 @@ class DuelCircleWidget(QWidget):
     def _build_slot_icons(self, sc):
         """Build slot icon pixmaps for the given stroke color."""
         self._slot_icons.clear()
+
         enemy_svgs = [
             f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 19-6-6"/><path d="m5 21-2-2"/><path d="m8 16-4 4"/><path d="M9.5 17.5 21 6V3h-3L6.5 14.5"/></svg>',
             f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="{sc}"/></svg>',
@@ -335,6 +388,7 @@ class DuelCircleWidget(QWidget):
             f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>',
             f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v6.292a7 7 0 1 0 4 0V2"/><path d="M5 15h14"/><path d="M8.5 2h7"/></svg>',
         ]
+
         ally_svgs = [
             f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
             f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -345,11 +399,14 @@ class DuelCircleWidget(QWidget):
             f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>',
             f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v6.292a7 7 0 1 0 4 0V2"/><path d="M5 15h14"/><path d="M8.5 2h7"/></svg>',
         ]
+
         icon_size = 16
+
         for i, svg in enumerate(enemy_svgs):
-            self._slot_icons[('enemy', i + 1)] = self._render_svg(svg, icon_size)
+            self._slot_icons[("enemy", i + 1)] = self._render_svg(svg, icon_size)
+
         for i, svg in enumerate(ally_svgs):
-            self._slot_icons[('ally', i + 1)] = self._render_svg(svg, icon_size)
+            self._slot_icons[("ally", i + 1)] = self._render_svg(svg, icon_size)
 
         # Rebuild eye/swap icons with the stroke color
         _eye_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>'
@@ -399,6 +456,7 @@ class DuelCircleWidget(QWidget):
 
         if self._anim_progress < 1.0:
             t = self._anim_progress
+
             for (side, idx), start_deg in self._anim_start_angles.items():
                 end_deg = self._anim_end_angles.get((side, idx), start_deg)
                 diff = (end_deg - start_deg + 180) % 360 - 180
@@ -407,24 +465,27 @@ class DuelCircleWidget(QWidget):
                 x = cx + rx * math.cos(rad)
                 y = cy + ry * math.sin(rad)
                 self._slot_centers[(side, idx)] = (x, y)
+
         else:
             for i, deg in enumerate(enemy_angles):
                 rad = math.radians(deg)
                 x = cx + rx * math.cos(rad)
                 y = cy + ry * math.sin(rad)
-                self._slot_centers[('enemy', i + 1)] = (x, y)
+                self._slot_centers[("enemy", i + 1)] = (x, y)
 
             for i, deg in enumerate(ally_angles):
                 rad = math.radians(deg)
                 x = cx + rx * math.cos(rad)
                 y = cy + ry * math.sin(rad)
-                self._slot_centers[('ally', i + 1)] = (x, y)
+                self._slot_centers[("ally", i + 1)] = (x, y)
 
     @staticmethod
     def _distribute_angles(count, center_deg):
         spacing = 36
+
         if count > 4:
             spacing = min(spacing, 170 / (count - 1))
+
         total_span = spacing * (count - 1)
         start = center_deg - total_span / 2
         return [start + i * spacing for i in range(count)]
@@ -477,17 +538,19 @@ class DuelCircleWidget(QWidget):
             rect = QRectF(sx - r, sy - r, r * 2, r * 2)
             is_dead = self._slot_dead.get((side, idx), False)
             is_selected = not is_dead and (
-                (side == 'enemy' and idx == self._selected_target) or
-                (side == 'ally' and idx == self._selected_caster))
+                (side == "enemy" and idx == self._selected_target) or (side == "ally" and idx == self._selected_caster)
+            )
 
             if is_dead:
                 dead_color = QColor(self._stroke_color)
                 dead_color.setAlpha(50)
                 painter.setBrush(QBrush(dead_color))
                 painter.setPen(QPen(dead_color, 1.5))
+
             elif is_selected:
                 painter.setBrush(QBrush(self._SELECTED_COLOR))
                 painter.setPen(QPen(self._SELECTED_COLOR.lighter(140), 2))
+
             else:
                 painter.setBrush(QBrush(self._bg_color))
                 painter.setPen(QPen(self._stroke_color, 1.5))
@@ -498,22 +561,30 @@ class DuelCircleWidget(QWidget):
             if pix:
                 iw = pix.width() / pix.devicePixelRatio()
                 ih = pix.height() / pix.devicePixelRatio()
+
                 if is_dead:
                     painter.setOpacity(0.25)
+
                 painter.drawPixmap(QRectF(sx - iw / 2, sy - ih / 2, iw, ih), pix, QRectF(pix.rect()))
+
                 if is_dead:
                     painter.setOpacity(1.0)
 
             is_stunned = self._slot_stunned.get((side, idx), False)
             allegiance = self._slot_allegiance.get((side, idx))
+
             if is_dead:
                 ind_pix = self._dead_icon
+
             elif is_stunned:
                 ind_pix = self._stunned_icon
+
             elif allegiance is not None:
                 ind_pix = self._friendly_icon if allegiance else self._hostile_icon
+
             else:
                 ind_pix = None
+
             if ind_pix is not None:
                 dx = sx - cx
                 dy = sy - cy
@@ -530,14 +601,18 @@ class DuelCircleWidget(QWidget):
         label_font.setBold(False)
         painter.setFont(label_font)
         painter.setPen(QPen(self._stroke_color))
+
         if self._anim_progress < 1.0:
             t = self._anim_progress
             name_opacity = abs(2.0 * t - 1.0)
             painter.setOpacity(name_opacity)
+
         if self._enemy_name:
             painter.drawText(QRectF(0, cy - 22, w, 14), Qt.AlignmentFlag.AlignCenter, self._enemy_name)
+
         if self._ally_name:
             painter.drawText(QRectF(0, cy + 8, w, 14), Qt.AlignmentFlag.AlignCenter, self._ally_name)
+
         painter.setOpacity(1.0)
 
         eiw = self._eye_icon.width() / self._eye_icon.devicePixelRatio()
@@ -545,16 +620,18 @@ class DuelCircleWidget(QWidget):
         eye_offset = ry / 2
         enemy_eye_rect = QRectF(cx - eiw / 2, cy - eye_offset - eih / 2, eiw, eih)
         ally_eye_rect = QRectF(cx - eiw / 2, cy + eye_offset - eih / 2, eiw, eih)
-        self._eye_rects['enemy'] = enemy_eye_rect
-        self._eye_rects['ally'] = ally_eye_rect
+        self._eye_rects["enemy"] = enemy_eye_rect
+        self._eye_rects["ally"] = ally_eye_rect
 
         if self._enemy_count == 0:
             painter.setOpacity(0.25)
+
         painter.drawPixmap(enemy_eye_rect, self._eye_icon, QRectF(self._eye_icon.rect()))
         painter.setOpacity(1.0)
 
         if self._ally_count == 0:
             painter.setOpacity(0.25)
+
         painter.drawPixmap(ally_eye_rect, self._eye_icon, QRectF(self._eye_icon.rect()))
         painter.setOpacity(1.0)
 
@@ -563,72 +640,93 @@ class DuelCircleWidget(QWidget):
     def mousePressEvent(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
             return
+
         self._calc_slot_positions()
         px, py = event.position().x(), event.position().y()
 
         if not self._swap_rect.isNull():
             padded = self._swap_rect.adjusted(-4, -4, 4, 4)
+
             if padded.contains(px, py):
                 self.swapClicked.emit()
                 return
 
         for side, rect in self._eye_rects.items():
             padded = rect.adjusted(-6, -6, 6, 6)
+
             if padded.contains(px, py):
-                count = self._enemy_count if side == 'enemy' else self._ally_count
+                count = self._enemy_count if side == "enemy" else self._ally_count
+
                 if count > 0:
-                    if side == 'enemy':
+                    if side == "enemy":
                         self.viewEnemy.emit()
                     else:
                         self.viewAlly.emit()
+
                 return
 
         hit_r = self._SLOT_RADIUS + 6
         best_key = None
-        best_dist = float('inf')
+        best_dist = float("inf")
+
         for key, (sx, sy) in self._slot_centers.items():
             dist = (px - sx) ** 2 + (py - sy) ** 2
-            if dist < best_dist and dist <= hit_r ** 2:
+
+            if dist < best_dist and dist <= hit_r**2:
                 best_dist = dist
                 best_key = key
+
         if best_key:
             side, idx = best_key
+
             if self._slot_dead.get((side, idx), False):
                 return
-            if side == 'enemy':
+
+            if side == "enemy":
                 self._selected_target = idx
                 self.targetSelected.emit(idx)
+
             else:
                 self._selected_caster = idx
                 self.casterSelected.emit(idx)
+
             self.update()
 
     def mouseMoveEvent(self, event):
         px, py = event.position().x(), event.position().y()
         hit_r = self._SLOT_RADIUS + 6
+
         for (side, idx), (sx, sy) in self._slot_centers.items():
-            if (px - sx) ** 2 + (py - sy) ** 2 <= hit_r ** 2:
+            if (px - sx) ** 2 + (py - sy) ** 2 <= hit_r**2:
                 info = self._slot_info.get((side, idx))
+
                 if info:
-                    name = info.get('name', '???')
-                    max_dmg = info.get('max_dmg', 0)
-                    sim_dmg = info.get('sim_dmg', 0)
+                    name = info.get("name", "???")
+                    max_dmg = info.get("max_dmg", 0)
+                    sim_dmg = info.get("sim_dmg", 0)
                     allegiance = self._slot_allegiance.get((side, idx))
                     is_dead = self._slot_dead.get((side, idx), False)
                     is_stunned = self._slot_stunned.get((side, idx), False)
+
                     if is_dead:
-                        status_str = self._tl('status_dead')
+                        status_str = self._tl("status_dead")
+
                     elif is_stunned:
-                        status_str = self._tl('status_stunned')
+                        status_str = self._tl("status_stunned")
+
                     elif allegiance:
-                        status_str = self._tl('status_friendly')
+                        status_str = self._tl("status_friendly")
+
                     elif allegiance is not None:
-                        status_str = self._tl('status_hostile')
+                        status_str = self._tl("status_hostile")
+
                     else:
-                        status_str = self._tl('status_unknown')
+                        status_str = self._tl("status_unknown")
+
                     text = f"{name}\nMax Dmg: {max_dmg}\nSim Dmg: {sim_dmg}\nStatus: {status_str}"
                     QToolTip.showText(event.globalPosition().toPoint(), text, self)
                     return
+
         QToolTip.hideText()
 
     def selected_caster(self):
@@ -647,14 +745,18 @@ class DuelCircleWidget(QWidget):
 
     def set_enemy_count(self, count):
         self._enemy_count = count
+
         if self._selected_target > count:
             self._selected_target = max(1, count)
+
         self.update()
 
     def set_ally_count(self, count):
         self._ally_count = count
+
         if self._selected_caster > count:
             self._selected_caster = max(1, count)
+
         self.update()
 
     def set_status_message(self, msg):
@@ -662,24 +764,28 @@ class DuelCircleWidget(QWidget):
 
     def set_slot_info(self, info):
         self._slot_info = info
-        self._slot_allegiance = {k: v.get('is_friendly', k[0] == 'ally') for k, v in info.items()}
-        self._slot_dead = {k: v.get('is_dead', False) for k, v in info.items()}
-        self._slot_stunned = {k: v.get('is_stunned', False) for k, v in info.items()}
+        self._slot_allegiance = {k: v.get("is_friendly", k[0] == "ally") for k, v in info.items()}
+        self._slot_dead = {k: v.get("is_dead", False) for k, v in info.items()}
+        self._slot_stunned = {k: v.get("is_stunned", False) for k, v in info.items()}
         self.update()
 
     def swap_sides(self):
         if self._anim_timer.isActive():
             self._anim_timer.stop()
             self._anim_progress = 1.0
+
             if self._name_swap_pending:
                 self._enemy_name = self._pending_enemy_name
                 self._ally_name = self._pending_ally_name
                 self._name_swap_pending = False
 
         old_enemy_angles = self._distribute_angles(self._enemy_count, center_deg=270)
+
         if self._flipped:
             old_enemy_angles = [2 * 270 - a for a in old_enemy_angles]
+
         old_ally_angles = self._distribute_angles(self._ally_count, center_deg=90)
+
         if self._flipped:
             old_ally_angles = [2 * 90 - a for a in old_ally_angles]
 
@@ -689,35 +795,46 @@ class DuelCircleWidget(QWidget):
         self._name_swap_pending = True
         self._enemy_count, self._ally_count = self._ally_count, self._enemy_count
         swapped = {}
+
         for (side, idx), pix in self._slot_icons.items():
-            new_side = 'ally' if side == 'enemy' else 'enemy'
+            new_side = "ally" if side == "enemy" else "enemy"
             swapped[(new_side, idx)] = pix
+
         self._slot_icons = swapped
         swapped_alleg = {}
+
         for (side, idx), friendly in self._slot_allegiance.items():
-            swapped_alleg[('ally' if side == 'enemy' else 'enemy', idx)] = not friendly
+            swapped_alleg[("ally" if side == "enemy" else "enemy", idx)] = not friendly
+
         self._slot_allegiance = swapped_alleg
-        self._slot_dead = {('ally' if s == 'enemy' else 'enemy', i): v for (s, i), v in self._slot_dead.items()}
-        self._slot_stunned = {('ally' if s == 'enemy' else 'enemy', i): v for (s, i), v in self._slot_stunned.items()}
+        self._slot_dead = {("ally" if s == "enemy" else "enemy", i): v for (s, i), v in self._slot_dead.items()}
+        self._slot_stunned = {("ally" if s == "enemy" else "enemy", i): v for (s, i), v in self._slot_stunned.items()}
 
         self._flipped = not self._flipped
 
         new_enemy_angles = self._distribute_angles(self._enemy_count, center_deg=270)
+
         if self._flipped:
             new_enemy_angles = [2 * 270 - a for a in new_enemy_angles]
+
         new_ally_angles = self._distribute_angles(self._ally_count, center_deg=90)
+
         if self._flipped:
             new_ally_angles = [2 * 90 - a for a in new_ally_angles]
 
         self._anim_start_angles = {}
         self._anim_end_angles = {}
+
         for i, old_deg in enumerate(old_enemy_angles):
-            key = ('ally', i + 1)
+            key = ("ally", i + 1)
+
             if i < len(new_ally_angles):
                 self._anim_start_angles[key] = old_deg
                 self._anim_end_angles[key] = new_ally_angles[i]
+
         for i, old_deg in enumerate(old_ally_angles):
-            key = ('enemy', i + 1)
+            key = ("enemy", i + 1)
+
             if i < len(new_enemy_angles):
                 self._anim_start_angles[key] = old_deg
                 self._anim_end_angles[key] = new_enemy_angles[i]
@@ -730,11 +847,14 @@ class DuelCircleWidget(QWidget):
         elapsed = time.monotonic() - self._anim_start_time
         t = min(elapsed / self._anim_duration, 1.0)
         self._anim_progress = 1.0 - (1.0 - t) ** 3
+
         if self._name_swap_pending and t >= 0.5:
             self._enemy_name = self._pending_enemy_name
             self._ally_name = self._pending_ally_name
             self._name_swap_pending = False
+
         self.update()
+
         if t >= 1.0:
             self._anim_timer.stop()
             self._anim_progress = 1.0
@@ -742,6 +862,7 @@ class DuelCircleWidget(QWidget):
 
 class HotkeyCapture(QDialog):
     """Modal dialog that captures a single key press + modifiers."""
+
     captured = pyqtSignal(str, list)
 
     def __init__(self, action_name: str, existing_bindings: dict, current_action_id: str, tl=None, parent=None):
@@ -752,7 +873,7 @@ class HotkeyCapture(QDialog):
         self._action_name = action_name
         self._key = None
         self._mods = []
-        self.setWindowTitle(self._tl('bind_hotkey'))
+        self.setWindowTitle(self._tl("bind_hotkey"))
         self.setFixedSize(280, 120)
         self.setModal(True)
 
@@ -762,12 +883,12 @@ class HotkeyCapture(QDialog):
         layout.addWidget(self._label)
 
         btn_row = QHBoxLayout()
-        self._ok_btn = QPushButton(self._tl('ok'))
+        self._ok_btn = QPushButton(self._tl("ok"))
         self._ok_btn.setEnabled(False)
         self._ok_btn.clicked.connect(self._accept)
-        self._clear_btn = QPushButton(self._tl('unbind_hotkey'))
+        self._clear_btn = QPushButton(self._tl("unbind_hotkey"))
         self._clear_btn.clicked.connect(self._clear)
-        self._cancel_btn = QPushButton(self._tl('cancel'))
+        self._cancel_btn = QPushButton(self._tl("cancel"))
         self._cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(self._ok_btn)
         btn_row.addWidget(self._clear_btn)
@@ -776,32 +897,43 @@ class HotkeyCapture(QDialog):
 
     def _modifier_prefix(self, qt_mods):
         parts = []
+
         if qt_mods & Qt.KeyboardModifier.ControlModifier:
             parts.append("Ctrl")
+
         if qt_mods & Qt.KeyboardModifier.ShiftModifier:
             parts.append("Shift")
+
         if qt_mods & Qt.KeyboardModifier.AltModifier:
             parts.append("Alt")
+
         return "+".join(parts)
 
     def keyPressEvent(self, event):
         key = event.key()
+
         if key in _MODIFIER_KEYS:
             prefix = self._modifier_prefix(event.modifiers())
+
             if prefix:
                 self._label.setText(f"{prefix}+...")
+
             return
 
         keycode_name = _QT_KEY_TO_KEYCODE.get(key)
+
         if keycode_name is None:
             return
 
         mods = []
         qt_mods = event.modifiers()
+
         if qt_mods & Qt.KeyboardModifier.ShiftModifier:
             mods.append("SHIFT")
+
         if qt_mods & Qt.KeyboardModifier.ControlModifier:
             mods.append("CTRL")
+
         if qt_mods & Qt.KeyboardModifier.AltModifier:
             mods.append("ALT")
 
@@ -815,8 +947,10 @@ class HotkeyCapture(QDialog):
     def keyReleaseEvent(self, event):
         if event.key() in _MODIFIER_KEYS and self._key is None:
             prefix = self._modifier_prefix(event.modifiers())
+
             if prefix:
                 self._label.setText(f"{prefix}+...")
+
             else:
                 self._label.setText(f"{self._action_name}\n{self._tl('press_a_key')}")
 
@@ -824,23 +958,31 @@ class HotkeyCapture(QDialog):
         for aid, binding in self._existing.items():
             if aid == self._current_action_id or binding is None:
                 continue
+
             if binding["key"] == self._key and sorted(binding.get("modifiers", [])) == sorted(self._mods):
                 return aid
+
         return None
 
     def _accept(self):
         if self._key is None:
             return
+
         conflict = self._check_conflict()
+
         if conflict:
             from PyQt6.QtWidgets import QMessageBox
+
             result = QMessageBox.warning(
-                self, self._tl('key_conflict'),
-                self._tl('overwrite_binding').format(_format_binding(self._key, self._mods), conflict),
+                self,
+                self._tl("key_conflict"),
+                self._tl("overwrite_binding").format(_format_binding(self._key, self._mods), conflict),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
+
             if result != QMessageBox.StandardButton.Yes:
                 return
+
         self.captured.emit(self._key, self._mods)
         self.accept()
 
@@ -853,14 +995,12 @@ class HotkeyCapture(QDialog):
 
 class HighlightOverlay(QWidget):
     """Transparent, click-through overlay that covers the game window."""
+
     THICKNESS = 3
 
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.Tool
-        )
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self._box_rect = (0, 0, 0, 0)
@@ -883,28 +1023,31 @@ class HighlightOverlay(QWidget):
 
         dpr = self.devicePixelRatioF()
         self.setGeometry(
-            round(origin.x / dpr), round(origin.y / dpr),
-            round(client_rect.right / dpr), round(client_rect.bottom / dpr)
+            round(origin.x / dpr),
+            round(origin.y / dpr),
+            round(client_rect.right / dpr),
+            round(client_rect.bottom / dpr),
         )
 
         overlay_hwnd = int(self.winId())
         GW_HWNDPREV = 3
         above_game = ctypes.windll.user32.GetWindow(game_hwnd, GW_HWNDPREV)
+
         if above_game != overlay_hwnd:
             SWP_NOSIZE = 0x0001
             SWP_NOMOVE = 0x0002
             SWP_NOACTIVATE = 0x0010
             insert_after = above_game if above_game else 0
             ctypes.windll.user32.SetWindowPos(
-                overlay_hwnd, insert_after,
-                0, 0, 0, 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+                overlay_hwnd, insert_after, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
             )
 
         self._box_rect = (round(x1 / dpr), round(y1 / dpr), round(x2 / dpr), round(y2 / dpr))
         self._has_box = True
+
         if not self.isVisible():
             self.show()
+
         self.update()
 
     def clear_box(self):
@@ -914,6 +1057,7 @@ class HighlightOverlay(QWidget):
     def paintEvent(self, event):
         if not self._has_box:
             return
+
         painter = QPainter(self)
         pen = QPen(QColor(0, 255, 0), self.THICKNESS)
         painter.setPen(pen)
@@ -929,10 +1073,12 @@ class ConsoleTextEdit(QPlainTextEdit):
     @pyqtSlot(str)
     def _append_log(self, text):
         current = self.toPlainText()
+
         if current:
             self.setPlainText(current + text)
         else:
             self.setPlainText(text)
+
         scrollbar = self.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
 
@@ -952,9 +1098,12 @@ class PyQtSink:
 
     def copy(self):
         log_str = "```\n"
-        for (line, _, _) in self.buffer:
+
+        for line, _, _ in self.buffer:
             log_str += line
+
         pyperclip.copy(log_str + "```")
+
         from loguru import logger
         logger.debug("Copied current logs.")
 
@@ -962,21 +1111,24 @@ class PyQtSink:
         match override:
             case True | False:
                 self.show_expanded_logs = override
+
             case _:
                 self.show_expanded_logs = not self.show_expanded_logs
 
         from loguru import logger
+
         match self.show_expanded_logs:
             case True:
                 logger.debug("Console is now showing full log messages.")
+
             case _:
                 logger.debug("Console is now truncating log messages.")
 
         self.refresh()
 
     def write(self, message):
-        ansi_pattern = r'\033\[\d+m'
-        clean_message = re.sub(ansi_pattern, '', message)
+        ansi_pattern = r"\033\[\d+m"
+        clean_message = re.sub(ansi_pattern, "", message)
 
         split_msg = clean_message.split("|")
         if len(split_msg) < 3:
@@ -984,40 +1136,52 @@ class PyQtSink:
                 if l in clean_message:
                     level = l
                     break
+
             else:
                 level = "DEBUG"
+
         else:
             level = split_msg[1].lstrip().rstrip()
 
         def collapse_log(input: str) -> str:
             if "-" not in input:
                 return input
+
             split_input = input.split("-")
+
             if len(split_input) < 4:
                 return input
+
             return split_input[3].lstrip()
 
         truncated_message = level + " - " + collapse_log(clean_message)
 
         self.buffer.append((clean_message, truncated_message, level))
+
         if len(self.buffer) > self.max_lines:
             self.buffer.pop(0)
 
         try:
             message_to_write = clean_message if self.show_expanded_logs else truncated_message
-            QMetaObject.invokeMethod(self.console_widget, "_append_log",
-                Qt.ConnectionType.QueuedConnection, Q_ARG(str, message_to_write))
+            QMetaObject.invokeMethod(
+                self.console_widget, "_append_log", Qt.ConnectionType.QueuedConnection, Q_ARG(str, message_to_write)
+            )
+
         except Exception:
             pass
 
     def refresh(self):
         try:
             text = ""
+
             for clean, trunc, level in self.buffer:
                 message_to_write = clean if self.show_expanded_logs else trunc
                 text += message_to_write
-            QMetaObject.invokeMethod(self.console_widget, "_set_log",
-                Qt.ConnectionType.QueuedConnection, Q_ARG(str, text))
+
+            QMetaObject.invokeMethod(
+                self.console_widget, "_set_log", Qt.ConnectionType.QueuedConnection, Q_ARG(str, text)
+            )
+
         except Exception:
             pass
 

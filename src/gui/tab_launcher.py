@@ -1,15 +1,26 @@
 import os
 
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QCheckBox, QLineEdit, QListWidget, QListWidgetItem, QDialog,
-    QSizePolicy, QFileDialog,
+    QCheckBox,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, QSize
 
 from src.gui.commands import GUICommand, GUICommandType
 from src.gui.helpers import (
-    centered_label, launcher_icon_btn, launcher_small_icon_btn,
+    centered_label,
+    launcher_icon_btn,
+    launcher_small_icon_btn,
     spinning_loader_widget,
 )
 
@@ -24,7 +35,7 @@ def build_launcher_tab(ctx):
     send_queue = ctx.send_queue
     svgs = ctx.svgs
 
-    _hover_rgba = "rgba(255,255,255,15)" if ctx.theme in ('black', 'dark') else "rgba(0,0,0,15)"
+    _hover_rgba = "rgba(255,255,255,15)" if ctx.theme in ("black", "dark") else "rgba(0,0,0,15)"
     _launcher_list_style = (
         "QListWidget::item {"
         "  background: transparent;"
@@ -52,24 +63,28 @@ def build_launcher_tab(ctx):
     left_col.setSpacing(2)
 
     acct_header = QHBoxLayout()
-    acct_header.addWidget(centered_label(tl('saved_accounts')), 1)
+    acct_header.addWidget(centered_label(tl("saved_accounts")), 1)
     left_col.addLayout(acct_header)
 
     account_list = QListWidget()
     account_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
     account_list.setDefaultDropAction(Qt.DropAction.MoveAction)
     account_list.setStyleSheet(_launcher_list_style)
-    ctx.widget_tags['AccountList'] = account_list
+    ctx.widget_tags["AccountList"] = account_list
 
     def _on_account_rows_moved(*_args):
         nicknames = []
+
         for i in range(account_list.count()):
             item = account_list.item(i)
             w = account_list.itemWidget(item)
+
             if w:
                 label = w.findChild(QLabel)
+
                 if label:
                     nicknames.append(label.text())
+
         if nicknames:
             send_queue.put(GUICommand(GUICommandType.ReorderAccounts, nicknames))
 
@@ -83,14 +98,14 @@ def build_launcher_tab(ctx):
     right_col.setSpacing(2)
 
     hooked_header = QHBoxLayout()
-    hooked_header.addWidget(centered_label(tl('hooked_clients')), 1)
+    hooked_header.addWidget(centered_label(tl("hooked_clients")), 1)
     right_col.addLayout(hooked_header)
 
     hooked_clients_list = QListWidget()
     hooked_clients_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
     hooked_clients_list.setDefaultDropAction(Qt.DropAction.MoveAction)
     hooked_clients_list.setStyleSheet(_launcher_list_style)
-    ctx.widget_tags['HookedClientsList'] = hooked_clients_list
+    ctx.widget_tags["HookedClientsList"] = hooked_clients_list
     right_col.addWidget(hooked_clients_list, 1)
 
     _hooking_handles = set()
@@ -102,22 +117,25 @@ def build_launcher_tab(ctx):
     # --- Account dialog and helpers ---
     def _show_add_account_dialog():
         dlg = QDialog(ctx.window)
-        dlg.setWindowTitle(tl('add_account'))
+        dlg.setWindowTitle(tl("add_account"))
         dlg.setModal(True)
         dlg_layout = QVBoxLayout(dlg)
 
         nick_input = QLineEdit()
-        nick_input.setPlaceholderText(tl('nickname'))
-        dlg_layout.addWidget(QLabel(tl('nickname')))
+        nick_input.setPlaceholderText(tl("nickname"))
+        dlg_layout.addWidget(QLabel(tl("nickname")))
         dlg_layout.addWidget(nick_input)
 
-        save_btn = QPushButton(tl('save_account'))
+        save_btn = QPushButton(tl("save_account"))
         save_btn.setStyleSheet(ctx.btn_style)
+
         def _on_save():
             nick = nick_input.text().strip()
+
             if nick:
                 send_queue.put(GUICommand(GUICommandType.SaveAccount, nick))
                 dlg.accept()
+
         save_btn.clicked.connect(_on_save)
         dlg_layout.addWidget(save_btn)
 
@@ -141,47 +159,61 @@ def build_launcher_tab(ctx):
         if disabled:
             cb.setEnabled(False)
             cb.setChecked(False)
-            lbl.setStyleSheet("color: rgba(255,255,255,80);" if ctx.theme in ('black', 'dark') else "color: rgba(0,0,0,80);")
-            lbl.setToolTip(tl('already_active'))
+            lbl.setStyleSheet(
+                "color: rgba(255,255,255,80);" if ctx.theme in ("black", "dark") else "color: rgba(0,0,0,80);"
+            )
+            lbl.setToolTip(tl("already_active"))
 
         def _delete_this():
             send_queue.put(GUICommand(GUICommandType.DeleteAccount, nickname))
-        trash_btn = launcher_small_icon_btn(ctx, svgs['trash'], tl('remove_account'), _delete_this)
+
+        trash_btn = launcher_small_icon_btn(ctx, svgs["trash"], tl("remove_account"), _delete_this)
         row_layout.addWidget(trash_btn)
 
         return row
 
     def _populate_account_list(nicknames: list[str]):
-        remember = ctx.settings and ctx.settings.get_setting('remember_chosen_clients')
-        managed = ctx.widget_tags.get('managed_accounts', set())
+        remember = ctx.settings and ctx.settings.get_setting("remember_chosen_clients")
+        managed = ctx.widget_tags.get("managed_accounts", set())
         account_list.setUpdatesEnabled(False)
         account_list.clear()
+
         for nick in nicknames:
             item = QListWidgetItem()
             item.setSizeHint(QSize(0, 28))
             row_widget = _build_account_item_widget(nick, disabled=(nick in managed and not remember))
             account_list.addItem(item)
             account_list.setItemWidget(item, row_widget)
+
         account_list.setUpdatesEnabled(True)
 
     def _refresh_account_eligibility(managed_accounts):
-        remember = ctx.settings and ctx.settings.get_setting('remember_chosen_clients')
+        remember = ctx.settings and ctx.settings.get_setting("remember_chosen_clients")
         managed = set(managed_accounts)
+
         for i in range(account_list.count()):
             item = account_list.item(i)
             w = account_list.itemWidget(item)
+
             if not w:
                 continue
+
             cb = w.findChild(QCheckBox)
             lbl = w.findChild(QLabel)
+
             if not cb or not lbl:
                 continue
+
             nick = lbl.text()
+
             if nick in managed and not remember:
                 cb.setEnabled(False)
                 cb.setChecked(False)
-                lbl.setStyleSheet("color: rgba(255,255,255,80);" if ctx.theme in ('black', 'dark') else "color: rgba(0,0,0,80);")
-                lbl.setToolTip(tl('already_active'))
+                lbl.setStyleSheet(
+                    "color: rgba(255,255,255,80);" if ctx.theme in ("black", "dark") else "color: rgba(0,0,0,80);"
+                )
+                lbl.setToolTip(tl("already_active"))
+
             else:
                 cb.setEnabled(True)
                 lbl.setStyleSheet("")
@@ -194,28 +226,32 @@ def build_launcher_tab(ctx):
         row_layout.setContentsMargins(2, 0, 2, 0)
         row_layout.setSpacing(4)
 
-        title = info['title']
-        nick = info.get('account_nick')
+        title = info["title"]
+        nick = info.get("account_nick")
         display = f"{title} ({nick})" if nick else title
         lbl = QLabel(display)
         lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         row_layout.addWidget(lbl, 1)
 
-        handle = info['handle']
+        handle = info["handle"]
+
         def _kill_this():
             send_queue.put(GUICommand(GUICommandType.KillClient, handle))
-        kill_btn = launcher_small_icon_btn(ctx, svgs['kill_client'], tl('kill_client'), _kill_this)
+
+        kill_btn = launcher_small_icon_btn(ctx, svgs["kill_client"], tl("kill_client"), _kill_this)
         row_layout.addWidget(kill_btn)
 
         if nick:
             def _relaunch_this():
                 send_queue.put(GUICommand(GUICommandType.RelaunchClient, (handle, nick)))
-            relaunch_btn = launcher_small_icon_btn(ctx, svgs['relaunch'], tl('relaunch_client'), _relaunch_this)
+
+            relaunch_btn = launcher_small_icon_btn(ctx, svgs["relaunch"], tl("relaunch_client"), _relaunch_this)
             row_layout.addWidget(relaunch_btn)
 
         def _eject_this():
             send_queue.put(GUICommand(GUICommandType.UnhookClient, handle))
-        eject_btn = launcher_small_icon_btn(ctx, svgs['eject'], tl('unhook_client'), _eject_this)
+
+        eject_btn = launcher_small_icon_btn(ctx, svgs["eject"], tl("unhook_client"), _eject_this)
         row_layout.addWidget(eject_btn)
 
         return row
@@ -229,19 +265,23 @@ def build_launcher_tab(ctx):
 
         lbl = QLabel(f"Wizard101 ({handle})")
         lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        lbl.setStyleSheet("color: rgba(255,255,255,120);" if ctx.theme in ('black', 'dark') else "color: rgba(0,0,0,120);")
+        lbl.setStyleSheet(
+            "color: rgba(255,255,255,120);" if ctx.theme in ("black", "dark") else "color: rgba(0,0,0,120);"
+        )
         row_layout.addWidget(lbl, 1)
 
         def _kill_this():
             send_queue.put(GUICommand(GUICommandType.KillClient, handle))
-        kill_btn = launcher_small_icon_btn(ctx, svgs['kill_client'], tl('kill_client'), _kill_this)
+
+        kill_btn = launcher_small_icon_btn(ctx, svgs["kill_client"], tl("kill_client"), _kill_this)
         row_layout.addWidget(kill_btn)
 
         def _hook_this():
             _hooking_handles.add(handle)
             _rebuild_hooked_clients_list()
             send_queue.put(GUICommand(GUICommandType.HookClient, handle))
-        hook_btn = launcher_small_icon_btn(ctx, svgs['hook'], tl('hook_client'), _hook_this)
+
+        hook_btn = launcher_small_icon_btn(ctx, svgs["hook"], tl("hook_client"), _hook_this)
         row_layout.addWidget(hook_btn)
 
         return row
@@ -256,7 +296,9 @@ def build_launcher_tab(ctx):
         display = nick if nick else f"Wizard101 ({handle})"
         lbl = QLabel(display)
         lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        lbl.setStyleSheet("color: rgba(255,255,255,120);" if ctx.theme in ('black', 'dark') else "color: rgba(0,0,0,120);")
+        lbl.setStyleSheet(
+            "color: rgba(255,255,255,120);" if ctx.theme in ("black", "dark") else "color: rgba(0,0,0,120);"
+        )
         row_layout.addWidget(lbl, 1)
 
         row_layout.addWidget(spinning_loader_widget(ctx))
@@ -266,21 +308,24 @@ def build_launcher_tab(ctx):
     def _rebuild_hooked_clients_list():
         hooked_clients_list.setUpdatesEnabled(False)
         hooked_clients_list.clear()
-        hooked = _last_hooked_data.get('hooked', [])
-        unmanaged = _last_hooked_data.get('unmanaged', [])
-        hooking_backend = set(_last_hooked_data.get('hooking', []))
-        hooked_handle_set = {info['handle'] for info in hooked}
+        hooked = _last_hooked_data.get("hooked", [])
+        unmanaged = _last_hooked_data.get("unmanaged", [])
+        hooking_backend = set(_last_hooked_data.get("hooking", []))
+        hooked_handle_set = {info["handle"] for info in hooked}
 
         for info in hooked:
             item = QListWidgetItem()
             item.setSizeHint(QSize(0, 28))
-            h = info['handle']
+            h = info["handle"]
+
             if h in hooking_backend:
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-                row_widget = _build_hooking_client_widget(h, info.get('account_nick'))
+                row_widget = _build_hooking_client_widget(h, info.get("account_nick"))
+
             else:
                 item.setData(Qt.ItemDataRole.UserRole, h)
                 row_widget = _build_hooked_client_widget(info)
+
             hooked_clients_list.addItem(item)
             hooked_clients_list.setItemWidget(item, row_widget)
 
@@ -303,9 +348,13 @@ def build_launcher_tab(ctx):
             sep_widget.setStyleSheet("background: transparent;")
             sep_layout = QHBoxLayout(sep_widget)
             sep_layout.setContentsMargins(4, 2, 4, 2)
-            sep_lbl = QLabel(tl('unmanaged_clients'))
+            sep_lbl = QLabel(tl("unmanaged_clients"))
             sep_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            sep_lbl.setStyleSheet("color: rgba(255,255,255,80); font-size: 10px;" if ctx.theme in ('black', 'dark') else "color: rgba(0,0,0,80); font-size: 10px;")
+            sep_lbl.setStyleSheet(
+                "color: rgba(255,255,255,80); font-size: 10px;"
+                if ctx.theme in ("black", "dark")
+                else "color: rgba(0,0,0,80); font-size: 10px;"
+            )
             sep_layout.addWidget(sep_lbl, 1)
             hooked_clients_list.addItem(sep_item)
             hooked_clients_list.setItemWidget(sep_item, sep_widget)
@@ -316,20 +365,24 @@ def build_launcher_tab(ctx):
                 u_widget = _build_unmanaged_client_widget(handle)
                 hooked_clients_list.addItem(u_item)
                 hooked_clients_list.setItemWidget(u_item, u_widget)
+
         hooked_clients_list.setUpdatesEnabled(True)
 
     def _on_hooked_rows_moved(*_args):
         handles = []
+
         for i in range(hooked_clients_list.count()):
             item = hooked_clients_list.item(i)
             handle = item.data(Qt.ItemDataRole.UserRole)
+
             if handle is not None:
                 handles.append(handle)
+
         if handles:
             send_queue.put(GUICommand(GUICommandType.ReorderClients, handles))
-            old_hooked = _last_hooked_data.get('hooked', [])
-            handle_to_info = {info['handle']: info for info in old_hooked}
-            _last_hooked_data['hooked'] = [handle_to_info[h] for h in handles if h in handle_to_info]
+            old_hooked = _last_hooked_data.get("hooked", [])
+            handle_to_info = {info["handle"]: info for info in old_hooked}
+            _last_hooked_data["hooked"] = [handle_to_info[h] for h in handles if h in handle_to_info]
             _rebuild_hooked_clients_list()
 
     hooked_clients_list.model().rowsMoved.connect(_on_hooked_rows_moved)
@@ -337,14 +390,18 @@ def build_launcher_tab(ctx):
     # Launch & Login button
     def _launch_and_login():
         selected = []
+
         for i in range(account_list.count()):
             item = account_list.item(i)
             w = account_list.itemWidget(item)
+
             if w:
                 cb = w.findChild(QCheckBox)
                 lbl = w.findChild(QLabel)
+
                 if cb and lbl and cb.isChecked():
                     selected.append(lbl.text())
+
         if selected:
             game_path = game_path_input.text().strip()
             send_queue.put(GUICommand(GUICommandType.LaunchInstance, (selected, game_path)))
@@ -353,41 +410,48 @@ def build_launcher_tab(ctx):
     _steam_path = r"C:\Program Files (x86)\Steam\steamapps\common\Wizard101"
     _default_path = r"C:\ProgramData\KingsIsle Entertainment\Wizard101"
     _detected_path = ""
+
     if os.path.isdir(_steam_path):
         _detected_path = _steam_path
+
     elif os.path.isdir(_default_path):
         _detected_path = _default_path
 
     game_path_input = QLineEdit(_detected_path)
     game_path_input.setReadOnly(True)
     game_path_input.setVisible(False)
-    ctx.widget_tags['GamePath'] = game_path_input
+    ctx.widget_tags["GamePath"] = game_path_input
 
     def _show_settings_dialog():
         dlg = QDialog(ctx.window)
-        dlg.setWindowTitle(tl('settings'))
+        dlg.setWindowTitle(tl("settings"))
         dlg.setModal(True)
         dlg_layout = QVBoxLayout(dlg)
-        dlg_layout.addWidget(QLabel(tl('game_path')))
+        dlg_layout.addWidget(QLabel(tl("game_path")))
         path_row = QHBoxLayout()
         path_input = QLineEdit(game_path_input.text())
         path_input.setReadOnly(True)
         path_row.addWidget(path_input)
+
         def _pick():
-            path = QFileDialog.getExistingDirectory(ctx.window, tl('game_path'))
+            path = QFileDialog.getExistingDirectory(ctx.window, tl("game_path"))
+
             if path:
                 path_input.setText(path)
                 game_path_input.setText(path)
-        path_row.addWidget(launcher_icon_btn(ctx, svgs['folder'], tl('game_path'), _pick))
+
+        path_row.addWidget(launcher_icon_btn(ctx, svgs["folder"], tl("game_path"), _pick))
         dlg_layout.addLayout(path_row)
         dlg.adjustSize()
         dlg.exec()
 
     launcher_action_row = QHBoxLayout()
     launcher_action_row.addStretch()
-    launcher_action_row.addWidget(ctx.registry.action_icon_btn(svgs['add'], tl('add_account'), lambda: _show_add_account_dialog()))
-    launcher_action_row.addWidget(ctx.registry.action_icon_btn(svgs['play'], tl('launch_login'), _launch_and_login))
-    launcher_action_row.addWidget(ctx.registry.action_icon_btn(svgs['gear'], tl('settings'), _show_settings_dialog))
+    launcher_action_row.addWidget(
+        ctx.registry.action_icon_btn(svgs["add"], tl("add_account"), lambda: _show_add_account_dialog())
+    )
+    launcher_action_row.addWidget(ctx.registry.action_icon_btn(svgs["play"], tl("launch_login"), _launch_and_login))
+    launcher_action_row.addWidget(ctx.registry.action_icon_btn(svgs["gear"], tl("settings"), _show_settings_dialog))
     launcher_action_row.addStretch()
     launcher_layout.addLayout(launcher_action_row)
 
@@ -395,13 +459,13 @@ def build_launcher_tab(ctx):
     send_queue.put(GUICommand(GUICommandType.LoadAccounts))
 
     # Export state for the event loop
-    ctx.exports['launcher'] = {
-        'populate_account_list': _populate_account_list,
-        'rebuild_hooked_clients_list': _rebuild_hooked_clients_list,
-        'refresh_account_eligibility': _refresh_account_eligibility,
-        'hooking_handles': _hooking_handles,
-        'last_hooked_data': _last_hooked_data,
-        'account_list': account_list,
+    ctx.exports["launcher"] = {
+        "populate_account_list": _populate_account_list,
+        "rebuild_hooked_clients_list": _rebuild_hooked_clients_list,
+        "refresh_account_eligibility": _refresh_account_eligibility,
+        "hooking_handles": _hooking_handles,
+        "last_hooked_data": _last_hooked_data,
+        "account_list": account_list,
     }
 
     return tab
