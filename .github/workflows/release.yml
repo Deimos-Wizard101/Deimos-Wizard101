@@ -99,7 +99,7 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        uv run --group dev pyinstaller -F -w --clean -i Deimos-logo.ico --add-data "Deimos-logo.ico;." --add-data "Deimos-logo.png;." --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest"
+        uv run --group dev pyinstaller --noconfirm --clean Deimos.spec
         echo "Build completed successfully"
         dir dist
     
