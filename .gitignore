@@ -6,6 +6,7 @@ venv
 *.exe
 testbot.txt
 *.spec
+!Deimos.spec
 build/
 dist/
 *.env
