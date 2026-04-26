@@ -13,3 +13,5 @@ dist/
 .secret
 .secrets
 *.lock
+!.gitignore
+.*

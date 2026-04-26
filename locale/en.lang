@@ -1,0 +1,265 @@
+# Deimos English language file
+
+# License
+license_title=License Agreement
+license_text=By using Deimos, you agree to the GPL v3 license agreement.
+
+# Main banner
+free_tool=Deimos will always be a free tool. If you paid for this, you got scammed!
+
+# Tab names
+hotkeys=Hotkeys
+camera=Camera
+dev_utils=Dev Utils
+utilities=Utilities
+stats=Stats
+flythrough=Flythrough
+bot=Bot
+combat=Combat
+misc=Misc
+console=Console
+
+# Toggles
+toggles=Toggles
+speedhack=Speedhack
+combat_toggle=Combat
+dialogue=Dialogue
+sigil=Sigil
+questing=Questing
+auto_pet=Auto Pet
+auto_potion=Auto Potion
+
+# Hotkeys
+hotkeys_label=Hotkeys
+quest_tp=Quest TP
+freecam=Freecam
+freecam_tp=Freecam TP
+mass_hotkeys=Mass Hotkeys
+mass_tp=Mass TP
+xyz_sync=XYZ Sync
+x_press=X Press
+friend_tp=Friend TP
+dialogue_side_quests=+ Side Quests
+kill_tool=Kill Tool
+
+# Hotkey Manager
+hotkey_manager=Hotkey Manager
+bind_hotkey=Bind Hotkey
+unbind_hotkey=Unbind
+press_a_key=Press a key...
+reset_defaults=Reset to Defaults
+unbound=Unbound
+key_conflict=Key Conflict
+cat_toggles=Toggles
+cat_teleports=Teleports
+cat_multi_client=Multi-Client
+cat_camera=Camera
+cat_system=System
+
+# Camera
+set_camera_position=Update
+yaw=Yaw
+roll=Roll
+pitch=Pitch
+entity=Entity
+toggle_camera_collision=Collision
+distance=Dist
+dist_min=Dist Min
+dist_max=Dist Max
+copy_camera_position=Copy Cam Pos
+populate_camera=Populate
+
+# Dev Utils
+advanced_warning=The utils below are for advanced users and no support will be given on them.
+tp_utils=TP Utils
+custom_tp=Custom TP
+entity_name=Entity Name
+available_entities=Entities
+available_paths=Window Paths
+zone_name=Zone Name
+go_to_zone=Go To Zone
+mass_go_to_zone=Mass Zone
+world_name=World Name
+go_to_world=Go To World
+mass_go_to_world=Mass World
+go_to_bazaar=Go To Bazaar
+mass_go_to_bazaar=Mass Go To Bazaar
+refill_potions=Refill Potions
+mass_refill_potions=Mass Refill Potions
+
+# Stats
+caster_target_indices=Caster/Target Indices
+dmg=Dmg
+base_dmg=Base Dmg
+school=School
+crit=Crit
+view_stats=View Stats
+copy_stats=Copy Stats
+no_client_selected=No client has been selected.
+swap_members=Swap Members
+swap_sides=Swap Sides
+not_in_combat=The selected client is not currently in combat.
+
+# Flythrough
+import_flythrough=Import Flythrough
+export_flythrough=Export Flythrough
+execute_flythrough=Execute Flythrough
+kill_flythrough=Kill Flythrough
+
+# Bot
+import_bot=Import Bot
+export_bot=Export Bot
+run_bot=Run Bot
+kill_bot=Kill Bot
+
+# Combat
+import_playstyle=Import Playstyle
+export_playstyle=Export Playstyle
+set_playstyles=Set Playstyles
+
+# Misc
+scale=Scale
+set_scale=Set Scale
+select_pet_world=Select a pet world:
+
+# Console
+console_support=Be sure to include your logs when asking for support.
+collapse_expand_logs=Collapse / Expand Logs
+copy_logs=Copy Logs
+
+# Tooltips
+tooltip_license=License
+tooltip_wiki_hotkeys=Wiki: Hotkeys
+tooltip_source_code=Source Code
+tooltip_discord=Discord
+tooltip_wiki_camera=Wiki: Camera
+tooltip_wiki_utilities=Wiki: Utilities
+tooltip_wiki_stats=Wiki: Stats
+tooltip_wiki_flythroughs=Wiki: Flythroughs
+tooltip_wiki_bots=Wiki: Bots
+tooltip_wiki_playstyles=Wiki: Playstyles
+
+# Section tooltips
+tooltip_section_camera=Set camera position, orientation, anchor, and distance
+tooltip_section_utils=Populate fields with current camera values, copy position, or toggle collision
+tooltip_section_tp_utils=Teleport to coordinates or a named entity
+tooltip_section_navigation=Navigate to zones, worlds, the bazaar, or refill potions
+
+# Launcher
+launcher=Launcher
+saved_accounts=Account Manager
+hooked_clients=Client Manager
+unhook_client=Unhook
+hook_client=Hook
+kill_client=Kill
+relaunch_client=Relaunch
+unmanaged_clients=Available Clients
+add_account=Add Account
+remove_account=Remove Account
+launch_login=Launch & Login
+game_path=Game Path
+nickname=Nickname
+username=Username
+password=Password
+save_account=Save
+no_accounts_selected=No accounts selected.
+account_added=Account saved successfully.
+account_removed=Account removed.
+launching_instances=Launching instances...
+tooltip_wiki_launcher=Wiki: Launcher
+settings=Settings
+
+# Status labels
+status_dead=Dead
+status_stunned=Stunned
+status_friendly=Friendly
+status_hostile=Hostile
+status_unknown=Unknown
+already_active=Already active
+recent_imports=Recent Imports
+no_recent_imports=No recent imports
+
+# Client info
+client=Client
+zone=Zone
+
+# Settings dialog
+settings_title=Settings
+settings_general=General
+settings_appearance=Appearance
+settings_sigil=Sigil
+settings_questing=Questing
+settings_auto_pet=Auto Pet
+settings_combat=Combat
+settings_launcher=Launcher
+settings_restart_note=* Requires restart to take effect
+settings_save=Save
+settings_cancel=Cancel
+
+setting_speed_multiplier=Speed Multiplier
+setting_use_potions=Use Potions
+setting_buy_potions=Buy Potions
+setting_rich_presence=Rich Presence
+setting_drop_logging=Drop Logging
+setting_use_anti_afk=Anti-AFK
+setting_bg_color=Background
+setting_alt_bg=Input Background
+setting_text_color=Text Color
+setting_button_color=Button Color
+setting_stroke_color=Icon Color
+setting_titlebar_bg=Titlebar Background
+settings_import_theme=Import Theme
+settings_export_theme=Export Theme
+settings_theme=Theme
+setting_locale=Language
+setting_font=Font
+setting_font_size=Font Size
+setting_use_team_up=Use Team Up
+setting_client_to_follow=Client to Follow
+setting_client_to_boost=Client to Boost
+setting_friend_teleport=Friend Teleport
+setting_gear_switching=Gear Switch in Solo Zones
+setting_hitter_client=Hitter Client
+setting_ignore_pet_level_up=Ignore Pet Level Up
+setting_only_dance_game=Only Play Dance Game
+setting_remember_chosen_clients=Remember Chosen Clients
+setting_kill_minions_first=Kill Minions First
+setting_auto_team_combat=Auto Team-Based Combat
+setting_discard_duplicates=Discard Duplicate Cards
+
+# Common
+ok=OK
+cancel=Cancel
+close=Close
+search=Search
+copy=Copy
+copied=Copied!
+reset_to_default=Reset to default ({0})
+always_on_top=Always on top
+not_on_top=Not on top
+individual=Individual
+all_clients=All Clients
+navigation=Navigation
+cat_other=Other
+fetch_player_gid=Fetch player GID
+copy_text=Copy text: {0}
+
+# Popups
+ui_tree=UI Tree
+ui_tree_hint=Click the path needed to copy it to clipboard.
+entity_list=Entity List
+entity_list_hint=Click to copy. Right-click for TP / Camera options.
+tp_to_entity=Teleport to Entity
+anchor_cam_to_entity=Anchor Camera to Entity
+
+# Settings extras
+import_lang_file=Import .lang file
+import_lang_title=Import Language File
+overwrite_binding={0} is already bound to '{1}'.\nOverwrite?
+
+# Footer
+position_xyz=Position (XYZ):
+orientation_pry=Orientation (PRY):
+
+# Stats popup
+combat_stats=Combat Stats

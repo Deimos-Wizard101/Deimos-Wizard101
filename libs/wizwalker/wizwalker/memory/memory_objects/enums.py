@@ -394,3 +394,15 @@ class MinionType(Enum):
 class StatusEffect(Enum):
     stunned = 0
     confused = 1
+
+
+class UnlockTriggerState(Enum):
+    """State of a guild unlock trigger.
+
+    Derived from MSG_UpdateGuildUnlockTrigger handler at 0x141213a10:
+    state == 2 triggers island unlock via FUN_141222630.
+    """
+
+    locked = 0
+    in_progress = 1
+    completed = 2
