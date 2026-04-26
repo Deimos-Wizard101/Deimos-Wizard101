@@ -87,10 +87,6 @@ jobs:
           echo "ERROR: Deimos.exe not found in dist folder"
           exit 1
         fi
-        if [ ! -f "Deimos-config.ini" ]; then
-          echo "ERROR: Deimos-config.ini not found"
-          exit 1
-        fi
         if [ ! -f "LICENSE" ]; then
           echo "ERROR: LICENSE file not found"
           exit 1
@@ -106,7 +102,6 @@ jobs:
         
         # Copy files to release directory
         Copy-Item "dist/Deimos.exe" -Destination "release/"
-        Copy-Item "Deimos-config.ini" -Destination "release/"
         Copy-Item "LICENSE" -Destination "release/"
         
         # Create zip file with version in name using PowerShell
