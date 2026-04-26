@@ -14,7 +14,35 @@ def get_sprinty_grammar():
             
             line: round_specifier? move_config [(_pipe move_config)*]? _NEWLINE?
             
-            move_config: move (_at target)? [(_and move (_at target)?)*]?
+            move_config: condition? move (_at target)? [(_and move (_at target)?)*]?
+
+            condition: _cond_open cond_clause (_cond_and cond_clause)* _cond_close
+            cond_clause: cond_target "." cond_attr cond_op cond_value
+            COND_AND: "&&"
+            _cond_and: _newlines? COND_AND _newlines?
+
+            cond_target: cond_target_self | cond_target_boss | cond_target_enemy | cond_target_ally | cond_target_enemies | cond_target_allies
+            cond_target_self: _spaced{"self"}
+            cond_target_boss: _spaced{"boss"}
+            cond_target_enemy: _spaced{"enemy"} (_open_paren INT _close_paren)?
+            cond_target_ally: _spaced{"ally"} (_open_paren INT _close_paren)?
+            cond_target_enemies: cond_agg _open_paren _spaced{"enemies"} _close_paren
+            cond_target_allies: cond_agg _open_paren _spaced{"allies"} _close_paren
+            cond_agg: cond_agg_any | cond_agg_all | cond_agg_avg
+            cond_agg_any: _spaced{"any"}
+            cond_agg_all: _spaced{"all"}
+            cond_agg_avg: _spaced{"avg"}
+
+            cond_attr: NAME
+            cond_op: CMP_OP
+            CMP_OP: "<=" | ">=" | "!=" | "==" | "<" | ">"
+
+            cond_value: COND_NUMBER cond_percent?
+            cond_percent: "%"
+            COND_NUMBER: /\d+(\.\d+)?/
+
+            _cond_open: _spaced{"?("}
+            _cond_close: _spaced{")"}
 
             move: (move_pass | move_willcast | move_draw | (spell enchant? second_enchant?))
             move_pass: _spaced{"pass"}
@@ -27,11 +55,13 @@ def get_sprinty_grammar():
             second_enchant: _open_bracket (any_spell | words | string) _close_bracket
             
             target: (target_type | target_select)
-            target_type: target_self | target_boss | target_enemy | target_ally | target_aoe | target_spell | target_named
+            target_type: target_self | target_boss | target_enemy | target_enemies | target_ally | target_allies | target_aoe | target_spell | target_named
             target_self: _spaced{"self"}
             target_boss: _spaced{"boss"}
             target_enemy: _spaced{"enemy"} (_open_paren INT _close_paren)?
+            target_enemies: _spaced{"enemies"}
             target_ally: _spaced{"ally"} (_open_paren INT _close_paren)?
+            target_allies: _spaced{"allies"}
             target_aoe: _spaced{"aoe"}
             target_named: words | string
             target_spell: _spaced{"spell"} _open_paren (any_spell | words | string) [(_comma (any_spell | words | string))*]? _close_paren
@@ -43,7 +73,7 @@ def get_sprinty_grammar():
             auto: _spaced{"auto"}
             
             any_spell: _spaced{"any"} _less_than spell_type [(_and spell_type)*]? _greater_than
-            spell_type: spell_damage | spell_aoe | spell_heal_self | spell_heal_other | spell_heal | spell_blade | spell_charm | spell_ward | spell_trap | spell_enchant | spell_aura | spell_global | spell_polymorph | spell_shadow | spell_shadow_creature | spell_pierce | spell_prism | spell_dispel | spell_inc_damage | spell_out_damage | spell_inc_heal | spell_out_heal | spell_mod_damage | spell_mod_heal | spell_mod_pierce
+            spell_type: spell_damage | spell_aoe | spell_heal_self | spell_heal_other | spell_heal | spell_blade | spell_charm | spell_ward | spell_trap | spell_enchant | spell_aura | spell_global | spell_polymorph | spell_shadow | spell_shadow_creature | spell_pierce | spell_prism | spell_dispel | spell_inc_damage | spell_out_damage | spell_inc_heal | spell_out_heal | spell_mod_damage | spell_mod_heal | spell_mod_pierce | spell_req_met | spell_gambit | spell_clear | spell_echo | spell_swap
             spell_damage: _spaced{"damage"}
             spell_aoe: _spaced{"aoe"}
             spell_heal: _spaced{"heal"}
@@ -69,7 +99,14 @@ def get_sprinty_grammar():
             spell_mod_damage: _spaced{"mod_damage"}
             spell_mod_heal: _spaced{"mod_heal"}
             spell_mod_pierce: _spaced{"mod_pierce"}
-            
+            spell_req_met: _spaced{"req_met"}
+            spell_gambit: _spaced{"gambit"} _open_paren hanging_args _close_paren
+            spell_clear:  _spaced{"clear"}  _open_paren hanging_args _close_paren
+            spell_echo:   _spaced{"echo"}   _open_paren hanging_args _close_paren
+            spell_swap:   _spaced{"swap"}   _open_paren hanging_args _close_paren
+            hanging_args: hanging_kw | hanging_kw _comma INT
+            hanging_kw: NAME
+
             expression: INT
             
             words: _newlines? word [word*] _newlines?
@@ -141,7 +178,78 @@ class TreeToConfig(Transformer):
     def move(self, items):
         return Move(*items)
 
+    def cond_clause(self, items):
+        target, attr, op, value = items
+        return Condition(target, attr, op, *value)
+
+    def condition(self, items):
+        # Filter out the COND_AND tokens (lark keeps them in the child list
+        # because the rule references a named terminal). Items that are
+        # Condition instances are the actual clauses; a single clause stays
+        # as a bare Condition for backward compatibility, multiples wrap in
+        # AllCondition (logical AND).
+        clauses = [c for c in items if isinstance(c, Condition)]
+        if len(clauses) == 1:
+            return clauses[0]
+        return AllCondition(clauses)
+
+    def cond_target(self, items):
+        return items[0]
+
+    def cond_target_self(self, _):
+        return ConditionTarget(TargetType.type_self)
+
+    def cond_target_boss(self, _):
+        return ConditionTarget(TargetType.type_boss)
+
+    def cond_target_enemy(self, items):
+        index = items[0] if items else None
+        return ConditionTarget(TargetType.type_enemy, index)
+
+    def cond_target_ally(self, items):
+        index = items[0] if items else None
+        return ConditionTarget(TargetType.type_ally, index)
+
+    def cond_target_enemies(self, items):
+        return ConditionTarget(TargetType.type_enemies, aggregation=items[0])
+
+    def cond_target_allies(self, items):
+        return ConditionTarget(TargetType.type_allies, aggregation=items[0])
+
+    def cond_agg(self, items):
+        return items[0]
+
+    def cond_agg_any(self, _):
+        return AggregationMode.agg_any
+
+    def cond_agg_all(self, _):
+        return AggregationMode.agg_all
+
+    def cond_agg_avg(self, _):
+        return AggregationMode.agg_avg
+
+    def cond_attr(self, items):
+        return str(items[0])
+
+    def cond_op(self, items):
+        return ComparisonOp(str(items[0]))
+
+    def cond_value(self, items):
+        value = float(items[0])
+        is_percent = len(items) > 1
+        return (value, is_percent)
+
+    def cond_percent(self, _):
+        return True
+
+    CMP_OP = str
+    COND_NUMBER = float
+
     def move_config(self, items):
+        condition = None
+        if items and isinstance(items[0], (Condition, AllCondition)):
+            condition = items.pop(0)
+
         movestargets = {}
         move_count = 0
         for i, item in enumerate(items):
@@ -174,11 +282,11 @@ class TreeToConfig(Transformer):
             #return MoveConfig(items[0], TargetData(t, n))
         if move_count < 2:
             move, target = (list(movestargets.keys())[0], list(movestargets.values())[0])
-            return MoveConfig(move, target)
+            return MoveConfig(move, target, condition=condition)
         moves = [x for x in movestargets.keys()]
         targets = [x for x in movestargets.values()]
-        return MoveConfig(moves, targets)
-        #elif len(items) > 1: 
+        return MoveConfig(moves, targets, condition=condition)
+        #elif len(items) > 1:
             #return MoveConfig(items[0], TargetData(items[1]))
         #return MoveConfig(items[0])
 
@@ -210,10 +318,16 @@ class TreeToConfig(Transformer):
             return TargetType.type_enemy, items[0]
         return TargetType.type_enemy
 
+    def target_enemies(self, _):
+        return TargetType.type_enemies
+
     def target_ally(self, items):
         if len(items) > 0:
             return TargetType.type_ally, items[0]
         return TargetType.type_ally
+
+    def target_allies(self, _):
+        return TargetType.type_allies
 
     def target_aoe(self, _):
         return TargetType.type_aoe
@@ -316,6 +430,45 @@ class TreeToConfig(Transformer):
     
     def spell_mod_pierce(self, _):
         return SpellType.type_mod_pierce
+
+    def spell_req_met(self, _):
+        return SpellType.type_req_met
+
+    _HANGING_KW_ALIASES = hanging_type_aliases()
+
+    def hanging_kw(self, items):
+        name = str(items[0])
+        if name in self._HANGING_KW_ALIASES:
+            return self._HANGING_KW_ALIASES[name]
+        valid = sorted(set(self._HANGING_KW_ALIASES.keys()))
+        raise ValueError(f"Unknown hanging type '{name}'. Valid: {valid}")
+
+    def hanging_args(self, items):
+        # items is either [HangingType] or [HangingType, INT]
+        hanging_type = items[0]
+        min_count = 1
+        if len(items) > 1:
+            qty = int(items[1])
+            if qty < 1:
+                raise ValueError(f"gambit/clear count must be >= 1, got {qty}")
+            min_count = qty
+        return (hanging_type, min_count)
+
+    def spell_gambit(self, items):
+        hanging_type, min_count = items[0]
+        return GambitSpec(hanging_type, min_count)
+
+    def spell_clear(self, items):
+        hanging_type, min_count = items[0]
+        return ClearSpec(hanging_type, min_count)
+
+    def spell_echo(self, items):
+        hanging_type, min_count = items[0]
+        return EchoSpec(hanging_type, min_count)
+
+    def spell_swap(self, items):
+        hanging_type, min_count = items[0]
+        return SwapSpec(hanging_type, min_count)
 
     INT = int
 
