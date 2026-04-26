@@ -1746,14 +1746,17 @@ async def main():
 										ui_tree = ''
 										ui_tree_texts = {}
 										ui_tree_windows = []
-										async def get_ui_tree(window: Window, depth: int = 0, depth_symbol: str = '-', seperator: str = '\n'):
-											nonlocal ui_tree
-											line = f"{depth_symbol * depth} [{await window.name()}] {await window.maybe_read_type_name()}"
-											ui_tree_windows.append((line, window))
-											ui_tree += f"{line}{seperator}"
-											for child in await utils.wait_for_non_error(window.children):
-												await get_ui_tree(child, depth + 1)
-										await get_ui_tree(foreground.root_window)
+										async def collect_node(window: Window, depth: int = 0, depth_symbol: str = '-'):
+											name, type_name, children = await asyncio.gather(
+												window.name(),
+												window.maybe_read_type_name(),
+												utils.wait_for_non_error(window.children),
+											)
+											line = f"{depth_symbol * depth} [{name}] {type_name}"
+											child_results = await asyncio.gather(*(collect_node(c, depth + 1) for c in children))
+											return [(line, window)] + [entry for sub in child_results for entry in sub]
+										ui_tree_windows = await collect_node(foreground.root_window)
+										ui_tree = '\n'.join(line for line, _ in ui_tree_windows) + '\n'
 										async def _safe_text(line, window):
 											try:
 												text = await window.maybe_text()

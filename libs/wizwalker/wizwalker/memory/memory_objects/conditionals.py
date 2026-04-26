@@ -59,6 +59,60 @@ ward_effect_types = [
     SpellEffects.modify_incoming_heal_over_time,
 ]
 
+# SpellEffects values that ReqHangingAura.m_effectType can name. Sourced from
+# the 1.600 type dump (class ReqHangingAura → m_effectType.enum_options). Auras
+# share these effect-type values with charms/wards — what makes a hanging
+# effect an aura is its structural metadata, not the effect_type alone. So
+# this list is "what an aura *can be*", not "any hanging effect with one of
+# these types is an aura". Use it for filter membership when reading
+# ReqHangingAura.effect_type(), not for classifying live participant.hanging_effects().
+aura_effect_types = [
+    SpellEffects.absorb_damage,
+    SpellEffects.absorb_heal,
+    SpellEffects.add_combat_trigger_list,
+    SpellEffects.bounce_all,
+    SpellEffects.bounce_back,
+    SpellEffects.bounce_next,
+    SpellEffects.bounce_previous,
+    SpellEffects.cloaked_charm,
+    SpellEffects.cloaked_ward,
+    SpellEffects.cloaked_ward_no_remove,
+    SpellEffects.confusion_block,
+    SpellEffects.crit_block,
+    SpellEffects.crit_boost,
+    SpellEffects.crit_boost_school_specific,
+    SpellEffects.dampen,
+    SpellEffects.dispel,
+    SpellEffects.dispel_block,
+    SpellEffects.maximum_incoming_damage,
+    SpellEffects.modify_accuracy,
+    SpellEffects.modify_incoming_armor_piercing,
+    SpellEffects.modify_incoming_damage,
+    SpellEffects.modify_incoming_damage_flat,
+    SpellEffects.modify_incoming_damage_over_time,
+    SpellEffects.modify_incoming_damage_type,
+    SpellEffects.modify_incoming_heal,
+    SpellEffects.modify_incoming_heal_flat,
+    SpellEffects.modify_incoming_heal_over_time,
+    SpellEffects.modify_incoming_steal_health,
+    SpellEffects.modify_outgoing_armor_piercing,
+    SpellEffects.modify_outgoing_damage,
+    SpellEffects.modify_outgoing_damage_flat,
+    SpellEffects.modify_outgoing_damage_type,
+    SpellEffects.modify_outgoing_heal,
+    SpellEffects.modify_outgoing_heal_flat,
+    SpellEffects.modify_pip_round_rate,
+    SpellEffects.modify_power_pip_chance,
+    SpellEffects.pip_conversion,
+    SpellEffects.power_pip_conversion,
+    SpellEffects.protect_beneficial,
+    SpellEffects.protect_harmful,
+    SpellEffects.push_charm,
+    SpellEffects.remove_combat_trigger_list,
+    SpellEffects.stun_block,
+    SpellEffects.stun_resist,
+]
+
 
 class HangingSpellEffect(Enum):
     invalid_spell_effect = 0,
@@ -328,6 +382,50 @@ class ReqIsSchool(ConditionalSpellEffectRequirement):
         return await self.read_string_from_offset(88)
 
 
+class ReqHangingAura(ConditionalSpellEffectRequirement):
+    """ReqHangingAura — checks for an aura on caster/target. Unlike the
+    charm/ward/over_time family this requirement gates on presence (not a
+    [min,max] count window) and selects either a specific aura SpellEffect or
+    "any aura" via the m_anyType flag. Field offsets verified against the
+    1.600 type dump (class ReqHangingAura).
+
+    _evaluate scans participant.aura_effects() for at least one entry whose
+    disposition matches (with both-permissive on either side) and whose
+    effect_type matches if any_type is False. The 1-aura-per-side cap is
+    enforced by the engine, not by this query — aura_effects may still expose
+    multiple sub-effect entries from a single aura cast, which is fine since
+    this is a presence check (any match returns True).
+    """
+    async def _evaluate(self, data: dict[str, Any]) -> bool:
+        member = await self.get_target(data)
+        participant = await member.get_participant()
+        auras = await participant.aura_effects()
+        want_disp = await self.disposition()
+        any_type = await self.any_type()
+        want_type = await self.effect_type()
+        for aura in auras:
+            if not any_type:
+                if (await aura.effect_type()) != want_type:
+                    continue
+            adisp = await aura.disposition()
+            if adisp != HangingDisposition.both and want_disp != HangingDisposition.both and adisp != want_disp:
+                continue
+            return True
+        return False
+
+    async def effect_type(self) -> SpellEffects:
+        return await self.read_enum(88, SpellEffects)
+
+    async def disposition(self) -> HangingDisposition:
+        return await self.read_enum(92, HangingDisposition)
+
+    async def any_type(self) -> bool:
+        return await self.read_value_from_offset(96, Primitive.bool)
+
+    async def global_effect(self) -> bool:
+        return await self.read_value_from_offset(97, Primitive.bool)
+
+
 class ReqHangingWard(ConditionalSpellEffectRequirement):
     async def _evaluate(self, data: dict[str, Any]) -> bool:
         member = await self.get_target(data)
@@ -361,8 +459,11 @@ class ReqHangingEffectType(ConditionalSpellEffectRequirement):
         hanging_effects = await participant.hanging_effects()
         # TODO finsh this
 
-    async def effect_type(self) -> HangingSpellEffect:
-        return await self.read_enum(88, HangingSpellEffect)
+    async def effect_type(self) -> SpellEffects:
+        # Type-dump (1.600) names this enum SpellEffect::kSpellEffects, not the
+        # narrower HangingSpellEffect that wizwalker historically used. Reading
+        # as HangingSpellEffect would silently drop values not in that subset.
+        return await self.read_enum(88, SpellEffects)
 
     async def param_low(self) -> int:
         return await self.read_value_from_offset(92, Primitive.int32)
@@ -479,6 +580,8 @@ async def promote_requirement(req: Requirement):
             prom_type = ReqHangingOverTime
         case "ReqHangingWard":
             prom_type = ReqHangingWard
+        case "ReqHangingAura":
+            prom_type = ReqHangingAura
         case "ReqIsSchool":
             prom_type = ReqIsSchool
         # case 'ReqHangingEffectType':

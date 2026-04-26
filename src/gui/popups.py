@@ -50,36 +50,40 @@ def show_ui_tree_popup(parent, send_queue, ui_tree_content, text_dict, copy_btn_
     listbox.setMouseTracking(True)
     layout.addWidget(listbox)
 
-    def _populate(lines):
-        listbox.clear()
-        for line in lines:
-            item = QListWidgetItem()
-            path = path_dict.get(line)
-            item.setData(Qt.ItemDataRole.UserRole, {'path': path, 'text': text_dict.get(line)})
+    line_items = []
 
-            row_widget = QWidget()
-            row_layout = QHBoxLayout(row_widget)
-            row_layout.setContentsMargins(4, 0, 4, 0)
+    listbox.setUpdatesEnabled(False)
+    for line in ui_tree_list:
+        item = QListWidgetItem()
+        path = path_dict.get(line)
+        item.setData(Qt.ItemDataRole.UserRole, {'path': path, 'text': text_dict.get(line)})
 
-            label = QLabel(line)
-            row_layout.addWidget(label, stretch=1)
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(4, 0, 4, 0)
 
-            if line in text_dict:
-                text_to_copy = text_dict[line]
-                btn = copy_btn_factory(lambda _=False, t=text_to_copy: pyperclip.copy(t))
-                _prefix = tl('copy_text').format(text_to_copy[:50] + ('...' if len(text_to_copy) > 50 else '')) if tl else f"Copy text: {text_to_copy[:50]}{'...' if len(text_to_copy) > 50 else ''}"
-                btn.setToolTip(_prefix)
-                row_layout.addWidget(btn)
+        label = QLabel(line)
+        row_layout.addWidget(label, stretch=1)
 
-            item.setSizeHint(row_widget.sizeHint())
-            listbox.addItem(item)
-            listbox.setItemWidget(item, row_widget)
+        if line in text_dict:
+            text_to_copy = text_dict[line]
+            btn = copy_btn_factory(lambda _=False, t=text_to_copy: pyperclip.copy(t))
+            _prefix = tl('copy_text').format(text_to_copy[:50] + ('...' if len(text_to_copy) > 50 else '')) if tl else f"Copy text: {text_to_copy[:50]}{'...' if len(text_to_copy) > 50 else ''}"
+            btn.setToolTip(_prefix)
+            row_layout.addWidget(btn)
 
-    _populate(ui_tree_list)
+        item.setSizeHint(row_widget.sizeHint())
+        listbox.addItem(item)
+        listbox.setItemWidget(item, row_widget)
+        line_items.append((line.lower(), item))
+    listbox.setUpdatesEnabled(True)
 
     def on_search(text):
-        filtered = [line for line in ui_tree_list if text.lower() in line.lower()]
-        _populate(filtered)
+        needle = text.lower()
+        listbox.setUpdatesEnabled(False)
+        for lowered, item in line_items:
+            item.setHidden(bool(needle) and needle not in lowered)
+        listbox.setUpdatesEnabled(True)
 
     def on_hover(item):
         if item:

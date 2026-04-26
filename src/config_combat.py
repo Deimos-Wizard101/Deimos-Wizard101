@@ -13,7 +13,7 @@ from typing import List, Dict, Tuple
 import re
 
 
-default_config = 'Mass | "Detonate All 200 - Amulet" | Willcast @ enemy & Willcast @ boss & "Pet - Sharpened Blade" @ spell(any<blade>) & "Sharpened Blade - Amulet" @ spell(any<blade>) & Sharpened @ spell(any<blade>) & Sharpened @ spell(any<blade>) & "Potent Trap - Amulet" @ spell("Feint") & "Potent Trap - Tear" @ spell("Feint") & "Potent Trap - Tear" @ spell(any<trap>) & "Potent Trap - Amulet" @ spell(any<trap>) & Potent @ spell(any<trap>) & Potent @ spell(any<trap>) & any<mod_damage> @ spell(any<damage>) & any<mod_damage> @ spell(any<damage>) & any<blade> @ self | any<trap> @ boss | any<trap> @ enemy | any<aura> | any<global> | any<aoe> | any<damage> @ boss | any<damage> @ enemy'
+default_config = 'Mass | "Detonate All 200 - Amulet" | Willcast @ enemy & Willcast @ boss & "Pet - Sharpened Blade" @ spell(any<blade>) & "Sharpened Blade - Amulet" @ spell(any<blade>) & Sharpened @ spell(any<blade>) & Sharpened @ spell(any<blade>) & "Potent Trap - Amulet" @ spell("Feint") & "Potent Trap - Tear" @ spell("Feint") & "Potent Trap - Tear" @ spell(any<trap>) & "Potent Trap - Amulet" @ spell(any<trap>) & Potent @ spell(any<trap>) & Potent @ spell(any<trap>) & any<mod_damage> @ spell(any<damage>) & any<mod_damage> @ spell(any<damage>) & any<blade> @ self | any<trap> @ boss | any<trap> @ enemy | any<aura> | any<global> | any<damage&aoe> @ aoe | any<damage> @ boss | any<damage> @ enemy | any<damage> @ enemies | ?(self.health < 25%) any<heal> @ self'
 # "any<damage>[epic] @ enemy | any<damage>[colossal] @ enemy | any<damage>[gargantuan] @ enemy | any<damage>[monstrous] @ enemy | any<damage>[giant] @ enemy | any<damage>[strong] @ enemy"
 
 class StrCombatConfigProvider(CombatConfigProvider):

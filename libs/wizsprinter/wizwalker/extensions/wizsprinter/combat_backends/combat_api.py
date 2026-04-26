@@ -1,6 +1,12 @@
 from enum import Enum, auto
 from typing import *
 
+from wizwalker.memory.memory_objects.conditionals import (
+    charm_effect_types, ward_effect_types, over_time_effect_types, aura_effect_types,
+    ReqHangingCharm, ReqHangingWard, ReqHangingOverTime, ReqHangingAura,
+)
+from wizwalker.memory.memory_objects.enums import HangingDisposition, HangingEffectType, SpellEffects
+
 class TargetType(Enum):
     type_self = auto()
     type_boss = auto()
@@ -85,6 +91,18 @@ class Condition:
         return f"Condition({self.target}.{self.attribute} {self.op.value} {self.value}{pct})"
 
 
+class AllCondition:
+    """Composite predicate that holds iff every clause holds (logical AND).
+    Produced by the parser when a `?(...)` block contains two or more clauses
+    joined by `&&`. A single-clause `?(...)` still returns a plain Condition,
+    so existing strategies are unaffected."""
+    def __init__(self, clauses: List[Condition]):
+        self.clauses = clauses
+
+    def __repr__(self) -> str:
+        return f"AllCondition([{', '.join(repr(c) for c in self.clauses)}])"
+
+
 class Spell:
     pass
 
@@ -105,8 +123,120 @@ class NamedSpell(Spell):
         return f"NamedSpell(name=\"{self.name}\", is_literal={self.is_literal})"
 
 
+# --- Hanging-effect category registry -------------------------------------
+# Single source of truth for which SpellEffects belong to which broad category,
+# which ConditionalSpellEffect requirement class checks for that category, and
+# which HangingEffectType the game uses on HangingConversionSpellEffect.
+#
+# To add a new category (e.g. "auras"):
+#   1. Define / import the SpellEffects list (e.g. aura_effect_types).
+#   2. Add one row here with whatever pieces wizwalker exposes. Pieces that
+#      don't exist yet (no req_class, no HET value) get None — the matcher
+#      degrades to whatever paths still work for that category.
+# Tuple = (effect_types_list, req_class_or_None, hanging_effect_type_or_None,
+#          [parser_aliases], swap_effect_type_or_None)
+HANGING_CATEGORIES = {
+    "charms":    (charm_effect_types,     ReqHangingCharm,     HangingEffectType.charm,     ["charm"], SpellEffects.swap_charm),
+    "wards":     (ward_effect_types,      ReqHangingWard,      HangingEffectType.ward,      ["ward"], SpellEffects.swap_ward),
+    "over_time": (over_time_effect_types, ReqHangingOverTime, HangingEffectType.over_time, ["ot"],   SpellEffects.swap_over_time),
+    "auras":     (aura_effect_types,      ReqHangingAura,      None,                        ["aura"], None),
+}
+
+
+def _build_hanging_type():
+    members = {}
+    for canonical in HANGING_CATEGORIES:
+        members[canonical] = canonical
+        members[f"beneficial_{canonical}"] = f"beneficial_{canonical}"
+        members[f"harmful_{canonical}"] = f"harmful_{canonical}"
+    return Enum("HangingType", members)
+
+
+# Dynamically constructed so adding a category to HANGING_CATEGORIES auto-grows
+# the enum (and everything downstream that reads from the registry).
+# Members for the 3 stock categories: charms, beneficial_charms, harmful_charms,
+# wards, beneficial_wards, harmful_wards, over_time, beneficial_over_time,
+# harmful_over_time. Use disposition-prefixed names to combine with the verb
+# (gambit/clear) and pin down a single side.
+HangingType = _build_hanging_type()
+
+
+def hanging_type_info(ht: "HangingType") -> Tuple[str, Optional[HangingDisposition]]:
+    """Decompose a HangingType into (canonical_category, disposition_or_None)."""
+    name = ht.value
+    if name.startswith("beneficial_"):
+        return name[len("beneficial_"):], HangingDisposition.beneficial
+    if name.startswith("harmful_"):
+        return name[len("harmful_"):], HangingDisposition.harmful
+    return name, None
+
+
+def hanging_type_aliases() -> Dict[str, "HangingType"]:
+    """Return {parser_keyword: HangingType_member} including all category aliases
+    (charm/ward/ot) and disposition prefixes (beneficial_/harmful_)."""
+    out: Dict[str, HangingType] = {}
+    for canonical, (_, _, _, aliases, _) in HANGING_CATEGORIES.items():
+        names = [canonical] + list(aliases)
+        for n in names:
+            out[n] = HangingType[canonical]
+            out[f"beneficial_{n}"] = HangingType[f"beneficial_{canonical}"]
+            out[f"harmful_{n}"] = HangingType[f"harmful_{canonical}"]
+    return out
+
+
+class GambitSpec:
+    """Filter for spells that 'Gambit' a hanging effect (consume your own
+    beneficial-X or the enemy's harmful-X for a bonus)."""
+    def __init__(self, hanging_type: HangingType, min_count: int = 1):
+        self.hanging_type = hanging_type
+        self.min_count = min_count
+
+    def __repr__(self) -> str:
+        return f"GambitSpec(hanging_type={self.hanging_type}, min_count={self.min_count})"
+
+
+class ClearSpec:
+    """Filter for spells that 'Clear' a hanging effect (consume your own
+    harmful-X or the enemy's beneficial-X for a bonus)."""
+    def __init__(self, hanging_type: HangingType, min_count: int = 1):
+        self.hanging_type = hanging_type
+        self.min_count = min_count
+
+    def __repr__(self) -> str:
+        return f"ClearSpec(hanging_type={self.hanging_type}, min_count={self.min_count})"
+
+
+class EchoSpec:
+    """Filter for spells that 'Echo' a hanging effect — read an effect on the
+    enemy and apply the same effect type to the caster (value not copied,
+    only the type/disposition). Source side is the target, so verb resolution
+    is `target+disposition`. With unspecified disposition both halves match."""
+    def __init__(self, hanging_type: HangingType, min_count: int = 1):
+        self.hanging_type = hanging_type
+        self.min_count = min_count
+
+    def __repr__(self) -> str:
+        return f"EchoSpec(hanging_type={self.hanging_type}, min_count={self.min_count})"
+
+
+class SwapSpec:
+    """Filter for spells that 'Swap' a hanging effect — exchange N hangings of
+    a specific category+disposition between caster and target. Modeled as a
+    top-level SpellEffect whose effect_type is swap_charm/swap_ward/
+    swap_over_time and whose disposition pins the side."""
+    def __init__(self, hanging_type: HangingType, min_count: int = 1):
+        self.hanging_type = hanging_type
+        self.min_count = min_count
+
+    def __repr__(self) -> str:
+        return f"SwapSpec(hanging_type={self.hanging_type}, min_count={self.min_count})"
+
+
 class TemplateSpell(Spell):
-    def __init__(self, requirements: List[SpellType], optional=False) -> None:
+    def __init__(self, requirements: List, optional=False) -> None:
+        # `requirements` is a heterogeneous list of SpellType values plus optional
+        # post-selection filter specs (GambitSpec / ClearSpec). req_met stays as a
+        # SpellType sentinel so existing parsing keeps working.
         self.requirements = requirements
         self.optional = optional
 

@@ -16,7 +16,10 @@ def get_sprinty_grammar():
             
             move_config: condition? move (_at target)? [(_and move (_at target)?)*]?
 
-            condition: _cond_open cond_target "." cond_attr cond_op cond_value _cond_close
+            condition: _cond_open cond_clause (_cond_and cond_clause)* _cond_close
+            cond_clause: cond_target "." cond_attr cond_op cond_value
+            COND_AND: "&&"
+            _cond_and: _newlines? COND_AND _newlines?
 
             cond_target: cond_target_self | cond_target_boss | cond_target_enemy | cond_target_ally | cond_target_enemies | cond_target_allies
             cond_target_self: _spaced{"self"}
@@ -70,7 +73,7 @@ def get_sprinty_grammar():
             auto: _spaced{"auto"}
             
             any_spell: _spaced{"any"} _less_than spell_type [(_and spell_type)*]? _greater_than
-            spell_type: spell_damage | spell_aoe | spell_heal_self | spell_heal_other | spell_heal | spell_blade | spell_charm | spell_ward | spell_trap | spell_enchant | spell_aura | spell_global | spell_polymorph | spell_shadow | spell_shadow_creature | spell_pierce | spell_prism | spell_dispel | spell_inc_damage | spell_out_damage | spell_inc_heal | spell_out_heal | spell_mod_damage | spell_mod_heal | spell_mod_pierce | spell_req_met
+            spell_type: spell_damage | spell_aoe | spell_heal_self | spell_heal_other | spell_heal | spell_blade | spell_charm | spell_ward | spell_trap | spell_enchant | spell_aura | spell_global | spell_polymorph | spell_shadow | spell_shadow_creature | spell_pierce | spell_prism | spell_dispel | spell_inc_damage | spell_out_damage | spell_inc_heal | spell_out_heal | spell_mod_damage | spell_mod_heal | spell_mod_pierce | spell_req_met | spell_gambit | spell_clear | spell_echo | spell_swap
             spell_damage: _spaced{"damage"}
             spell_aoe: _spaced{"aoe"}
             spell_heal: _spaced{"heal"}
@@ -97,7 +100,13 @@ def get_sprinty_grammar():
             spell_mod_heal: _spaced{"mod_heal"}
             spell_mod_pierce: _spaced{"mod_pierce"}
             spell_req_met: _spaced{"req_met"}
-            
+            spell_gambit: _spaced{"gambit"} _open_paren hanging_args _close_paren
+            spell_clear:  _spaced{"clear"}  _open_paren hanging_args _close_paren
+            spell_echo:   _spaced{"echo"}   _open_paren hanging_args _close_paren
+            spell_swap:   _spaced{"swap"}   _open_paren hanging_args _close_paren
+            hanging_args: hanging_kw | hanging_kw _comma INT
+            hanging_kw: NAME
+
             expression: INT
             
             words: _newlines? word [word*] _newlines?
@@ -169,9 +178,20 @@ class TreeToConfig(Transformer):
     def move(self, items):
         return Move(*items)
 
-    def condition(self, items):
+    def cond_clause(self, items):
         target, attr, op, value = items
         return Condition(target, attr, op, *value)
+
+    def condition(self, items):
+        # Filter out the COND_AND tokens (lark keeps them in the child list
+        # because the rule references a named terminal). Items that are
+        # Condition instances are the actual clauses; a single clause stays
+        # as a bare Condition for backward compatibility, multiples wrap in
+        # AllCondition (logical AND).
+        clauses = [c for c in items if isinstance(c, Condition)]
+        if len(clauses) == 1:
+            return clauses[0]
+        return AllCondition(clauses)
 
     def cond_target(self, items):
         return items[0]
@@ -227,7 +247,7 @@ class TreeToConfig(Transformer):
 
     def move_config(self, items):
         condition = None
-        if items and isinstance(items[0], Condition):
+        if items and isinstance(items[0], (Condition, AllCondition)):
             condition = items.pop(0)
 
         movestargets = {}
@@ -413,6 +433,42 @@ class TreeToConfig(Transformer):
 
     def spell_req_met(self, _):
         return SpellType.type_req_met
+
+    _HANGING_KW_ALIASES = hanging_type_aliases()
+
+    def hanging_kw(self, items):
+        name = str(items[0])
+        if name in self._HANGING_KW_ALIASES:
+            return self._HANGING_KW_ALIASES[name]
+        valid = sorted(set(self._HANGING_KW_ALIASES.keys()))
+        raise ValueError(f"Unknown hanging type '{name}'. Valid: {valid}")
+
+    def hanging_args(self, items):
+        # items is either [HangingType] or [HangingType, INT]
+        hanging_type = items[0]
+        min_count = 1
+        if len(items) > 1:
+            qty = int(items[1])
+            if qty < 1:
+                raise ValueError(f"gambit/clear count must be >= 1, got {qty}")
+            min_count = qty
+        return (hanging_type, min_count)
+
+    def spell_gambit(self, items):
+        hanging_type, min_count = items[0]
+        return GambitSpec(hanging_type, min_count)
+
+    def spell_clear(self, items):
+        hanging_type, min_count = items[0]
+        return ClearSpec(hanging_type, min_count)
+
+    def spell_echo(self, items):
+        hanging_type, min_count = items[0]
+        return EchoSpec(hanging_type, min_count)
+
+    def spell_swap(self, items):
+        hanging_type, min_count = items[0]
+        return SwapSpec(hanging_type, min_count)
 
     INT = int
 
