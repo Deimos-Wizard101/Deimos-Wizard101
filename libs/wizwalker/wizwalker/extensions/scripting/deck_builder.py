@@ -296,6 +296,72 @@ class DeckBuilder:
                 pass
         return list_of_valid_spell_entries
 
+    async def get_tiered_spell_list(self) -> list[SpellListControlSpellEntry]:
+        """Get valid spell entries from the TieredSpellMPUnlockedList."""
+        tiered_window = await _maybe_get_named_window(self._deck_config_window, "TieredSpellMPUnlockedList")
+        tiered_control = DynamicSpellListControl(
+            self.client.hook_handler, await tiered_window.read_base_address()
+        )
+        list_of_spell_entries = await tiered_control.spell_entries()
+        list_of_valid_spell_entries = []
+        for spell in list_of_spell_entries:
+            try:
+                graphical = await spell.graphical_spell()
+                if not graphical:
+                    continue
+                template = await graphical.spell_template()
+                if not template:
+                    continue
+                await template.name()
+                list_of_valid_spell_entries.append(spell)
+            except:
+                pass
+        return list_of_valid_spell_entries
+
+    async def tiered_spell_list_match_template(self, template_name: str) -> list[SpellListControlSpellEntry]:
+        """Search the TieredSpellMPUnlockedList for a spell by template name."""
+        async def tiered_get_cards_with_predicate(pred: Any) -> list:
+            cards = []
+            spell_list = await self.get_tiered_spell_list()
+            for spell in spell_list:
+                if await pred(spell):
+                    cards.append(spell)
+            return cards
+        return await self._pred_match_template_name(tiered_get_cards_with_predicate, template_name)
+
+    async def get_tiered_spell_list_rectangle(self) -> Rectangle:
+        """Get the rectangle for the TieredSpellMPUnlockedList window."""
+        tiered_list = await _maybe_get_named_window(self._deck_config_window, "TieredSpellMPUnlockedList")
+        return await tiered_list.scale_to_client()
+
+    async def set_tiered_spell_page(self, page_number: int):
+        """Set the page for the TieredSpellMPUnlockedList."""
+        tiered_window = await _maybe_get_named_window(self._deck_config_window, "TieredSpellMPUnlockedList")
+        tiered_control = DynamicSpellListControl(
+            self.client.hook_handler, await tiered_window.read_base_address()
+        )
+        await tiered_control.write_start_index(page_number * 6)
+
+    async def get_graphical_tiered_spell_cards(self) -> list[DynamicGraphicalSpell]:
+        """Get graphical spell objects from the tiered spell list."""
+        list_of_spell_entries = await self.get_tiered_spell_list()
+        list_of_spell_graphicals = []
+        for spell in list_of_spell_entries:
+            graphical = await spell.graphical_spell()
+            list_of_spell_graphicals.append(graphical)
+        return list_of_spell_graphicals
+
+    async def calculate_tiered_spell_card_position(self, card_number) -> tuple[int, int]:
+        """Calculate click position for a card in the tiered spell list.
+        The TieredSpellMPUnlockedList uses a 6-slot grid but the first 2
+        slots are spacers. Real cards are in slots 3-6 (1-based).
+        """
+        tiered_rect = await self.get_tiered_spell_list_rectangle()
+        rectangle_list = self.divide_rectangle(tiered_rect)
+        # Offset by 2 slots for the spacers
+        card_rectangle = rectangle_list[card_number - 1 + 2]
+        return card_rectangle.center()
+
     async def get_deck_count(self) -> int:
         spell_slot_rect = await self.get_deck_list_rectangle()
         spell_slots = self.divide_rectangle(spell_slot_rect, 8, 8)
@@ -801,32 +867,13 @@ class DeckBuilder:
                     await self.client.mouse_handler.click(*divided_item_spells_rect[inactive_cards[index][1]].center())
                     await asyncio.sleep(sleep)
 
-    async def add_by_name(self, name: str, number_of_copies: Optional[int]):
-        """
-        builder.add_card_by_name("unicorn", number_of_copies: int | None)
-        -> number_of_copies = None: add max copies
-        -> raises: ValueError(already at max copies)
-        -> raises: ValueError(card not found)
-        """
-        cards: list[SpellListControlSpellEntry] = await self.spell_list_match_template(name)
-        if len(cards) <= 0:
-            raise Exception(f"Card not found: {name}")
-        card = cards[0]
-
-        if number_of_copies == None:
-            number_of_copies = (await card.max_copies()) - (await card.current_copies())
-
-        if await card.max_copies() == await card.current_copies():
-            raise ValueError(f"already at max copies for {name}")
-        elif await card.max_copies() < (await card.current_copies()) + (number_of_copies):
-            raise ValueError(
-                f"number of copies is greater than the card allows")
-
+    async def _add_from_spell_list(self, name: str, number_of_copies: int):
+        """Add a card by clicking it in the main SpellList."""
         list_of_spells = await self.get_graphical_spell_cards()
         list_of_spell_names = []
         for spell in list_of_spells:
             template = await spell.spell_template()
-            if (not template):
+            if not template:
                 continue
             list_of_spell_names.append(await template.name())
         card_page, card_index_on_page = self.calcuate_position_of_card_in_page(
@@ -836,7 +883,108 @@ class DeckBuilder:
         async with self.client.mouse_handler:
             for _ in range(number_of_copies):
                 await self.client.mouse_handler.click(*card_position_on_page)
-            # await asyncio.sleep(.1)
+
+    async def _add_from_tiered_spell_list(self, name: str, number_of_copies: int):
+        """Add a tiered spell variant by clicking the base spell to open the
+        tiered view, then clicking the specific variant.
+
+        Flow: find base spell in SpellList -> click to open tiered view ->
+        find variant in TieredSpellMPUnlockedList -> click the variant.
+        """
+        # Extract the base spell name (everything before " - T")
+        base_name_end = name.find(" - T")
+        if base_name_end == -1:
+            raise Exception(f"Card not found: {name}")
+
+        base_name = name[:base_name_end]
+
+        # Find and click the base spell in the main spell list to open tiered view
+        list_of_spells = await self.get_graphical_spell_cards()
+        list_of_spell_names = []
+        for spell in list_of_spells:
+            template = await spell.spell_template()
+            if not template:
+                continue
+            list_of_spell_names.append(await template.name())
+
+        if base_name not in list_of_spell_names:
+            raise Exception(f"Base spell '{base_name}' not found for tiered spell '{name}'")
+
+        card_page, card_index_on_page = self.calcuate_position_of_card_in_page(
+            list_of_spell_names, base_name)
+        card_position_on_page = await self.calculate_card_position(card_index_on_page)
+        await self.set_page(card_page)
+
+        # Click the base spell to open the tiered spell list
+        async with self.client.mouse_handler:
+            await self.client.mouse_handler.click(*card_position_on_page)
+
+        # Find the variant in the tiered spell list
+        tiered_cards = await self.tiered_spell_list_match_template(name)
+        if len(tiered_cards) <= 0:
+            raise Exception(f"Tiered variant '{name}' not found in tiered spell list")
+
+        # Find position and click in the tiered spell list
+        tiered_spells = await self.get_graphical_tiered_spell_cards()
+        tiered_names = []
+        for spell in tiered_spells:
+            template = await spell.spell_template()
+            if not template:
+                continue
+            tiered_names.append(await template.name())
+
+        tiered_page, tiered_index = self.calcuate_position_of_card_in_page(
+            tiered_names, name)
+        tiered_position = await self.calculate_tiered_spell_card_position(tiered_index)
+        await self.set_tiered_spell_page(tiered_page)
+        async with self.client.mouse_handler:
+            for _ in range(number_of_copies):
+                await self.client.mouse_handler.click(*tiered_position)
+
+        # Close the tiered spell page and return to the normal spell list
+        try:
+            close_btn = await _maybe_get_named_window(
+                self._deck_config_window, "CloseTSMPUnlockedPageButton"
+            )
+            async with self.client.mouse_handler:
+                await self.client.mouse_handler.click_window(close_btn)
+        except ValueError:
+            # Button not found, fall back to refreshing the deck page
+            await self.refresh_deck_page()
+
+    async def add_by_name(self, name: str, number_of_copies: Optional[int]):
+        """
+        builder.add_card_by_name("unicorn", number_of_copies: int | None)
+        -> number_of_copies = None: add max copies
+        -> raises: ValueError(already at max copies)
+        -> raises: ValueError(card not found)
+        """
+        cards: list[SpellListControlSpellEntry] = await self.spell_list_match_template(name)
+        is_tiered = len(cards) <= 0
+
+        if is_tiered:
+            # Card not in main spell list — check if it's a tiered variant
+            # (names containing " - T") behind the TieredSpellMPUnlockedList
+            if " - T" not in name:
+                raise Exception(f"Card not found: {name}")
+            # For tiered spells, we need to open the tiered view to check
+            # copies. Just proceed with the requested count.
+            if number_of_copies is None or number_of_copies <= 0:
+                number_of_copies = 1
+            await self._add_from_tiered_spell_list(name, number_of_copies)
+        else:
+            card = cards[0]
+
+            if number_of_copies is None:
+                number_of_copies = (await card.max_copies()) - (await card.current_copies())
+
+            if await card.max_copies() == await card.current_copies():
+                raise ValueError(f"already at max copies for {name}")
+            elif await card.max_copies() < (await card.current_copies()) + (number_of_copies):
+                raise ValueError(
+                    f"number of copies is greater than the card allows")
+
+            await self._add_from_spell_list(name, number_of_copies)
 
     async def remove_by_name(self, name: str, number_of_copies: int):
         desk_list = await self.get_graphical_deck_cards()

@@ -354,7 +354,7 @@ class DeckListControlSpellEntry(DynamicMemoryObject):
 
 class SpellListControlSpellEntry(DynamicMemoryObject):
     async def graphical_spell(self) -> Optional[DynamicGraphicalSpell]:
-        addr = await self.read_value_from_offset(0, Primitive.uint64)
+        addr = await self.read_value_from_offset(0x0, Primitive.uint64)
 
         if addr == 0:
             return None
@@ -366,6 +366,9 @@ class SpellListControlSpellEntry(DynamicMemoryObject):
 
     async def current_copies(self) -> int:
         return await self.read_value_from_offset(0x14, Primitive.uint32)
+
+    async def enabled(self) -> bool:
+        return bool(await self.read_value_from_offset(0xA0, Primitive.uint8))
 
     async def _read_vector(self, address: int, size: int = 3, data_type: Primitive = Primitive.float32):
         type_str = data_type.value.format.replace("<", "")
@@ -418,19 +421,19 @@ class SpellListControl(Window):
         raise NotImplementedError()
 
     async def spell_entries(self) -> List[SpellListControlSpellEntry]:
-        return await self.read_inlined_vector(0x280, 0x16, SpellListControlSpellEntry)
+        return await self.read_inlined_vector(0x280, 0xA8, SpellListControlSpellEntry)
 
     async def card_size_horizontal(self) -> int:
-        return await self.read_value_from_offset(0x2C4, Primitive.uint32)
+        return await self.read_value_from_offset(0x30C, Primitive.uint32)
 
     async def card_size_vertical(self) -> int:
-        return await self.read_value_from_offset(0x2C8, Primitive.uint32)
+        return await self.read_value_from_offset(0x310, Primitive.uint32)
 
     async def start_index(self) -> int:
-        return await self.read_value_from_offset(0x2C8, Primitive.uint32)
+        return await self.read_value_from_offset(0x308, Primitive.uint32)
 
     async def write_start_index(self, start_index: int):
-        return await self.write_value_to_offset(0x2C8, start_index, Primitive.uint32)
+        return await self.write_value_to_offset(0x308, start_index, Primitive.uint32)
 
 
 class DynamicWindow(DynamicMemoryObject, Window):
@@ -442,6 +445,19 @@ class DynamicDeckListControl(DynamicWindow, DeckListControl):
 
 
 class DynamicSpellListControl(DynamicWindow, SpellListControl):
+    pass
+
+
+class SpellFusionListControl(SpellListControl):
+    """SpellFusionListControl (0x440 bytes) - shows tiered spell variants.
+    Inherits from SpellListControl. Same offsets apply.
+    Child window name: "SpellFusionList" (DeckPage offset +0x2E0)
+    """
+    async def read_base_address(self) -> int:
+        raise NotImplementedError()
+
+
+class DynamicSpellFusionListControl(DynamicWindow, SpellFusionListControl):
     pass
 
 
