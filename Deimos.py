@@ -18,7 +18,6 @@ import winreg
 import subprocess
 from loguru import logger
 import datetime
-from configparser import ConfigParser
 import statistics
 import re
 # import pypresence
@@ -28,12 +27,12 @@ from src.auto_pet import nomnom
 from src.drop_logger import logging_loop
 # from src.combat_new import Fighter
 from src.stat_viewer import total_stats
+from src.world_to_screen import world_to_screen, get_camera_state, project_point
 from src.teleport_math import navmap_tp, calc_Distance
 from src.questing import Quester
 from src.sigil import Sigil
-from src.utils import index_with_str, is_visible_by_path, is_free, auto_potions, auto_potions_force_buy, to_world, collect_wisps_with_limit, try_task_coro, read_webpage, override_wiz_install_using_handle#, assign_pet_level
+from src.utils import index_with_str, is_visible_by_path, is_free, auto_potions, auto_potions_force_buy, to_world, collect_wisps_with_limit, try_task_coro, read_webpage, override_wiz_install_using_handle, get_window_from_path#, assign_pet_level
 from src.paths import advance_dialog_path, decline_quest_path, play_button_path
-import PySimpleGUI as gui
 import pyperclip
 from src.sprinty_client import SprintyClient
 from src.gui_inputs import param_input, trunc
@@ -43,18 +42,17 @@ from wizwalker.extensions.wizsprinter.sprinty_combat import SprintyCombat
 from src.config_combat import StrCombatConfigProvider, delegate_combat_configs, default_config
 from typing import List
 
-from src import deimosgui
-from src.deimosgui import GUIKeys
+from src import gui as deimosgui
+from src.gui import GUIKeys
+import wizlaunch
+from src.settings_manager import DeimosSettings
 from src.tokenizer import tokenize
 from src.deimoslang import vm
 
-gui.set_global_icon("..\\Deimos-logo.ico")
-gui.PySimpleGUI.SUPPRESS_ERROR_POPUPS = True
-gui.PySimpleGUI.SUPPRESS_RAISE_KEY_ERRORS = True
 
 cMessageBox = ctypes.windll.user32.MessageBoxW
 
-tool_version: str = '3.12.3'
+tool_version: str = '3.13.0'
 tool_name: str = 'Deimos'
 tool_author: str = 'Deimos-Wizard101'
 repo_name: str = tool_name + '-Wizard101'
@@ -96,128 +94,58 @@ def download_file(url: str, file_name : str, delete_previous: bool = False, debu
 				f.write(chunk)
 
 
-# reading hotkeys from config
-parser = ConfigParser()
+# Default settings — JSON in AppData is authoritative
+speed_multiplier = 5.0
+use_potions = True
+rpc_status = True
+drop_status = True
+anti_afk_status = True
+gui_on_top = True
+gui_langcode = 'en'
+gui_font = 'Segoe UI'
+gui_font_size = 9
+use_team_up = False
+buy_potions = True
+client_to_follow = None
+client_to_boost = None
+questing_friend_tp = False
+gear_switching_in_solo_zones = False
+hitter_client = None
+kill_minions_first = False
+automatic_team_based_combat = False
+discard_duplicate_cards = True
+ignore_pet_level_up = False
+only_play_dance_game = False
 
+settings = DeimosSettings()
+settings.migrate_theme_from_settings()
 
-def read_config(config_name : str):
-	parser.read(config_name)
+# Load theme from dedicated theme file
+theme_dict = settings.get_theme()
 
-	# Settings
-	# global auto_updating
-	global speed_multiplier
-	global use_potions
-	global rpc_status
-	global drop_status
-	global anti_afk_status
-	# auto_updating = parser.getboolean('settings', 'auto_updating', fallback=True)
-	speed_multiplier = parser.getfloat('settings', 'speed_multiplier', fallback=5.0)
-	use_potions = parser.getboolean('settings', 'use_potions', fallback=True)
-	rpc_status = parser.getboolean('settings', 'rich_presence', fallback=True)
-	drop_status = parser.getboolean('settings', 'drop_logging', fallback=True)
-	anti_afk_status = parser.getboolean('settings', 'use_anti_afk', fallback=True)
-
-
-	# Hotkeys
-	global x_press_key
-	global sync_locations_key
-	global quest_teleport_key
-	global mass_quest_teleport_key
-	global toggle_speed_key
-	global friend_teleport_key
-	global kill_tool_key
-	global toggle_auto_combat_key
-	global toggle_auto_dialogue_key
-	global toggle_auto_sigil_key
-	global toggle_freecam_key
-	global toggle_auto_questing_key
-	x_press_key = parser.get('hotkeys', 'x_press', fallback='X')
-	sync_locations_key = parser.get('hotkeys', 'sync_client_locations', fallback='F8')
-	quest_teleport_key = parser.get('hotkeys', 'quest_teleport', fallback='F7')
-	mass_quest_teleport_key = parser.get('hotkeys', 'mass_quest_teleport', fallback='F6')
-	toggle_speed_key = parser.get('hotkeys', 'toggle_speed_multiplier', fallback='F5')
-	friend_teleport_key = parser.get('hotkeys', 'friend_teleport', fallback='EIGHT')
-	kill_tool_key = parser.get('hotkeys', 'kill_tool', fallback='F9')
-	toggle_auto_combat_key = parser.get('hotkeys', 'toggle_auto_combat', fallback='NINE')
-	toggle_auto_dialogue_key = parser.get('hotkeys', 'toggle_auto_dialogue', fallback='F4')
-	toggle_auto_sigil_key = parser.get('hotkeys', 'toggle_auto_sigil', fallback='F2')
-	toggle_freecam_key = parser.get('hotkeys', 'toggle_freecam', fallback='F1')
-	toggle_auto_questing_key = parser.get('hotkeys', 'toggle_auto_questing', fallback='F3')
-
-
-	# GUI Settings
-	# global show_gui
-	global gui_on_top
-	global gui_theme
-	global gui_text_color
-	global gui_button_color
-	global gui_langcode
-	global gui_scale
-	global gui_font
-	global gui_font_size
-	# show_gui = parser.getboolean('gui', 'show_gui', fallback=True)
-	gui_on_top = parser.getboolean('gui', 'on_top', fallback=True)
-	gui_theme = parser.get('gui', 'theme', fallback='Black')
-	gui_text_color = parser.get('gui', 'text_color', fallback='white')
-	gui_button_color = parser.get('gui', 'button_color', fallback='#4a019e')
-	gui_langcode = parser.get('gui', 'locale', fallback='en')
-	gui_scale = parser.getfloat('gui', 'scale', fallback=1.0)
-	gui_font = parser.get('gui', 'font', fallback='Bahnschrift')
-	gui_font_size = parser.getint('gui', 'font_size', fallback=14)
-	gui.set_options(scaling=gui_scale, font=(gui_font, gui_font_size))
-	# gui.set_options(scaling=gui_scale, font=('Bahnschrift', gui_font_size))
-
-
-	# Auto Sigil Settings
-	global use_team_up
-	global buy_potions
-	global client_to_follow
-	use_team_up = parser.getboolean('sigil', 'use_team_up', fallback=False)
-	buy_potions = parser.getboolean('settings', 'buy_potions', fallback=True)
-	client_to_follow = parser.get('sigil', 'client_to_follow', fallback=None)
-
-
-	# Auto Questing Settings
-	global client_to_boost
-	global questing_friend_tp
-	global gear_switching_in_solo_zones
-	global hitter_client
-	client_to_boost = parser.get('questing', 'client_to_boost', fallback=None)
-	questing_friend_tp = parser.getboolean('questing', 'friend_teleport', fallback=False)
-	gear_switching_in_solo_zones = parser.getboolean('questing', 'gear_switching_in_solo_zones', fallback=False)
-	hitter_client = parser.get('questing', 'hitter_client', fallback=None)
-	# empty string can falsely be read as a client.  Check if the user's config entry was valid and set to None if not
-	valid_configs = ['p1', 'p2', 'p3', 'p4', '1', '2', '3', '4']
-	if any(hitter_client == option for option in valid_configs):
-		pass
-	else:
-		hitter_client = None
-
-
-	# Combat Settings
-	global kill_minions_first
-	global automatic_team_based_combat
-	global discard_duplicate_cards
-	kill_minions_first = parser.getboolean('combat', 'kill_minions_first', fallback=False)
-	automatic_team_based_combat = parser.getboolean('combat', 'automatic_team_based_combat', fallback=False)
-	discard_duplicate_cards = parser.getboolean('combat', 'discard_duplicate_cards', fallback=True)
-
-
-	# Auto Pet Settings
-	global ignore_pet_level_up
-	global only_play_dance_game
-	ignore_pet_level_up = parser.getboolean('auto pet', 'ignore_pet_level_up', fallback=False)
-	only_play_dance_game = parser.getboolean('auto pet', 'only_play_dance_game', fallback=False)
-
-
-while True:
-	if not os.path.exists(f'{tool_name}-config.ini'):
-		# download_file(f'https://raw.githubusercontent.com/{tool_author}/{repo_name}/{branch}/{tool_name}-config.ini', f'{tool_name}-config.ini')
-		download_file(f'{repo_path_raw}/{tool_name}-config.ini', f'{tool_name}-config.ini')
-	time.sleep(0.1)
-
-	read_config(f'{tool_name}-config.ini')
-	break
+# Override globals from settings.json (authoritative after migration)
+_json_settings = settings.get_settings()
+speed_multiplier = _json_settings.get('speed_multiplier', speed_multiplier)
+use_potions = _json_settings.get('use_potions', use_potions)
+rpc_status = _json_settings.get('rich_presence', rpc_status)
+drop_status = _json_settings.get('drop_logging', drop_status)
+anti_afk_status = _json_settings.get('use_anti_afk', anti_afk_status)
+buy_potions = _json_settings.get('buy_potions', buy_potions)
+gui_on_top = _json_settings.get('on_top', gui_on_top)
+gui_langcode = _json_settings.get('locale', gui_langcode)
+gui_font = _json_settings.get('font', gui_font)
+gui_font_size = _json_settings.get('font_size', gui_font_size)
+use_team_up = _json_settings.get('use_team_up', use_team_up)
+client_to_follow = _json_settings.get('client_to_follow', client_to_follow)
+client_to_boost = _json_settings.get('client_to_boost', client_to_boost)
+questing_friend_tp = _json_settings.get('friend_teleport', questing_friend_tp)
+gear_switching_in_solo_zones = _json_settings.get('gear_switching_in_solo_zones', gear_switching_in_solo_zones)
+hitter_client = _json_settings.get('hitter_client', hitter_client)
+ignore_pet_level_up = _json_settings.get('ignore_pet_level_up', ignore_pet_level_up)
+only_play_dance_game = _json_settings.get('only_play_dance_game', only_play_dance_game)
+kill_minions_first = _json_settings.get('kill_minions_first', kill_minions_first)
+automatic_team_based_combat = _json_settings.get('automatic_team_based_combat', automatic_team_based_combat)
+discard_duplicate_cards = _json_settings.get('discard_duplicate_cards', discard_duplicate_cards)
 
 while True:
 	if hasattr(sys, '_MEIPASS'):
@@ -261,6 +189,8 @@ pet_task: asyncio.Task = None
 
 bot_task: asyncio.Task = None
 flythrough_task: asyncio.Task = None
+highlight_task: asyncio.Task = None
+entity_stream_task: asyncio.Task = None
 
 def file_len(filepath) -> List[str]:
 	# return the number of lines in a file
@@ -276,52 +206,6 @@ def generate_timestamp() -> str:
 	time_stamp = time_stamp.replace('/', '-').replace(':', '-')
 	return time_stamp
 
-
-def config_update():
-	config_url = f'{repo_path_raw}/{tool_name}-config.ini'
-
-	if not os.path.exists(f'{tool_name}-config.ini'):
-		download_file(url=config_url, file_name=f'{tool_name}-config.ini')
-		time.sleep(0.1)
-
-	if not os.path.exists(f'README.md'):
-		download_file(f'{repo_path_raw}/README.md', 'README.md')
-
-	download_file(url=config_url, file_name=f'{tool_name}-Testconfig.ini', delete_previous=True, debug=False)
-	time.sleep(0.1)
-
-	comparison_parser = ConfigParser()
-	comparison_parser.read(f'{tool_name}-Testconfig.ini')
-	comparison_sections = comparison_parser.sections()
-	for i in comparison_sections:
-		if not parser.has_section(i):
-			print(f'Config file lacks section "{i}", adding it.')
-			parser.add_section(i)
-
-		comparison_options = comparison_parser.options(i)
-		for b in comparison_options:
-			if not parser.has_option(i, b):
-				print(f'Config file section "{i}" lacks option "{b}", adding it and its default value.')
-				parser.set(i, b, str(comparison_parser.get(i, b)))
-
-	sections = parser.sections()
-	for i in sections:
-		if not comparison_parser.has_section(i):
-			print(f'Config file has erroneous section "{i}", removing it.')
-			parser.remove_section(i)
-
-		options = parser.options(i)
-		for b in options:
-			if not comparison_parser.has_option(i, b):
-				print(f'Config file section "{i}" has erroneous option "{b}", removing it.')
-				parser.remove_option(i, b)
-
-	with open(f'{tool_name}-config.ini', 'w') as new_config:
-		parser.write(new_config)
-	remove_if_exists(f'{tool_name}-Testconfig.ini')
-	time.sleep(0.1)
-	read_config(f'{tool_name}-config.ini')
-	print('\n')
 
 
 def run_updater():
@@ -370,8 +254,6 @@ def is_version_greater(version: str, comparison_version: str) -> bool:
 # 			run_updater()
 
 
-def hotkey_button(name: str, auto_size: bool = False, text_color: str = gui_text_color, button_color: str = gui_button_color):
-	return gui.Button(name, button_color=(text_color, button_color), auto_size_button=auto_size)
 
 
 async def mass_key_press(foreground_client : Client, background_clients : list[Client], pressed_key_name: str, key, duration : float = 0.1, debug : bool = False):
@@ -405,7 +287,7 @@ async def xyz_sync(foreground_client : Client, background_clients : list[Client]
 	# syncs client XYZ up with the one in foreground, doesn't work across zones or realms
 	if background_clients:
 		if debug:
-			logger.debug(f'{sync_locations_key} key pressed, syncing client locations.')
+			logger.debug('XYZ Sync hotkey pressed, syncing client locations.')
 		if foreground_client:
 			xyz = await foreground_client.body.position()
 			yaw = await foreground_client.body.yaw()
@@ -434,9 +316,9 @@ async def navmap_teleport(foreground_client : wizwalker.Client, background_clien
 
 	if debug:
 		if mass_teleport:
-			logger.debug(f'{mass_quest_teleport_key} key pressed, teleporting all clients to quests.')
+			logger.debug('Mass TP hotkey pressed, teleporting all clients to quests.')
 		else:
-			logger.debug(f'{quest_teleport_key} key pressed, teleporting client {foreground_client.title} to quest.')
+			logger.debug(f'Quest TP hotkey pressed, teleporting client {foreground_client.title} to quest.')
 	clients_to_port = []
 	if foreground_client:
 		clients_to_port.append(foreground_client)
@@ -465,7 +347,7 @@ async def navmap_teleport(foreground_client : wizwalker.Client, background_clien
 async def friend_teleport_sync(clients : list[wizwalker.Client], debug: bool):
 	# uses the util for porting to friend via the friends list. Sends every client to p1. I really don't like this function, or this code, but it works and people want it so I have to have it in here sadly. Might rewrite it someday.
 	if debug:
-		logger.debug(f'{friend_teleport_key} key pressed, friend teleporting all clients to p1.')
+		logger.debug('Friend TP hotkey pressed, friend teleporting all clients to p1.')
 	child_clients = clients[1:]
 	for p in child_clients:
 		async with p.mouse_handler:
@@ -480,7 +362,7 @@ async def friend_teleport_sync(clients : list[wizwalker.Client], debug: bool):
 async def kill_tool(debug: bool):
 	# raises KeyboardInterrupt, forcing the tool to exit.
 	if debug:
-		logger.debug(f'{kill_tool_key} key pressed, killing {tool_name}.')
+		logger.debug(f'Kill tool hotkey pressed, killing {tool_name}.')
 	await asyncio.sleep(0)
 	await asyncio.sleep(0)
 	raise deimosgui.ToolClosedException
@@ -489,28 +371,36 @@ async def kill_tool(debug: bool):
 async def tool_finish():
 	if not walker or len(walker.clients) == 0:
 		return
-	
-	await asyncio.gather(*[p.client_object.write_speed_multiplier(client_speeds[p.process_id]) for p in walker.clients])
-	for p in walker.clients:
-		p.title = 'Wizard101'
-		# Uncomment when freecam is fixed
-		if await p.game_client.is_freecam():
-			await p.camera_elastic()
-		else:
-			camera: ElasticCameraController = await p.game_client.elastic_camera_controller()
-			client_object = await p.body.parent_client_object()
-			await camera.write_attached_client_object(client_object)
-			await camera.write_check_collisions(True)
-			await camera.write_distance_target(300.0)
-			await camera.write_distance(300.0)
-			await camera.write_min_distance(150.0)
-			await camera.write_max_distance(450.0)
-			await camera.write_zoom_resolution(150.0)
-		await p.body.write_scale(1.0)
+
+	alive_clients = [p for p in walker.clients if p.is_running()]
+	for p in alive_clients:
+		try:
+			original_speed = client_speeds.get(p.process_id)
+			if original_speed is not None:
+				await p.client_object.write_speed_multiplier(original_speed)
+			p.title = 'Wizard101'
+			# Uncomment when freecam is fixed
+			if await p.game_client.is_freecam():
+				await p.camera_elastic()
+			else:
+				camera: ElasticCameraController = await p.game_client.elastic_camera_controller()
+				client_object = await p.body.parent_client_object()
+				await camera.write_attached_client_object(client_object)
+				await camera.write_check_collisions(True)
+				await camera.write_distance_target(300.0)
+				await camera.write_distance(300.0)
+				await camera.write_min_distance(150.0)
+				await camera.write_max_distance(450.0)
+				await camera.write_zoom_resolution(150.0)
+			await p.body.write_scale(1.0)
+		except Exception:
+			pass
 	await listener.clear()
 	for p in walker.clients:
 		try:
-			await p.close()
+			await asyncio.wait_for(p.close(), timeout=10.0)
+		except asyncio.TimeoutError:
+			logger.warning(f"Timed out closing client '{p.title}', skipping.")
 		except:
 			pass
 	# await walker.close()
@@ -532,7 +422,7 @@ async def main():
 
 
 	async def x_press_hotkey():
-		await mass_key_press(foreground_client, background_clients, x_press_key, Keycode.X, duration=0.1, debug=True)
+		await mass_key_press(foreground_client, background_clients, 'X Press', Keycode.X, duration=0.1, debug=True)
 
 
 	async def xyz_sync_hotkey():
@@ -557,13 +447,13 @@ async def main():
 			if speed_task is not None and not speed_task.cancelled():
 				speed_task.cancel()
 				speed_task = None
-				logger.debug(f'{toggle_speed_key} key pressed, disabling speed multiplier.')
+				logger.debug('Speed hotkey pressed, disabling speed multiplier.')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SpeedhackStatus', 'Disabled')))
 				for client in walker.clients:
 					await client.client_object.write_speed_multiplier(client_speeds[client.process_id])
 
 			else:
-				logger.debug(f'{toggle_speed_key} key pressed, enabling speed multiplier.')
+				logger.debug('Speed hotkey pressed, enabling speed multiplier.')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SpeedhackStatus', 'Enabled')))
 				speed_task = asyncio.create_task(try_task_coro(speed_switching, walker.clients))
 
@@ -583,7 +473,7 @@ async def main():
 		# 	gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.Close))
 		# global tool_status
 		# tool_status = False;
-		logger.debug(f"Key {kill_tool_key} pressed, closing {tool_name}.")
+		logger.debug(f"Kill tool hotkey pressed, closing {tool_name}.")
 		if walker.clients != 0:
 			gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.CloseFromBackend))
 		# raise deimosgui.ToolClosedException
@@ -602,41 +492,41 @@ async def main():
 				combat_task.cancel()
 				combat_task = None
 				if debug:
-					logger.debug(f'{toggle_auto_combat_key} key pressed, disabling auto combat.')
+					logger.debug('Combat hotkey pressed, disabling auto combat.')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CombatStatus', 'Disabled')))
 
 			else:
 				if debug:
-					logger.debug(f'{toggle_auto_combat_key} key pressed, enabling auto combat.')
+					logger.debug('Combat hotkey pressed, enabling auto combat.')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CombatStatus', 'Enabled')))
 				combat_task = asyncio.create_task(try_task_coro(combat_loop, walker.clients, True))
 
 
-	async def toggle_dialogue_hotkey(side_quests: bool = False):
+	async def toggle_dialogue_hotkey():
 		global dialogue_task
 		global gui_send_queue
-		global side_quest_status
+		# global side_quest_status
 
 		if not freecam_status:
 			if dialogue_task is not None and not dialogue_task.cancelled():
-				side_quest_status = False
+				# side_quest_status = False
 				dialogue_task.cancel()
 				dialogue_task = None
-				logger.debug(f'{toggle_auto_dialogue_key} key pressed, disabling auto dialogue.')
+				logger.debug('Dialogue hotkey pressed, disabling auto dialogue.')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('DialogueStatus', 'Disabled')))
 
 			else:
-				side_quest_log_str = ""
-				side_quest_status = side_quests
-				if side_quest_status:
-					side_quest_log_str += " and auto side quests functionality"
-				logger.debug(f'{toggle_auto_dialogue_key} key pressed, enabling auto dialogue{side_quest_log_str}.')
+				# side_quest_log_str = ""
+				# side_quest_status = side_quests
+				# if side_quest_status:
+				# 	side_quest_log_str += " and auto side quests functionality"
+				logger.debug('Dialogue hotkey pressed, enabling auto dialogue.')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('DialogueStatus', 'Enabled')))
 				dialogue_task = asyncio.create_task(try_task_coro(dialogue_loop, walker.clients, True))
 
 
-	async def toggle_dialogue_side_quests_hotkey():
-		await toggle_dialogue_hotkey(True)
+	# async def toggle_dialogue_side_quests_hotkey():
+	# 	await toggle_dialogue_hotkey(True)
 
 
 
@@ -656,13 +546,13 @@ async def main():
 			if sigil_task is not None and not sigil_task.cancelled():
 				sigil_task.cancel()
 				sigil_task = None
-				logger.debug(f'{toggle_auto_sigil_key} key pressed, disabling auto sigil.')
+				logger.debug('Sigil hotkey pressed, disabling auto sigil.')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SigilStatus', 'Disabled')))
 
 			else:
-				logger.debug(f'{toggle_auto_sigil_key} key pressed, enabling auto sigil.')
+				logger.debug('Sigil hotkey pressed, enabling auto sigil.')
 				if questing_task is not None and not questing_task.cancelled():
-					logger.debug(f'{toggle_auto_questing_key} key pressed, disabling auto questing.')
+					logger.debug('Questing hotkey pressed, disabling auto questing.')
 					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('QuestingStatus', 'Disabled')))
 					questing_task.cancel()
 					for p in walker.clients:
@@ -681,22 +571,24 @@ async def main():
 			if await is_free(foreground_client):
 				if await foreground_client.game_client.is_freecam():
 					if debug:
-						logger.debug(f'{toggle_freecam_key} key pressed, disabling freecam.')
+						logger.debug('Freecam hotkey pressed, disabling freecam.')
 					await foreground_client.camera_elastic()
 					freecam_status = False
+					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('FreecamStatus', 'Disabled')))
 
 				else:
 					if debug:
-						logger.debug(f'{toggle_freecam_key} key pressed, enabling freecam.')
+						logger.debug('Freecam hotkey pressed, enabling freecam.')
 
 					freecam_status = True
 					await sync_camera(foreground_client)
 					await foreground_client.camera_freecam()
+					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('FreecamStatus', 'Enabled')))
 
 
 	async def tp_to_freecam_hotkey():
 		if foreground_client:
-			logger.debug(f'Shift + {toggle_freecam_key} key pressed, teleporting foreground client to freecam position.')
+			logger.debug('Freecam TP hotkey pressed, teleporting foreground client to freecam position.')
 			if await foreground_client.game_client.is_freecam():
 				camera = await foreground_client.game_client.free_camera_controller()
 				camera_pos = await camera.position()
@@ -717,7 +609,7 @@ async def main():
 				p.questing_status ^= True
 
 			if questing_task is not None and not questing_task.cancelled():
-				logger.debug(f'{toggle_auto_questing_key} key pressed, disabling auto questing.')
+				logger.debug('Questing hotkey pressed, disabling auto questing.')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('QuestingStatus', 'Disabled')))
 				questing_task.cancel()
 				questing_task = None
@@ -727,7 +619,7 @@ async def main():
 					p.sigil_status = False
 
 				if sigil_task is not None and not sigil_task.cancelled():
-					logger.debug(f'{toggle_auto_sigil_key} key pressed, disabling auto sigil.')
+					logger.debug('Sigil hotkey pressed, disabling auto sigil.')
 					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SigilStatus', 'Disabled')))
 					sigil_task.cancel()
 					sigil_task = None
@@ -735,7 +627,7 @@ async def main():
 						p.sigil_status = False
 					sigil_status = False
 
-				logger.debug(f'{toggle_auto_questing_key} key pressed, enabling auto questing.')
+				logger.debug('Questing hotkey pressed, enabling auto questing.')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('QuestingStatus', 'Enabled')))
 				questing_task = asyncio.create_task(try_task_coro(questing_loop, walker.clients, True))
 
@@ -775,74 +667,67 @@ async def main():
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Auto PotionStatus', 'Disabled')))
 
 
-	# async def toggle_side_quests():
-	# 	global side_quest_status
+	# Generic hotkey callback factory — sends InvokeAction to GUI thread,
+	# which calls the button's click handler. Works for ANY registered action.
+	def _make_hotkey_callback(action_id):
+		async def _callback():
+			gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.InvokeAction, action_id))
+		return _callback
 
-	# 	if side_quest_status is not None:
-	# 		if side_quest_status:
-	# 			logger.debug('Disabling side quests.')
-	# 			gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Side QuestsStatus', 'Disabled')))
+	# Kill tool needs a direct async callback since it must work even with no GUI
+	_kill_tool_callback = kill_tool_hotkey
 
-	# 		else:
-	# 			logger.debug('Enabling side quests.')
-	# 			gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Side QuestsStatus', 'Enabled')))
+	_active_bindings = {}  # action_id -> {"key": str, "modifiers": [str]}
 
-	# 		side_quest_status = not side_quest_status
-	# 	else:
-	# 		logger.debug('This config variable has not yet been initialized, enabling the option now.')
-	# 		side_quest_status = True
-
+	_FREECAM_ACTIONS = {"toggle_freecam", "freecam_tp"}
 
 	async def enable_hotkeys(exclude_freecam: bool = False, debug: bool = False):
-		# adds every hotkey
 		global hotkey_status
 		if not hotkey_status:
 			if debug:
 				logger.debug('Client selected, starting hotkey listener.')
-			await listener.add_hotkey(Keycode[x_press_key], x_press_hotkey, modifiers=ModifierKeys.NOREPEAT)
-			# await listener.add_hotkey(Keycode[space_press_key], space_press_hotkey, modifiers=ModifierKeys.NOREPEAT)
-			await listener.add_hotkey(Keycode[sync_locations_key], xyz_sync_hotkey, modifiers=ModifierKeys.NOREPEAT)
-			await listener.add_hotkey(Keycode[quest_teleport_key], navmap_teleport_hotkey, modifiers=ModifierKeys.NOREPEAT)
-			await listener.add_hotkey(Keycode[mass_quest_teleport_key], mass_navmap_teleport_hotkey, modifiers=ModifierKeys.NOREPEAT)
-			await listener.add_hotkey(Keycode[toggle_speed_key], toggle_speed_hotkey, modifiers=ModifierKeys.NOREPEAT)
-			await listener.add_hotkey(Keycode[friend_teleport_key], friend_teleport_sync_hotkey, modifiers=ModifierKeys.NOREPEAT)
-			await listener.add_hotkey(Keycode[toggle_auto_combat_key], toggle_combat_hotkey, modifiers=ModifierKeys.NOREPEAT)
-			await listener.add_hotkey(Keycode[toggle_auto_dialogue_key], toggle_dialogue_hotkey, modifiers=ModifierKeys.NOREPEAT)
-			await listener.add_hotkey(Keycode[toggle_auto_dialogue_key], toggle_dialogue_side_quests_hotkey, modifiers=ModifierKeys.SHIFT | ModifierKeys.NOREPEAT)
-			await listener.add_hotkey(Keycode[toggle_auto_sigil_key], toggle_sigil_hotkey, modifiers=ModifierKeys.NOREPEAT)
-			if not exclude_freecam:
-				await listener.add_hotkey(Keycode[toggle_freecam_key], toggle_freecam_hotkey, modifiers=ModifierKeys.NOREPEAT)
-				await listener.add_hotkey(Keycode[toggle_freecam_key], tp_to_freecam_hotkey, modifiers=ModifierKeys.SHIFT | ModifierKeys.NOREPEAT)
-			await listener.add_hotkey(Keycode[toggle_auto_questing_key], toggle_questing_hotkey, modifiers=ModifierKeys.NOREPEAT)
+			hotkeys = settings.get_hotkeys()
+			for action_id, binding in hotkeys.items():
+				if binding is None:
+					continue
+				if action_id == "kill_tool":
+					continue  # kill_tool registered separately, always bound
+				if exclude_freecam and action_id in _FREECAM_ACTIONS:
+					continue
+				mods = ModifierKeys.NOREPEAT
+				for m in binding.get("modifiers", []):
+					mods |= ModifierKeys[m]
+				try:
+					await listener.add_hotkey(Keycode[binding["key"]], _make_hotkey_callback(action_id), modifiers=mods)
+					_active_bindings[action_id] = binding
+				except Exception as e:
+					logger.debug(f'Failed to register hotkey for {action_id}: {e}')
 			hotkey_status = True
 
 
 	async def disable_hotkeys(exclude_freecam: bool = False, debug: bool = False, exclude_kill: bool = True):
-		# removes every hotkey
 		global hotkey_status
 		if hotkey_status:
 			if debug:
 				logger.debug('Client not selected, stopping hotkey listener.')
-			await listener.remove_hotkey(Keycode[x_press_key], modifiers=ModifierKeys.NOREPEAT)
-			# await listener.remove_hotkey(Keycode[space_press_key], modifiers=ModifierKeys.NOREPEAT)
-			await listener.remove_hotkey(Keycode[sync_locations_key], modifiers=ModifierKeys.NOREPEAT)
-			await listener.remove_hotkey(Keycode[quest_teleport_key], modifiers=ModifierKeys.NOREPEAT)
-			await listener.remove_hotkey(Keycode[mass_quest_teleport_key], modifiers=ModifierKeys.NOREPEAT)
-			await listener.remove_hotkey(Keycode[toggle_speed_key], modifiers=ModifierKeys.NOREPEAT)
-			await listener.remove_hotkey(Keycode[friend_teleport_key], modifiers=ModifierKeys.NOREPEAT)
-			if not exclude_kill:
-				await listener.remove_hotkey(Keycode[kill_tool_key], modifiers=ModifierKeys.NOREPEAT)
-			await listener.remove_hotkey(Keycode[toggle_auto_combat_key], modifiers=ModifierKeys.NOREPEAT)
-			await listener.remove_hotkey(Keycode[toggle_auto_dialogue_key], modifiers=ModifierKeys.NOREPEAT)
-			await listener.remove_hotkey(Keycode[toggle_auto_dialogue_key], modifiers=ModifierKeys.SHIFT | ModifierKeys.NOREPEAT)
-			await listener.remove_hotkey(Keycode[toggle_auto_sigil_key], modifiers=ModifierKeys.NOREPEAT)
-			if not exclude_freecam:
-				await listener.remove_hotkey(Keycode[toggle_freecam_key], modifiers=ModifierKeys.NOREPEAT)
-				await listener.remove_hotkey(Keycode[toggle_freecam_key], modifiers=ModifierKeys.SHIFT | ModifierKeys.NOREPEAT)
-			await listener.remove_hotkey(Keycode[toggle_auto_questing_key], modifiers=ModifierKeys.NOREPEAT)
+			for action_id, binding in list(_active_bindings.items()):
+				if exclude_kill and action_id == "kill_tool":
+					continue
+				if exclude_freecam and action_id in _FREECAM_ACTIONS:
+					continue
+				mods = ModifierKeys.NOREPEAT
+				for m in binding.get("modifiers", []):
+					mods |= ModifierKeys[m]
+				try:
+					await listener.remove_hotkey(Keycode[binding["key"]], modifiers=mods)
+					del _active_bindings[action_id]
+				except Exception as e:
+					logger.debug(f'Failed to remove hotkey for {action_id}: {e}')
 			hotkey_status = False
 
 	def get_foreground_client():
+		if not walker.clients:
+			return None
 		foreground = [c for c in walker.clients if c.is_foreground]
 		if len(foreground) > 0:
 			return foreground[0]
@@ -931,12 +816,12 @@ async def main():
 			while True:
 				if not freecam_status:
 					if await is_visible_by_path(client, advance_dialog_path):
-						if await is_visible_by_path(client, decline_quest_path) and not side_quest_status:
-							await client.send_key(key=Keycode.ESC)
-							await asyncio.sleep(0.1)
-							await client.send_key(key=Keycode.ESC)
-						else:
-							await client.send_key(key=Keycode.SPACEBAR)
+						# if await is_visible_by_path(client, decline_quest_path) and not side_quest_status:
+						# 	await client.send_key(key=Keycode.ESC)
+						# 	await asyncio.sleep(0.1)
+						# 	await client.send_key(key=Keycode.ESC)
+						# else:
+						await client.send_key(key=Keycode.SPACEBAR)
 				await asyncio.sleep(0.1)
 
 		await asyncio.gather(*[async_dialogue(p) for p in walker.clients])
@@ -1252,6 +1137,120 @@ async def main():
 		await asyncio.gather(*[async_anti_afk(p) for p in walker.clients])
 
 
+	# Track which window handles were launched by us, mapped to account nickname
+	launched_account_map: dict[int, str] = {}
+	initial_setup_complete = False
+	# Handles explicitly released via UnhookClient — skip in continuous detection
+	released_handles: set[int] = set()
+	# Handles currently mid-hook (activate_hooks in progress)
+	_hooking_in_progress: set[int] = set()
+
+	def _mask_uid(uid) -> str:
+		s = str(uid)
+		return '****' if len(s) <= 4 else '*' * (len(s) - 4) + s[-4:]
+
+	def _kill_process_by_handle(handle):
+		"""Terminate the OS process behind a window handle."""
+		try:
+			pid = utils.get_pid_from_handle(handle)
+			if pid:
+				PROCESS_TERMINATE = 0x0001
+				h_proc = ctypes.windll.kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+				if h_proc:
+					ctypes.windll.kernel32.TerminateProcess(h_proc, 1)
+					ctypes.windll.kernel32.CloseHandle(h_proc)
+		except Exception as e:
+			logger.error(f"Failed to kill process for handle {handle}: {e}")
+
+	def _build_hooked_clients_info():
+		# Prune stale entries for handles whose windows no longer exist
+		all_handles = set(get_all_wizard_handles())
+		stale = [h for h in launched_account_map if h not in all_handles]
+		for h in stale:
+			launched_account_map.pop(h)
+			_hooking_in_progress.discard(h)
+
+		hooked = []
+		managed_accounts = set(launched_account_map.values())
+		for c in walker.clients:
+			nick = launched_account_map.get(c.window_handle)
+			hooked.append({'title': c.title, 'handle': c.window_handle, 'account_nick': nick})
+			# Also detect accounts via player_gid for manually-hooked clients
+			if not nick:
+				gid = getattr(c, 'player_gid', None)
+				if gid:
+					vault_nick = wizlaunch.get_nickname_by_gid(gid)
+					if vault_nick:
+						managed_accounts.add(vault_nick)
+		# Unmanaged = running wizard handles not currently managed
+		managed = set(walker._managed_handles)
+		unmanaged = sorted(all_handles - managed)
+		return {'hooked': hooked, 'unmanaged': unmanaged, 'managed_accounts': sorted(managed_accounts), 'hooking': sorted(_hooking_in_progress)}
+
+	def _send_hooked_clients_update():
+		gui_send_queue.put(deimosgui.GUICommand(
+			deimosgui.GUICommandType.UpdateHookedClients,
+			_build_hooked_clients_info()
+		))
+
+	async def _init_client_attrs(client):
+		"""Initialize all per-client attributes. Called once per client after hooking."""
+		client_speeds[client.process_id] = await client.client_object.speed_multiplier()
+		client.combat_status = False
+		client.questing_status = False
+		client.sigil_status = False
+		client.auto_pet_status = False
+		client.feeding_pet_status = False
+		client.use_team_up = use_team_up
+		client.dance_hook_status = False
+		client.entity_detect_combat_status = False
+		client.invincible_combat_timer = False
+		client.just_entered_combat = None
+		client.just_left_combat = False
+		client.helper_clients = []
+		client.client_being_helped = None
+		client.original_location_before_combat = None
+		client.duel_circle_joinable = True
+		client.in_solo_zone = False
+		client.wizard_name = None
+		client.character_level = await client.stats.reference_level()
+		client.discard_duplicate_cards = discard_duplicate_cards
+		client.kill_minions_first = kill_minions_first
+		client.automatic_team_based_combat = automatic_team_based_combat
+		client.latest_drops = ''
+		client.combat_config = default_config
+		client.use_potions = use_potions
+		client.buy_potions = buy_potions
+		client.client_to_follow = client_to_follow
+
+		# Resolve vault nickname via account-level user_id
+		try:
+			uid = await client.game_client.user_id()
+			logger.debug(f"[GID] _init_client_attrs '{client.title}': user_id={_mask_uid(uid)}")
+			if uid and uid != 0:
+				client.player_gid = uid
+				vault_nick = wizlaunch.get_nickname_by_gid(uid)
+				if vault_nick and client.window_handle not in launched_account_map:
+					launched_account_map[client.window_handle] = vault_nick
+				nick = launched_account_map.get(client.window_handle)
+				if nick:
+					wizlaunch.update_player_gid(nick, uid)
+					logger.debug(f"[GID] Saved user_id {_mask_uid(uid)} for vault account '{nick}'")
+			else:
+				client.player_gid = None
+				logger.debug(f"[GID] _init_client_attrs '{client.title}': user_id is 0, deferring")
+		except Exception as e:
+			client.player_gid = None
+			logger.debug(f"[GID] _init_client_attrs '{client.title}': exception {e}")
+
+		# Set follower/leader statuses for auto questing/sigil
+		if client_to_follow and client_to_follow in client.title:
+			global sigil_leader_pid
+			sigil_leader_pid = client.process_id
+		if client_to_boost and client_to_boost in client.title:
+			global questing_leader_pid
+			questing_leader_pid = client.process_id
+
 	async def handle_gui():
 
 		async def handle_coord_error(error: wizwalker.errors.MemoryReadError):
@@ -1263,68 +1262,406 @@ async def main():
 				return
 			raise wizwalker.errors.MemoryReadError(f"{error} (Occurred in zone: {current_zone})") from error
 
-		# if show_gui:
+		async def _highlight_entity_loop(client, entity_info):
+			"""Continuously update the highlight overlay at an entity's projected screen position."""
+			ex, ey, ez, entity_height = entity_info
+			half_w = entity_height * 0.3  # approximate half-width in world units
+			try:
+				while True:
+					try:
+						cam = await get_camera_state(client)
+						if cam is not None:
+							# Project feet and head to get screen-space bounding rect
+							feet = project_point(cam, ex, ey, ez)
+							head = project_point(cam, ex, ey, ez + entity_height)
+							if feet is not None and head is not None:
+								# Project a point offset to the right in world space for width
+								rx = cam['right_x']
+								ry = cam['right_y']
+								center_mid = project_point(cam, ex, ey, ez + entity_height * 0.5)
+								side = project_point(cam, ex + rx * half_w, ey + ry * half_w, ez + entity_height * 0.5)
+								if center_mid is not None and side is not None:
+									screen_hw = abs(side[0] - center_mid[0])
+								else:
+									# Fallback: width proportional to height
+									screen_hw = abs(head[1] - feet[1]) * 0.3
+								screen_hw = max(screen_hw, 10)  # minimum width
+								x1 = int(center_mid[0] - screen_hw) if center_mid else int(feet[0] - screen_hw)
+								x2 = int(center_mid[0] + screen_hw) if center_mid else int(feet[0] + screen_hw)
+								y1 = min(head[1], feet[1])
+								y2 = max(head[1], feet[1])
+								gui_send_queue.put(deimosgui.GUICommand(
+									deimosgui.GUICommandType.UpdateHighlightBox,
+									(client.window_handle, x1, y1, x2, y2)
+								))
+							elif feet is not None:
+								# Head behind camera - just show small box at feet
+								gui_send_queue.put(deimosgui.GUICommand(
+									deimosgui.GUICommandType.UpdateHighlightBox,
+									(client.window_handle, feet[0] - 30, feet[1] - 60, feet[0] + 30, feet[1])
+								))
+							else:
+								gui_send_queue.put(deimosgui.GUICommand(
+									deimosgui.GUICommandType.UpdateHighlightBox, None
+								))
+						else:
+							gui_send_queue.put(deimosgui.GUICommand(
+								deimosgui.GUICommandType.UpdateHighlightBox, None
+							))
+					except wizwalker.errors.MemoryReadError:
+						pass
+					except Exception as e:
+						logger.debug(f"Highlight loop error: {e}")
+					await asyncio.sleep(0.033)
+			except asyncio.CancelledError:
+				gui_send_queue.put(deimosgui.GUICommand(
+					deimosgui.GUICommandType.UpdateHighlightBox, None
+				))
+				return
+
+		async def _highlight_ui_window_loop(client, name_path):
+			"""Continuously update the highlight overlay at a UI window's screen position."""
+			try:
+				while True:
+					try:
+						window = await get_window_from_path(client.root_window, name_path)
+						if window and window is not False:
+							rect = await window.scale_to_client()
+							gui_send_queue.put(deimosgui.GUICommand(
+								deimosgui.GUICommandType.UpdateHighlightBox,
+								(client.window_handle, rect.x1, rect.y1, rect.x2, rect.y2)
+							))
+						else:
+							gui_send_queue.put(deimosgui.GUICommand(
+								deimosgui.GUICommandType.UpdateHighlightBox, None
+							))
+					except wizwalker.errors.MemoryReadError:
+						pass
+					except Exception as e:
+						logger.debug(f"UI highlight loop error: {e}")
+					await asyncio.sleep(0.033)
+			except asyncio.CancelledError:
+				gui_send_queue.put(deimosgui.GUICommand(
+					deimosgui.GUICommandType.UpdateHighlightBox, None
+				))
+				return
+
+		async def _entity_stream_loop(client):
+			"""Continuously fetch entity list and send to GUI, sorted by distance."""
+			try:
+				while True:
+					try:
+						sprinter = SprintyClient(client)
+						entities = await sprinter.get_base_entity_list()
+						player_pos = await client.body.position()
+						entity_data = []
+						for entity in entities:
+							entity_pos = await entity.location()
+							entity_name = await entity.object_name()
+							gid = await entity.global_id_full()
+							entity_height = 170.0
+							try:
+								body = await entity.actor_body()
+								if body is not None:
+									h = await body.height()
+									s = await body.scale()
+									if h > 0:
+										entity_height = h * s
+							except Exception:
+								pass
+							dx = entity_pos.x - player_pos.x
+							dy = entity_pos.y - player_pos.y
+							dz = entity_pos.z - player_pos.z
+							distance = (dx * dx + dy * dy + dz * dz) ** 0.5
+							display = f'{entity_name} (dist: {trunc(distance, 1)}) - XYZ({trunc(entity_pos.x, 3)}, {trunc(entity_pos.y, 3)}, {trunc(entity_pos.z, 3)})'
+							entity_data.append({
+								'name': entity_name,
+								'x': entity_pos.x, 'y': entity_pos.y, 'z': entity_pos.z,
+								'height': entity_height,
+								'gid': 0 if entity_name == 'Player Object' else gid,
+								'distance': distance,
+								'display': display,
+							})
+						entity_data.sort(key=lambda e: e['distance'])
+						gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateEntityListData, entity_data))
+					except wizwalker.errors.MemoryReadError:
+						pass
+					except Exception as e:
+						logger.debug(f"Entity stream error: {e}")
+					await asyncio.sleep(1.0)
+			except asyncio.CancelledError:
+				return
+
+		# GUI is started on the main thread; queues are set up before main() runs
 		global gui_send_queue
 		global bot_task
 		global flythrough_task
 		global gui_thread
-		global gui_send_queue
 		global recv_queue
-		gui_send_queue = queue.Queue()
-		recv_queue = queue.Queue()
-		# swap queue order because sending from window means receiving from here
-		gui_thread = threading.Thread(
-			target=deimosgui.manage_gui,
-			args=(recv_queue, gui_send_queue, gui_theme, gui_text_color, gui_button_color, tool_name, tool_version, gui_on_top, gui_langcode)
-		)
-		gui_thread.daemon = True
-		gui_thread.start()
+		global combat_task
+		global dialogue_task
+		global sigil_task
+		global questing_task
+		global speed_task
+		global auto_pet_task
+		global highlight_task
+		global entity_stream_task
 		enemy_stats = []
+		current_pos = None
+		current_rotation = None
+
+		# Pause/resume state for client disconnect resilience
+		paused_task_names = None
+		previous_client_count = None
+		# Track total wizard handle count to detect when unmanaged clients appear/disappear
+		last_known_handle_count = 0
+
 		while True:
 			if walker.clients and foreground_client:
-				current_zone = await foreground_client.zone_name()
 				try:
-					if await foreground_client.game_client.is_freecam():
-						camera = await foreground_client.game_client.free_camera_controller()
-						current_pos = await camera.position()
-						current_rotation: Orient = await camera.orientation()
-						current_pos.x = trunc(current_pos.x, 3)
-						current_pos.y = trunc(current_pos.y, 3)
-						current_pos.z = trunc(current_pos.z, 3)
-						current_rotation.yaw = trunc(current_rotation.yaw, 3)
-						current_rotation.pitch = trunc(current_rotation.pitch, 3)
-						current_rotation.roll = trunc(current_rotation.roll, 3)
+					current_zone = await foreground_client.zone_name()
+					if current_zone and not await foreground_client.is_loading():
+						if await foreground_client.game_client.is_freecam():
+							camera = await foreground_client.game_client.free_camera_controller()
+							current_pos = await camera.position()
+							current_rotation: Orient = await camera.orientation()
+							current_pos.x = trunc(current_pos.x, 3)
+							current_pos.y = trunc(current_pos.y, 3)
+							current_pos.z = trunc(current_pos.z, 3)
+							current_rotation.yaw = trunc(current_rotation.yaw, 3)
+							current_rotation.pitch = trunc(current_rotation.pitch, 3)
+							current_rotation.roll = trunc(current_rotation.roll, 3)
+						else:
+							if parent := await foreground_client.client_object.parent():
+								if await parent.object_name() == "Player Object":
+									children = await parent.children()
+									for pet_object in children:
+										current_pos = await pet_object.location()
+										current_rotation = await pet_object.orientation()
+								else:
+									current_pos: XYZ = await foreground_client.body.position()
+									current_rotation: Orient = await foreground_client.body.orientation()
+									current_pos.x = trunc(current_pos.x, 3)
+									current_pos.y = trunc(current_pos.y, 3)
+									current_pos.z = trunc(current_pos.z, 3)
+									current_rotation.yaw = trunc(current_rotation.yaw, 3)
+									current_rotation.pitch = trunc(current_rotation.pitch, 3)
+									current_rotation.roll = trunc(current_rotation.roll, 3)
 					else:
-						if parent := await foreground_client.client_object.parent():
-							if await parent.object_name() == "Player Object":
-								children = await parent.children()
-								for pet_object in children:
-									current_pos = await pet_object.location()
-									current_rotation = await pet_object.orientation()
-							else:
-								current_pos: XYZ = await foreground_client.body.position()
-								current_rotation: Orient = await foreground_client.body.orientation()
-								current_pos.x = trunc(current_pos.x, 3)
-								current_pos.y = trunc(current_pos.y, 3)
-								current_pos.z = trunc(current_pos.z, 3)
-								current_rotation.yaw = trunc(current_rotation.yaw, 3)
-								current_rotation.pitch = trunc(current_rotation.pitch, 3)
-								current_rotation.roll = trunc(current_rotation.roll, 3)
-						
-				except wizwalker.errors.MemoryReadError as e:
-					await handle_coord_error(e)
-					
-				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Title', f'Client: {foreground_client.title}')))
-				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Zone', f'Zone: {current_zone}')))
-				# gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('x', f'X: {current_pos.x}')))
-				# gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('y', f'Y: {current_pos.y}')))
-				# gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('z', f'Z: {current_pos.z}')))
-				# gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Yaw', f'Yaw: {current_rotation.yaw}')))
-				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('xyz', f'Position (XYZ): {current_pos.x}, {current_pos.y}, {current_pos.z}')))
-				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('pry', f'Orientation (PRY): {current_rotation.pitch}, {current_rotation.roll}, {current_rotation.yaw}')))
+						current_pos: XYZ = XYZ(0, 0, 0)
+						current_rotation: Orient = Orient(0, 0, 0)
+
+					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Title', f'Client: {foreground_client.title}')))
+					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Zone', f'Zone: {current_zone}')))
+					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('xyz', f'Position (XYZ): {current_pos.x}, {current_pos.y}, {current_pos.z}')))
+					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('pry', f'Orientation (PRY): {current_rotation.pitch}, {current_rotation.roll}, {current_rotation.yaw}')))
+				except Exception:
+					# Client process likely closed — remove dead clients, keep title gaps
+					count_before = len(walker.clients)
+					dead = walker.remove_dead_clients()
+					if dead:
+						# Clean up managed handles so get_new_clients() can detect relaunched clients
+						for c in dead:
+							if c.window_handle in walker._managed_handles:
+								walker._managed_handles.remove(c.window_handle)
+							launched_account_map.pop(c.window_handle, None)
+							_hooking_in_progress.discard(c.window_handle)
+							logger.info(f"Client '{c.title}' disconnected.")
+						_send_hooked_clients_update()
+
+						# Record which tasks were active, then cancel them all
+						active_tasks = set()
+						task_vars = {
+							"combat": combat_task,
+							"dialogue": dialogue_task,
+							"sigil": sigil_task,
+							"questing": questing_task,
+							"speed": speed_task,
+							"bot": bot_task,
+							"auto_pet": auto_pet_task,
+						}
+						for name, task in task_vars.items():
+							if task is not None and not task.cancelled():
+								active_tasks.add(name)
+								task.cancel()
+
+						if "combat" in active_tasks:
+							combat_task = None
+						if "dialogue" in active_tasks:
+							dialogue_task = None
+						if "sigil" in active_tasks:
+							sigil_task = None
+						if "questing" in active_tasks:
+							questing_task = None
+						if "speed" in active_tasks:
+							speed_task = None
+						if "bot" in active_tasks:
+							bot_task = None
+						if "auto_pet" in active_tasks:
+							auto_pet_task = None
+
+						# Reset per-client status flags on remaining alive clients
+						for c in walker.clients:
+							c.combat_status = False
+							c.sigil_status = False
+							c.questing_status = False
+							c.feeding_pet_status = False
+							c.entity_detect_combat_status = False
+
+						if active_tasks:
+							previous_client_count = count_before
+							paused_task_names = active_tasks
+							logger.info(f"Client(s) disconnected. Bot tasks paused. Waiting for client count to be restored ({len(walker.clients)}/{previous_client_count}).")
+							if "bot" in active_tasks:
+								logger.warning("Bot script was interrupted and cannot be auto-resumed. Please restart it manually.")
+
+						if not walker.clients:
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Title', f'Client: None')))
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('Zone', f'Zone: ')))
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('xyz', f'Position (XYZ): ')))
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('pry', f'Orientation (PRY): ')))
+					await asyncio.sleep(0.5)
 			elif not walker.clients:
 				await asyncio.sleep(0.1)
-				# continue
+
+			# Retry user_id resolution for hooked clients that don't have one yet
+			if initial_setup_complete and walker.clients:
+				for c in walker.clients:
+					if getattr(c, 'player_gid', None) is None:
+						try:
+							uid = await c.game_client.user_id()
+							if uid and uid != 0:
+								logger.debug(f"[GID] Retry resolved '{c.title}': user_id={_mask_uid(uid)}")
+								c.player_gid = uid
+								vault_nick = wizlaunch.get_nickname_by_gid(uid)
+								if vault_nick and c.window_handle not in launched_account_map:
+									launched_account_map[c.window_handle] = vault_nick
+									_send_hooked_clients_update()
+								nick = launched_account_map.get(c.window_handle)
+								if nick:
+									wizlaunch.update_player_gid(nick, uid)
+									logger.debug(f"[GID] Retry saved user_id {_mask_uid(uid)} for '{nick}'")
+									_send_hooked_clients_update()
+							else:
+								logger.debug(f"[GID] Retry '{c.title}': user_id still 0")
+						except Exception as e:
+							logger.debug(f"[GID] Retry '{c.title}': exception {e}")
+
+			# Continuous detection — only auto-hook vault-launched clients
+			if initial_setup_complete and not paused_task_names:
+				all_handles = set(get_all_wizard_handles())
+				managed = set(walker._managed_handles)
+				unmanaged = all_handles - managed - released_handles
+
+				# Auto-hook any unmanaged handle that was launched via the vault (in launch order)
+				hooked_any = False
+				launch_order = [h for h in launched_account_map if h in unmanaged]
+				for handle in launch_order:
+						walker._managed_handles.append(handle)
+						nc = walker.client_cls(handle)
+						walker.clients.append(nc)
+						existing_nums = set()
+						for c in walker.clients:
+							if c.title.startswith('p') and c.title[1:].isdigit():
+								existing_nums.add(int(c.title[1:]))
+						num = 1
+						while num in existing_nums:
+							num += 1
+						nc.title = f'p{num}'
+						_hooking_in_progress.add(handle)
+						_send_hooked_clients_update()
+						try:
+							await nc.activate_hooks()
+							await _init_client_attrs(nc)
+							logger.info(f"Auto-hooked vault-launched client '{nc.title}' ({launched_account_map[handle]}).")
+							hooked_any = True
+						except wizwalker.errors.HookAlreadyActivated:
+							await _init_client_attrs(nc)
+							logger.info(f"Auto-hooked vault-launched client '{nc.title}' ({launched_account_map[handle]}, already hooked).")
+							hooked_any = True
+						except Exception as e:
+							logger.error(f"Failed to auto-hook vault-launched client (handle {handle}): {e}")
+							walker._managed_handles.remove(handle)
+							walker.clients.remove(nc)
+						finally:
+							_hooking_in_progress.discard(handle)
+
+				if hooked_any:
+					_send_hooked_clients_update()
+					last_known_handle_count = len(get_all_wizard_handles())
+					_restart_always_on_tasks()
+					_restart_active_toggle_tasks()
+				else:
+					# Check if handle count changed (wizard window opened/closed externally)
+					current_handle_count = len(all_handles)
+					if current_handle_count != last_known_handle_count:
+						last_known_handle_count = current_handle_count
+						_send_hooked_clients_update()
+
+			# Poll for new clients when in paused state (waiting for reconnection)
+			if paused_task_names and len(walker.clients) < previous_client_count:
+				new_clients = walker.get_new_clients()
+				if new_clients:
+					# Assign titles — fill gaps using the next available number
+					existing_nums = set()
+					for c in walker.clients:
+						if c.title.startswith('p') and c.title[1:].isdigit():
+							existing_nums.add(int(c.title[1:]))
+
+					for nc in new_clients:
+						num = 1
+						while num in existing_nums:
+							num += 1
+						nc.title = f'p{num}'
+						existing_nums.add(num)
+
+					# Hook new clients individually
+					for nc in new_clients:
+						_hooking_in_progress.add(nc.window_handle)
+						_send_hooked_clients_update()
+						try:
+							await nc.activate_hooks()
+						except wizwalker.errors.HookAlreadyActivated:
+							logger.debug(f"Client '{nc.title}' already hooked, skipping.")
+						except Exception as e:
+							logger.error(f"Failed to hook client '{nc.title}': {e}")
+						finally:
+							_hooking_in_progress.discard(nc.window_handle)
+						await _init_client_attrs(nc)
+						logger.info(f"New client '{nc.title}' hooked.")
+					_send_hooked_clients_update()
+
+					# Check if count restored
+					if len(walker.clients) >= previous_client_count:
+						# Re-enable tasks that were active before disconnect
+						resumable = paused_task_names - {"bot"}
+						for name in resumable:
+							if name == "combat":
+								for c in walker.clients:
+									c.combat_status = True
+								combat_task = asyncio.create_task(try_task_coro(combat_loop, walker.clients, True))
+							elif name == "dialogue":
+								dialogue_task = asyncio.create_task(try_task_coro(dialogue_loop, walker.clients, True))
+							elif name == "sigil":
+								for c in walker.clients:
+									c.sigil_status = True
+								sigil_task = asyncio.create_task(try_task_coro(sigil_loop, walker.clients, True))
+							elif name == "questing":
+								for c in walker.clients:
+									c.questing_status = True
+								questing_task = asyncio.create_task(try_task_coro(questing_loop, walker.clients, True))
+							elif name == "speed":
+								speed_task = asyncio.create_task(try_task_coro(speed_switching, walker.clients))
+							elif name == "auto_pet":
+								for c in walker.clients:
+									c.feeding_pet_status = True
+								auto_pet_task = asyncio.create_task(try_task_coro(auto_pet_loop, walker.clients, True))
+
+						previous_client_count = None
+						paused_task_names = None
+						_restart_always_on_tasks()
+						logger.info("Client count restored. Resuming bot tasks.")
+
 			# Stuff sent by the window
 			try:
 			# Eat as much as the queue gives us. We will be freed by exception
@@ -1336,6 +1673,8 @@ async def main():
 								raise deimosgui.ToolClosedException
 							os._exit(0) # "Fuck you, you're getting terminated homeboy" - Slack
 						case deimosgui.GUICommandType.AttemptedClose:
+							if not walker.clients:
+								os._exit(0)
 							raise deimosgui.ToolClosedException
 						case deimosgui.GUICommandType.ToggleOption:
 							if not walker.clients:
@@ -1387,23 +1726,8 @@ async def main():
 									pyperclip.copy(f'Orient({current_rotation.pitch}, {current_rotation.roll}, {current_rotation.yaw})')
 								case GUIKeys.copy_entity_list:
 									if foreground_client:
-										logger.debug('Copied Entity List')
-										sprinter = SprintyClient(foreground_client)
-										entities = await sprinter.get_base_entity_list()
-										entities_info = ''
-										for entity in entities:
-											entity_pos = await entity.location()
-											entity_pos.x = trunc(entity_pos.x, 3)
-											entity_pos.y = trunc(entity_pos.y, 3)
-											entity_pos.z = trunc(entity_pos.z, 3)
-											entity_name = await entity.object_name()
-											entities_info += f'{entity_name}, XYZ({entity_pos.x}, {entity_pos.y}, {entity_pos.z})\n\n'
-										pyperclip.copy(entities_info)
-										if entities_info:
-											logger.success("Available Nearby Entities:")
-											gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.ShowEntityListPopup, (entities_info)))
-										else:
-											logger.error("Failed to load Entity list. Please try again.")
+										logger.debug('Opening Entity List')
+										gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.ShowEntityListPopup))
 								case GUIKeys.copy_camera_position:
 									if foreground_client:
 										camera = await foreground_client.game_client.selected_camera_controller()
@@ -1420,19 +1744,34 @@ async def main():
 									if foreground_client:
 										foreground: Client = foreground_client
 										ui_tree = ''
-										async def get_ui_tree(window: Window, depth: int = 0, depth_symbol: str = '-', seperator: str = '\n'):
-											nonlocal ui_tree
-											ui_tree += f"{depth_symbol * depth} [{await window.name()}] {await window.maybe_read_type_name()}{seperator}"
-											for child in await utils.wait_for_non_error(window.children):
-												await get_ui_tree(child, depth + 1)
-										await get_ui_tree(foreground.root_window)
+										ui_tree_texts = {}
+										ui_tree_windows = []
+										async def collect_node(window: Window, depth: int = 0, depth_symbol: str = '-'):
+											name, type_name, children = await asyncio.gather(
+												window.name(),
+												window.maybe_read_type_name(),
+												utils.wait_for_non_error(window.children),
+											)
+											line = f"{depth_symbol * depth} [{name}] {type_name}"
+											child_results = await asyncio.gather(*(collect_node(c, depth + 1) for c in children))
+											return [(line, window)] + [entry for sub in child_results for entry in sub]
+										ui_tree_windows = await collect_node(foreground.root_window)
+										ui_tree = '\n'.join(line for line, _ in ui_tree_windows) + '\n'
+										async def _safe_text(line, window):
+											try:
+												text = await window.maybe_text()
+												if text:
+													ui_tree_texts[line] = text
+											except Exception:
+												pass
+										await asyncio.gather(*(_safe_text(l, w) for l, w in ui_tree_windows))
 										logger.debug(f'Copied UI Tree for client {foreground.title}')
 										pyperclip.copy(ui_tree)
 										# with open('ui_tree.txt', 'w') as f:
 										# 	f.write(ui_tree)
 										if ui_tree:
 											logger.success("Available UI Paths:")
-											gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.ShowUITreePopup, (ui_tree)))
+											gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.ShowUITreePopup, (ui_tree, ui_tree_texts)))
 										else:
 											logger.error("Failed to load UI tree. Please try again.")
 								case GUIKeys.copy_stats:
@@ -1476,33 +1815,57 @@ async def main():
 							if not walker.clients:
 								logger.info("This GUI option requires hooks to be active, skipping.")
 								continue
-							# Teleports to closest entity with vague name, using WizSprinter
 							if foreground_client:
 								sprinter = SprintyClient(foreground_client)
-								entities = await sprinter.get_base_entities_with_vague_name(com.data)
-								if entities:
-									entity = await sprinter.find_closest_of_entities(entities)
-									entity_pos = await entity.location()
+								gid_str = com.data.get('gid', '') if isinstance(com.data, dict) else ''
+								name_str = com.data.get('name', '') if isinstance(com.data, dict) else str(com.data)
+								target_entity = None
+								if gid_str:
+									try:
+										target_gid = int(gid_str)
+										entities = await sprinter.get_base_entity_list()
+										for entity in entities:
+											if await entity.global_id_full() == target_gid:
+												target_entity = entity
+												break
+									except (ValueError, TypeError):
+										logger.error(f'Invalid GID: {gid_str}')
+								if target_entity is None and name_str:
+									entities = await sprinter.get_base_entities_with_vague_name(name_str)
+									if entities:
+										target_entity = await sprinter.find_closest_of_entities(entities)
+								if target_entity:
+									entity_pos = await target_entity.location()
 									await foreground_client.teleport(entity_pos)
 						case deimosgui.GUICommandType.SelectEnemy:
 							if not walker.clients:
-								logger.info("This GUI option requires hooks to be active, skipping.")
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('EnemyInput', [])))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('AllyInput', [])))
 								continue
 							if foreground_client and await foreground_client.in_battle():
-								caster_index, target_index, base_damage, school_id, crit_status, force_school_status = com.data
+								ally_index, enemy_index, base_damage, school_id, crit_status, force_school_status, swapped, view_side = com.data
 								if not base_damage:
 									base_damage = None
 								else:
 									base_damage = int(base_damage)
-								enemy_stats, names_list, caster_i, target_i, school_name = await total_stats(foreground_client, caster_index, target_index, base_damage, school_id, crit_status, force_school_status)
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('stat_viewer', '\n'.join(enemy_stats))))
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('EnemyInput', names_list)))
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('AllyInput', names_list)))
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('EnemyInput', names_list[caster_i])))
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('AllyInput', names_list[target_i])))
-								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SchoolInput', school_name)))
+								view_target = (view_side == 'enemy')
+								result = await total_stats(foreground_client, ally_index, enemy_index, base_damage, school_id, crit_status, force_school_status, swapped=swapped, view_target=view_target)
+								if result is None:
+									continue
+								stat_lines, ally_names, enemy_names, ally_i, enemy_i, school_name, slot_info = result
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('stat_viewer', stat_lines)))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('EnemyInput', enemy_names)))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('AllyInput', ally_names)))
+								if enemy_i < len(enemy_names):
+									gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('EnemyInput', enemy_names[enemy_i])))
+								if ally_i < len(ally_names):
+									gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('AllyInput', ally_names[ally_i])))
+								# school_name not sent to dropdown — but sent as calc_school for readout
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('calc_school', school_name)))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('slot_info', slot_info)))
 							else:
-								logger.info('Last selected client is not currently in combat. You must be in combat to use the stat viewer.')
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('EnemyInput', [])))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindowValues, ('AllyInput', [])))
 						case deimosgui.GUICommandType.XYZSync:
 							if not walker.clients:
 								logger.info("This GUI option requires hooks to be active, skipping.")
@@ -1513,6 +1876,44 @@ async def main():
 								logger.info("This GUI option requires hooks to be active, skipping.")
 								continue
 							await x_press_hotkey()
+						case deimosgui.GUICommandType.FriendTeleport:
+							if not walker.clients:
+								logger.info("This GUI option requires hooks to be active, skipping.")
+								continue
+							await friend_teleport_sync_hotkey()
+						# case deimosgui.GUICommandType.ToggleDialogueSideQuests:
+					# 	if not walker.clients:
+					# 		logger.info("This GUI option requires hooks to be active, skipping.")
+					# 		continue
+					# 	await toggle_dialogue_side_quests_hotkey()
+						case deimosgui.GUICommandType.RebindHotkey:
+							action_id, new_key, new_mods = com.data
+							# Remove old binding from listener if active
+							old_binding = _active_bindings.get(action_id)
+							if old_binding:
+								old_mods = ModifierKeys.NOREPEAT
+								for m in old_binding.get("modifiers", []):
+									old_mods |= ModifierKeys[m]
+								try:
+									await listener.remove_hotkey(Keycode[old_binding["key"]], modifiers=old_mods)
+								except Exception:
+									pass
+								del _active_bindings[action_id]
+							# Register new binding
+							if new_key:
+								callback = _kill_tool_callback if action_id == "kill_tool" else _make_hotkey_callback(action_id)
+								if hotkey_status or action_id == "kill_tool":
+									mods = ModifierKeys.NOREPEAT
+									for m in new_mods:
+										mods |= ModifierKeys[m]
+									try:
+										await listener.add_hotkey(Keycode[new_key], callback, modifiers=mods)
+										_active_bindings[action_id] = {"key": new_key, "modifiers": new_mods}
+									except Exception as e:
+										logger.debug(f'Failed to register rebound hotkey for {action_id}: {e}')
+							else:
+								pass  # settings already cleared by GUI side
+							logger.debug(f'Hotkey rebound: {action_id} -> {new_key} {new_mods}')
 						case deimosgui.GUICommandType.AnchorCam:
 							if not walker.clients:
 								logger.info("This GUI option requires hooks to be active, skipping.")
@@ -1522,13 +1923,27 @@ async def main():
 									await toggle_freecam_hotkey()
 								camera = await foreground_client.game_client.elastic_camera_controller()
 								sprinter = SprintyClient(foreground_client)
-								entities = await sprinter.get_base_entities_with_vague_name(com.data)
-								entity_pos: XYZ = None
-								if entities:
-									entity = await sprinter.find_closest_of_entities(entities)
-									entity_name = await entity.object_name()
+								gid_str = com.data.get('gid', '') if isinstance(com.data, dict) else ''
+								name_str = com.data.get('name', '') if isinstance(com.data, dict) else str(com.data)
+								target_entity = None
+								if gid_str:
+									try:
+										target_gid = int(gid_str)
+										entities = await sprinter.get_base_entity_list()
+										for entity in entities:
+											if await entity.global_id_full() == target_gid:
+												target_entity = entity
+												break
+									except (ValueError, TypeError):
+										logger.error(f'Invalid GID: {gid_str}')
+								if target_entity is None and name_str:
+									entities = await sprinter.get_base_entities_with_vague_name(name_str)
+									if entities:
+										target_entity = await sprinter.find_closest_of_entities(entities)
+								if target_entity:
+									entity_name = await target_entity.object_name()
 									logger.debug(f'Anchoring camera to entity {entity_name}')
-									await camera.write_attached_client_object(entity)
+									await camera.write_attached_client_object(target_entity)
 						# case deimosgui.GUICommandType.SetPetWorld:
 						# 	if (com.data[1] is None):
 						# 		logger.debug('Invalid pet world selected!')
@@ -1576,6 +1991,36 @@ async def main():
 									await camera.write_zoom_resolution(min_input)
 								if com.data["Max"]:
 									await camera.write_max_distance(max_input)
+						case deimosgui.GUICommandType.PopulateCamera:
+							if not walker.clients:
+								logger.info("This GUI option requires hooks to be active, skipping.")
+								continue
+							if foreground_client:
+								camera = await foreground_client.game_client.selected_camera_controller()
+								camera_pos = await camera.position()
+								camera_pitch, camera_roll, camera_yaw = await camera.orientation()
+								elastic_camera = await foreground_client.game_client.elastic_camera_controller()
+								current_zoom = await elastic_camera.distance()
+								current_min = await elastic_camera.min_distance()
+								current_max = await elastic_camera.max_distance()
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamXInput', f'{camera_pos.x:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamYInput', f'{camera_pos.y:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamZInput', f'{camera_pos.z:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamYawInput', f'{camera_yaw:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamRollInput', f'{camera_roll:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamPitchInput', f'{camera_pitch:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamEntityInput', 'Player Object')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamDistanceInput', f'{current_zoom:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamMinInput', f'{current_min:.2f}')))
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamMaxInput', f'{current_max:.2f}')))
+								logger.debug('Populated camera fields with current values.')
+						case deimosgui.GUICommandType.PopulatePlayerGID:
+							if not walker.clients:
+								logger.info("This GUI option requires hooks to be active, skipping.")
+								continue
+							if foreground_client:
+								gid = await foreground_client.game_client.player_gid()
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('CamEntityGIDInput', str(gid))))
 						case deimosgui.GUICommandType.GoToZone:
 							if not walker.clients:
 								logger.info("This GUI option requires hooks to be active, skipping.")
@@ -1629,10 +2074,14 @@ async def main():
 								logger.info("This GUI option requires hooks to be active, skipping.")
 								continue
 							async def _flythrough():
-								await execute_flythrough(foreground_client, com.data)
-								await foreground_client.camera_elastic()
+								try:
+									await execute_flythrough(foreground_client, com.data)
+									await foreground_client.camera_elastic()
+								finally:
+									gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('FlythroughStatus', 'Disabled')))
 							if foreground_client:
 								flythrough_task = asyncio.create_task(_flythrough())
+								gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('FlythroughStatus', 'Enabled')))
 						case deimosgui.GUICommandType.KillFlythrough:
 							if not walker.clients:
 								logger.info("This GUI option requires hooks to be active, skipping.")
@@ -1642,6 +2091,40 @@ async def main():
 								flythrough_task = None
 								await asyncio.sleep(0)
 								await foreground_client.camera_elastic()
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('FlythroughStatus', 'Disabled')))
+						case deimosgui.GUICommandType.HighlightEntity:
+							if highlight_task and not highlight_task.done():
+								highlight_task.cancel()
+							if foreground_client and com.data:
+								highlight_task = asyncio.create_task(
+									_highlight_entity_loop(foreground_client, com.data))
+
+						case deimosgui.GUICommandType.HighlightUIWindow:
+							if highlight_task and not highlight_task.done():
+								highlight_task.cancel()
+							if foreground_client and com.data:
+								highlight_task = asyncio.create_task(
+									_highlight_ui_window_loop(foreground_client, com.data))
+
+						case deimosgui.GUICommandType.ClearHighlight:
+							if highlight_task and not highlight_task.done():
+								highlight_task.cancel()
+								highlight_task = None
+							gui_send_queue.put(deimosgui.GUICommand(
+								deimosgui.GUICommandType.UpdateHighlightBox, None
+							))
+
+						case deimosgui.GUICommandType.StartEntityStream:
+							if entity_stream_task and not entity_stream_task.done():
+								entity_stream_task.cancel()
+							if foreground_client:
+								entity_stream_task = asyncio.create_task(_entity_stream_loop(foreground_client))
+
+						case deimosgui.GUICommandType.StopEntityStream:
+							if entity_stream_task and not entity_stream_task.done():
+								entity_stream_task.cancel()
+								entity_stream_task = None
+
 						case deimosgui.GUICommandType.ExecuteBot:
 							if not walker.clients:
 								logger.info("This GUI option requires hooks to be active, skipping.")
@@ -1684,6 +2167,8 @@ async def main():
 								logger.debug('Bot Killed')
 								bot_task = None
 							bot_task = asyncio.create_task(try_task_coro(run_bot, walker.clients, True))
+							bot_task.add_done_callback(lambda _t: gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('BotStatus', 'Disabled'))))
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('BotStatus', 'Enabled')))
 						case deimosgui.GUICommandType.KillBot:
 							if not walker.clients:
 								logger.info("This GUI option requires hooks to be active, skipping.")
@@ -1708,6 +2193,221 @@ async def main():
 							desired_scale = param_input(com.data, 1.0)
 							logger.debug(f'Set Scale to {desired_scale}')
 							await asyncio.gather(*[client.body.write_scale(desired_scale) for client in walker.clients])
+
+						case deimosgui.GUICommandType.LoadAccounts:
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, wizlaunch.list_accounts()))
+
+						case deimosgui.GUICommandType.SaveAccount:
+							nickname = com.data
+							try:
+								await asyncio.to_thread(wizlaunch.prompt_save_account, nickname)
+								logger.info(f"Account '{nickname}' saved.")
+							except RuntimeError as e:
+								logger.info(f"Account save cancelled or failed: {e}")
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, wizlaunch.list_accounts()))
+
+						case deimosgui.GUICommandType.DeleteAccount:
+							wizlaunch.delete_account(com.data)
+							logger.info(f"Account '{com.data}' removed.")
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateAccountList, wizlaunch.list_accounts()))
+
+						case deimosgui.GUICommandType.LaunchInstance:
+							nicknames, game_path = com.data
+							if not game_path:
+								game_path = str(utils.get_wiz_install())
+							else:
+								utils.override_wiz_install_location(game_path)
+							# Filter out accounts already managed (hooked) by launch map or player_gid
+							already_managed = set(launched_account_map.values())
+							for c in walker.clients:
+								gid = getattr(c, 'player_gid', None)
+								if gid:
+									vault_nick = wizlaunch.get_nickname_by_gid(gid)
+									if vault_nick:
+										already_managed.add(vault_nick)
+							nicknames = [n for n in nicknames if n not in already_managed]
+							if not nicknames:
+								logger.info("All selected accounts are already launched and hooked.")
+							else:
+								logger.info(f"Launching {len(nicknames)} instance(s)...")
+							# Clear any released handles so newly launched clients get auto-hooked
+							released_handles.clear()
+							gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.ClearLaunchCheckboxes))
+							try:
+								results = await asyncio.to_thread(wizlaunch.launch_instances, nicknames, game_path)
+								for nickname, handle in results.items():
+									launched_account_map[handle] = nickname
+									logger.info(f"Launched and logged in '{nickname}'.")
+							except Exception as e:
+								logger.error(f"Error launching instances: {e}")
+
+
+						case deimosgui.GUICommandType.ReorderAccounts:
+							wizlaunch.reorder_accounts(com.data)
+
+						case deimosgui.GUICommandType.ReorderClients:
+							handles = com.data
+							client_map = {c.window_handle: c for c in walker.clients}
+							new_order = [client_map[h] for h in handles if h in client_map]
+							remaining = [c for c in walker.clients if c.window_handle not in set(handles)]
+							walker.clients[:] = new_order + remaining
+							for i, c in enumerate(walker.clients):
+								c.title = f'p{i + 1}'
+							_send_hooked_clients_update()
+
+						case deimosgui.GUICommandType.UnhookClient:
+							handle = com.data
+							for c in walker.clients[:]:
+								if c.window_handle == handle:
+									try:
+										c.title = 'Wizard101'
+										await c.close()
+									except Exception:
+										pass
+									if c.window_handle in walker._managed_handles:
+										walker._managed_handles.remove(c.window_handle)
+									walker.clients.remove(c)
+									released_handles.add(handle)
+									logger.info(f"Unhooked client (handle {handle}).")
+									break
+							_send_hooked_clients_update()
+							if walker.clients:
+								_restart_always_on_tasks()
+								_restart_active_toggle_tasks()
+
+						case deimosgui.GUICommandType.HookClient:
+							handle = com.data
+							# Remove from released set so it can be managed
+							released_handles.discard(handle)
+							# Check handle is still valid and not already managed
+							if handle in walker._managed_handles:
+								logger.debug(f"Handle {handle} already managed, skipping.")
+								_send_hooked_clients_update()
+								continue
+							all_handles = get_all_wizard_handles()
+							if handle not in all_handles:
+								logger.error(f"Handle {handle} no longer exists.")
+								_send_hooked_clients_update()
+								continue
+							# Create client, assign title, hook, init
+							walker._managed_handles.append(handle)
+							nc = walker.client_cls(handle)
+							walker.clients.append(nc)
+							existing_nums = set()
+							for c in walker.clients:
+								if c.title.startswith('p') and c.title[1:].isdigit():
+									existing_nums.add(int(c.title[1:]))
+							num = 1
+							while num in existing_nums:
+								num += 1
+							nc.title = f'p{num}'
+							_hooking_in_progress.add(handle)
+							_send_hooked_clients_update()
+							try:
+								await nc.activate_hooks()
+								await _init_client_attrs(nc)
+								logger.info(f"Manually hooked client '{nc.title}' (handle {handle}).")
+							except wizwalker.errors.HookAlreadyActivated:
+								await _init_client_attrs(nc)
+								logger.info(f"Manually hooked client '{nc.title}' (handle {handle}, already hooked).")
+							except Exception as e:
+								logger.error(f"Failed to hook client (handle {handle}): {e}")
+								walker._managed_handles.remove(handle)
+								walker.clients.remove(nc)
+								_hooking_in_progress.discard(handle)
+								_send_hooked_clients_update()
+								continue
+							_hooking_in_progress.discard(handle)
+							_send_hooked_clients_update()
+							_restart_always_on_tasks()
+							_restart_active_toggle_tasks()
+
+						case deimosgui.GUICommandType.KillClient:
+							handle = com.data
+							# If handle belongs to a hooked client, unhook first
+							for c in walker.clients[:]:
+								if c.window_handle == handle:
+									try:
+										c.title = 'Wizard101'
+										await c.close()
+									except Exception:
+										pass
+									if c.window_handle in walker._managed_handles:
+										walker._managed_handles.remove(c.window_handle)
+									walker.clients.remove(c)
+									launched_account_map.pop(handle, None)
+									break
+							# Terminate the OS process
+							_kill_process_by_handle(handle)
+							released_handles.discard(handle)
+							logger.info(f"Killed client (handle {handle}).")
+							_send_hooked_clients_update()
+							if walker.clients:
+								_restart_always_on_tasks()
+								_restart_active_toggle_tasks()
+
+						case deimosgui.GUICommandType.RelaunchClient:
+							handle, nickname = com.data
+							# Unhook the hooked client
+							for c in walker.clients[:]:
+								if c.window_handle == handle:
+									try:
+										c.title = 'Wizard101'
+										await c.close()
+									except Exception:
+										pass
+									if c.window_handle in walker._managed_handles:
+										walker._managed_handles.remove(c.window_handle)
+									walker.clients.remove(c)
+									launched_account_map.pop(handle, None)
+									break
+							# Kill the process
+							_kill_process_by_handle(handle)
+							released_handles.discard(handle)
+							logger.info(f"Killed client for relaunch (handle {handle}, account '{nickname}').")
+							_send_hooked_clients_update()
+							# Relaunch via wizlaunch (credentials stay in Rust)
+							try:
+								game_path = str(utils.get_wiz_install())
+								await asyncio.sleep(1)
+								new_handle = await asyncio.to_thread(wizlaunch.launch_instance, nickname, game_path)
+								launched_account_map[new_handle] = nickname
+								logger.info(f"Relaunched and logged in '{nickname}'.")
+								_send_hooked_clients_update()
+							except Exception as e:
+								logger.error(f"Error relaunching '{nickname}': {e}")
+							if walker.clients:
+								_restart_always_on_tasks()
+								_restart_active_toggle_tasks()
+
+						case deimosgui.GUICommandType.UpdateSettings:
+							global speed_multiplier, use_potions, rpc_status, drop_status, anti_afk_status
+							global buy_potions, use_team_up, client_to_follow, client_to_boost
+							global questing_friend_tp, gear_switching_in_solo_zones, hitter_client
+							global ignore_pet_level_up, only_play_dance_game
+							global kill_minions_first, automatic_team_based_combat, discard_duplicate_cards
+							settings_dict = com.data
+							for key, value in settings_dict.items():
+								match key:
+									case 'speed_multiplier': speed_multiplier = value
+									case 'use_potions': use_potions = value
+									case 'rich_presence': rpc_status = value
+									case 'drop_logging': drop_status = value
+									case 'use_anti_afk': anti_afk_status = value
+									case 'buy_potions': buy_potions = value
+									case 'use_team_up': use_team_up = value
+									case 'client_to_follow': client_to_follow = value
+									case 'client_to_boost': client_to_boost = value
+									case 'friend_teleport': questing_friend_tp = value
+									case 'gear_switching_in_solo_zones': gear_switching_in_solo_zones = value
+									case 'hitter_client': hitter_client = value
+									case 'ignore_pet_level_up': ignore_pet_level_up = value
+									case 'only_play_dance_game': only_play_dance_game = value
+									case 'kill_minions_first': kill_minions_first = value
+									case 'automatic_team_based_combat': automatic_team_based_combat = value
+									case 'discard_duplicate_cards': discard_duplicate_cards = value
+							logger.debug(f'Settings updated: {list(settings_dict.keys())}')
+
 			except queue.Empty:
 				pass
 
@@ -1733,129 +2433,165 @@ async def main():
 
 
 	async def rpc_loop():
-		if rpc_status:
-			# Connect to the discord dev app
+		if not rpc_status:
+			return
+
+		async def _close_rpc(rpc):
+			"""Close RPC and its underlying transport to avoid ResourceWarning."""
 			try:
-				rpc = AioPresence(1000159655357587566)
-				await rpc.connect()
+				if hasattr(rpc, 'sock_writer') and rpc.sock_writer:
+					rpc.sock_writer.close()
+					await rpc.sock_writer.wait_closed()
+			except Exception:
+				pass
+			try:
+				await rpc.close()
+			except Exception:
+				pass
 
-			except Exception as e:
-				logger.error(e)
+		rpc = None
+		client: Client = None
+		while True:
+			# Connect / reconnect
+			if rpc is None:
+				try:
+					rpc = AioPresence(1000159655357587566)
+					await rpc.connect()
+				except Exception as e:
+					logger.debug(f'Discord RPC connection failed: {e}')
+					await _close_rpc(rpc)
+					rpc = None
+					await asyncio.sleep(15)
+					continue
 
-			# except pypresence.exceptions.PyPresenceException:
-			# 	pass
+			await asyncio.sleep(1)
+
+			# Disconnect RPC when no clients are managed
+			if not walker.clients:
+				if rpc is not None:
+					try:
+						await rpc.clear()
+					except Exception:
+						pass
+					await _close_rpc(rpc)
+					rpc = None
+				client = None
+				continue
+
+			# Pick the foreground client, or fall back to first
+			client = walker.clients[0]
+			for c in walker.clients:
+				if c.is_foreground:
+					client = c
+					break
+
+			# If our tracked client was removed, reset
+			if client not in walker.clients:
+				client = walker.clients[0]
+
+			try:
+				zone_name = await client.zone_name()
+			except Exception:
+				client = None
+				continue
+
+			if zone_name:
+				zone_list = zone_name.split('/')
+				if len(zone_list):
+					status_str = zone_list[0]
+				else:
+					status_str = zone_name
+
+				# parse zone name and make it more visually appealing
+				if len(zone_list) > 1:
+					if 'Housing_' in zone_name:
+						status_str = status_str.replace('Housing_', '')
+						end_zone_list = zone_list[-1].split('_')
+						end_zone = f' - {end_zone_list[-1]}'
+
+					elif 'Housing' in zone_name:
+						end_zone_list = zone_list[-1].split('_')
+
+						if 'School' in zone_list:
+							status_str = end_zone_list[0] + 'House'
+
+						else:
+							status_str = zone_list[1]
+
+						end_zone = f' - {end_zone_list[-1]}'
+
+					else:
+						end_zone = None
+
+					if not end_zone:
+						area_list: list[str] = zone_list[-1].split('_')
+						del area_list[0]
+
+						for a in area_list.copy():
+							if any([s.isdigit() for s in a]):
+								area_list.remove(a)
+
+						seperator = ' '
+						area = seperator.join(area_list)
+						zone_word_list = re.findall('[A-Z][^A-Z]*', area)
+						if zone_word_list:
+							end_zone = f' - {seperator.join(zone_word_list)}'
+
+						else:
+							end_zone = ''
 
 			else:
-				# Assign foreground client locally
-				client: Client = walker.clients[0]
-				zone_name: str = None
-				while True:
-					for c in walker.clients:
-						c: Client
-						if c.is_foreground:
-							client = c
-							break
+				end_zone = ''
 
-					# Assign zone name of client
-					await asyncio.sleep(1)
-					zone_name = await client.zone_name()
+			status_str = status_str.replace('DragonSpire', 'Dragonspyre')
+			status_list = status_str.split('_')
+			if len(status_list[0]) <= 3:
+				del status_list[0]
 
-					if zone_name:
-						zone_list = zone_name.split('/')
-						if len(zone_list):
-							status_str = zone_list[0]
-						else:
-							status_str = zone_name
+			seperator = ' '
+			status_str = seperator.join(status_list)
 
-						# parse zone name and make it more visually appealing
-						if len(zone_list) > 1:
-							if 'Housing_' in zone_name:
-								status_str = status_str.replace('Housing_', '')
-								end_zone_list = zone_list[-1].split('_')
-								end_zone = f' - {end_zone_list[-1]}'
+			status_list = re.findall('[A-Z][^A-Z]*', status_str)
+			status_str = seperator.join(status_list)
 
-							elif 'Housing' in zone_name:
-								end_zone_list = zone_list[-1].split('_')
+			if 'ext' in end_zone.lower():
+				end_zone = ' - Outside'
 
-								if 'School' in zone_list:
-									status_str = end_zone_list[0] + 'House'
+			elif 'int' in end_zone.lower():
+				end_zone = ' - Inside'
 
-								else:
-									status_str = zone_list[1]
+			try:
+				in_battle = await client.in_battle()
+			except Exception:
+				client = None
+				continue
 
-								end_zone = f' - {end_zone_list[-1]}'
+			if in_battle:
+				task_str = 'Fighting '
 
-							else:
-								end_zone = None
+			elif questing_status:
+				task_str = 'Questing '
 
-							if not end_zone:
-								area_list: list[str] = zone_list[-1].split('_')
-								del area_list[0]
+			elif sigil_status:
+				task_str = 'Farming '
 
-								for a in area_list.copy():
-									if any([s.isdigit() for s in a]):
-										area_list.remove(a)
+			else:
+				task_str = ''
 
-								seperator = ' '
-								area = seperator.join(area_list)
-								zone_word_list = re.findall('[A-Z][^A-Z]*', area)
-								if zone_word_list:
-									end_zone = f' - {seperator.join(zone_word_list)}'
+			# Assign if a client is currently selected or not
+			if not any([c.is_foreground for c in walker.clients]):
+				details_pane = 'Idle'
 
-								else:
-									end_zone = ''
+			else:
+				details_pane = 'Active'
 
-					else:
-						end_zone = ''
+			try:
+				# Update the discord RPC status
+				await rpc.update(state=f'{task_str}In {status_str}{end_zone}', details=details_pane)
 
-					status_str = status_str.replace('DragonSpire', 'Dragonspyre')
-					status_list = status_str.split('_')
-					if len(status_list[0]) <= 3:
-						del status_list[0]
-
-					seperator = ' '
-					status_str = seperator.join(status_list)
-
-					status_list = re.findall('[A-Z][^A-Z]*', status_str)
-					status_str = seperator.join(status_list)
-
-					if 'ext' in end_zone.lower():
-						end_zone = ' - Outside'
-
-					elif 'int' in end_zone.lower():
-						end_zone = ' - Inside'
-
-					# Read combat members, this check is only needed since WW combat detection breaks upon fleeing
-					# fighter = CombatHandler()
-					# members = await fighter.get_members()
-
-					# Assign current task to show in discord status
-					# if await client.in_battle() and members:
-					if await client.in_battle():
-						task_str = 'Fighting '
-
-					elif questing_status:
-						task_str = 'Questing '
-
-					elif sigil_status:
-						task_str = 'Farming '
-
-					else:
-						task_str = ''
-
-					# Assign if a client is currently selected or not
-					if not any([client.is_foreground for client in walker.clients]):
-						details_pane = 'Idle'
-
-					else:
-						details_pane = 'Active'
-
-					try:
-						# Update the discord RPC status
-						await rpc.update(state=f'{task_str}In {status_str}{end_zone}', details=details_pane)
-
-					except Exception as e:
-						logger.error(e)
+			except Exception:
+				await _close_rpc(rpc)
+				rpc = None
 
 
 	def ban_thread():
@@ -1962,118 +2698,29 @@ async def main():
 		sys.exit(0)
 
 
-	async def hooking_logic(default_logic : bool = False):
+	async def hooking_logic():
 		await asyncio.sleep(0.1)
-		if not default_logic:
-			if not get_all_wizard_handles():
-				logger.debug('Waiting for a Wizard101 client to be opened...')
-				while not get_all_wizard_handles():
-					await asyncio.sleep(1)
-			override_wiz_install_using_handle()
-			walker.get_new_clients()
-			# p1, p2, p3, p4 = [*clients, None, None, None, None][:4]
-			# child_clients = clients[1:]
-			for i, p in enumerate(walker.clients, 1):
-				title = 'p' + str(i)
-				p.title = title
-
-				#Purely for config combat, ensures client has some form of config no matter what
-				if not hasattr(p, "combat_config"):
-					p.combat_config = "any<damage> @ enemy"
-
-			logger.debug('Activating hooks for all clients, please be patient...')
-			try:
-				await asyncio.gather(*[p.activate_hooks() for p in walker.clients])
-			except wizwalker.errors.PatternFailed as e:
-				logger.critical(f"Error occured in the hooking process. {e}")
-
-				clients_check = walker.clients
-				async def refresh_clients(delay: float = 0.5):
-					walker.remove_dead_clients()
-					walker.get_new_clients()
-					await asyncio.sleep(delay)
-				async def gui_task_checker():
-					if gui_task.done():
-						exception = gui_task.exception()
-						match exception:
-							case None:
-								pass
-							case deimosgui.ToolClosedException():
-								logger.info("Tool close triggered by user.")
-							case _:
-								logger.exception(exception)
-						for p in walker.clients:
-							try:
-								p.title = 'Wizard101'
-								await p.close()
-							except:
-								pass
-						sys.exit(0)
-				logger.debug('Waiting for all Wizard101 clients to be closed...')
-				while walker.clients:
-					await gui_task_checker()
-					await refresh_clients()
-					await asyncio.sleep(0.1)
-				logger.debug('Waiting for all previous Wizard101 clients to be reopened...')
-				while not walker.clients:
-					await gui_task_checker()
-					await refresh_clients()
-					await asyncio.sleep(0.1)
-				while len(walker.clients) != len(clients_check):
-					await gui_task_checker()
-					await refresh_clients()
-					await asyncio.sleep(0.1)
-				await hooking_logic()
+		if not get_all_wizard_handles():
+			logger.debug('Waiting for a Wizard101 client to be opened...')
+			while not get_all_wizard_handles():
+				await asyncio.sleep(1)
+		override_wiz_install_using_handle()
+		logger.debug('Wizard101 client(s) detected. Hook clients from the Launcher tab.')
 	await hooking_logic()
-	logger.debug('Hooks activated. Setting up hotkeys...')
-	# set initial speed for speed multipler so it knows what to reset to. Instead I should just have this track changes in speed multiplier per-client.
+	logger.debug('Ready. Hook clients from the Launcher tab.')
 	global client_speeds
 	client_speeds = {}
+	_send_hooked_clients_update()
+	initial_setup_complete = True
 
-	for p in walker.clients:
-		p: Client
-		client_speeds[p.process_id] = await p.client_object.speed_multiplier()
-		p.combat_status = False
-		p.questing_status = False
-		p.sigil_status = False
-		p.questing_status = False
-		p.auto_pet_status = False
-		p.feeding_pet_status = False
-		p.use_team_up = use_team_up
-		p.dance_hook_status = False
-		p.entity_detect_combat_status = False
-		p.invincible_combat_timer = False
-		p.just_entered_combat = None
-		p.just_left_combat = False
-		p.helper_clients = []
-		p.client_being_helped = None
-		p.original_location_before_combat = None
-		p.duel_circle_joinable = True
-		p.in_solo_zone = False
-		p.wizard_name = None
-		p.character_level = await p.stats.reference_level()
-		p.discard_duplicate_cards = discard_duplicate_cards
-		p.kill_minions_first = kill_minions_first
-		p.automatic_team_based_combat = automatic_team_based_combat
-		p.latest_drops = ''
-		p.combat_config = default_config
-
-		p.use_potions = use_potions
-		p.buy_potions = buy_potions
-		p.client_to_follow = client_to_follow
-
-		# Set follower/leader statuses for auto questing/sigil
-		if client_to_follow:
-			if client_to_follow in p.title:
-				global sigil_leader_pid
-				sigil_leader_pid = p.process_id
-
-		if client_to_boost:
-			if client_to_boost in p.title:
-				global questing_leader_pid
-				questing_leader_pid = p.process_id
-
-	await listener.add_hotkey(Keycode[kill_tool_key], kill_tool_hotkey, modifiers=ModifierKeys.NOREPEAT)
+	# Register kill_tool hotkey (always bound, separate from enable/disable cycle)
+	_kill_binding = settings.get_hotkeys().get("kill_tool")
+	if _kill_binding:
+		_kill_mods = ModifierKeys.NOREPEAT
+		for _m in _kill_binding.get("modifiers", []):
+			_kill_mods |= ModifierKeys[_m]
+		await listener.add_hotkey(Keycode[_kill_binding["key"]], kill_tool_hotkey, modifiers=_kill_mods)
+		_active_bindings["kill_tool"] = _kill_binding
 	await enable_hotkeys()
 	logger.debug('Hotkeys ready!')
 	tool_status = True
@@ -2083,77 +2730,124 @@ async def main():
 		while tool_status:
 			await asyncio.sleep(0.1)
 
-	global foreground_client_switching_task
-	global assign_foreground_clients_task
-	global anti_afk_loop_task
-	global in_combat_loop_task
-	global questing_leader_combat_detection_task
-	global potion_usage_loop_task
-	global rpc_loop_task
-	global drop_logging_loop_task
-	global zone_check_loop_task
-	global anti_afk_questing_loop_task
-	global ban_watcher_task
-	global tool_active_task
+	all_tasks = {}
 
+	# Names of always-on tasks that use walker.clients snapshots and must be
+	# restarted when the client list changes.
+	SNAPSHOT_TASK_NAMES = [
+		'anti_afk_loop', 'is_client_in_combat_loop', 'entity_detect_combat_loop',
+		'potion_usage_loop', 'drop_logging_loop', 'zone_check_loop', 'anti_afk_questing_loop'
+	]
+	SNAPSHOT_TASK_FUNCS = {
+		'anti_afk_loop': anti_afk_loop,
+		'is_client_in_combat_loop': is_client_in_combat_loop,
+		'entity_detect_combat_loop': entity_detect_combat_loop,
+		'potion_usage_loop': potion_usage_loop,
+		'drop_logging_loop': drop_logging_loop,
+		'zone_check_loop': zone_check_loop,
+		'anti_afk_questing_loop': anti_afk_questing_loop,
+	}
+
+	def _restart_always_on_tasks():
+		"""Cancel and recreate snapshot-based always-on tasks so they pick up new clients."""
+		for name in SNAPSHOT_TASK_NAMES:
+			old = all_tasks.get(name)
+			if old is not None and not old.cancelled():
+				old.cancel()
+			all_tasks[name] = asyncio.create_task(SNAPSHOT_TASK_FUNCS[name]())
+
+	def _restart_active_toggle_tasks():
+		"""Cancel and recreate any currently-active toggle tasks so they pick up new clients."""
+		global combat_task, dialogue_task, sigil_task, questing_task, speed_task, auto_pet_task
+
+		if combat_task is not None and not combat_task.cancelled():
+			combat_task.cancel()
+			for c in walker.clients:
+				c.combat_status = True
+			combat_task = asyncio.create_task(try_task_coro(combat_loop, walker.clients, True))
+
+		if dialogue_task is not None and not dialogue_task.cancelled():
+			dialogue_task.cancel()
+			dialogue_task = asyncio.create_task(try_task_coro(dialogue_loop, walker.clients, True))
+
+		if sigil_task is not None and not sigil_task.cancelled():
+			sigil_task.cancel()
+			for c in walker.clients:
+				c.sigil_status = True
+			sigil_task = asyncio.create_task(try_task_coro(sigil_loop, walker.clients, True))
+
+		if questing_task is not None and not questing_task.cancelled():
+			questing_task.cancel()
+			for c in walker.clients:
+				c.questing_status = True
+			questing_task = asyncio.create_task(try_task_coro(questing_loop, walker.clients, True))
+
+		if speed_task is not None and not speed_task.cancelled():
+			speed_task.cancel()
+			speed_task = asyncio.create_task(try_task_coro(speed_switching, walker.clients))
+
+		if auto_pet_task is not None and not auto_pet_task.cancelled():
+			auto_pet_task.cancel()
+			for c in walker.clients:
+				c.feeding_pet_status = True
+			auto_pet_task = asyncio.create_task(try_task_coro(auto_pet_loop, walker.clients, True))
 
 	try:
-		foreground_client_switching_task = asyncio.create_task(foreground_client_switching())
-		assign_foreground_clients_task = asyncio.create_task(assign_foreground_clients())
-		# speed_switching_task = asyncio.create_task(speed_switching())
-		# combat_loop_task = asyncio.create_task(combat_loop())
-		# dialogue_loop_task = asyncio.create_task(dialogue_loop())
-		anti_afk_loop_task = asyncio.create_task(anti_afk_loop())
-		# sigil_loop_task = asyncio.create_task(sigil_loop())
-		in_combat_loop_task = asyncio.create_task(is_client_in_combat_loop())
+		all_tasks['foreground_client_switching'] = asyncio.create_task(foreground_client_switching())
+		all_tasks['assign_foreground_clients'] = asyncio.create_task(assign_foreground_clients())
+		all_tasks['anti_afk_loop'] = asyncio.create_task(anti_afk_loop())
+		all_tasks['is_client_in_combat_loop'] = asyncio.create_task(is_client_in_combat_loop())
+		all_tasks['entity_detect_combat_loop'] = asyncio.create_task(entity_detect_combat_loop())
+		all_tasks['potion_usage_loop'] = asyncio.create_task(potion_usage_loop())
+		all_tasks['rpc_loop'] = asyncio.create_task(rpc_loop())
+		all_tasks['drop_logging_loop'] = asyncio.create_task(drop_logging_loop())
+		all_tasks['zone_check_loop'] = asyncio.create_task(zone_check_loop())
+		all_tasks['anti_afk_questing_loop'] = asyncio.create_task(anti_afk_questing_loop())
+		all_tasks['ban_watcher'] = asyncio.create_task(ban_watcher())
+		all_tasks['tool_active'] = asyncio.create_task(tool_active())
+		all_tasks['gui'] = gui_task
 
-		questing_leader_combat_detection_task = asyncio.create_task(entity_detect_combat_loop())
-		potion_usage_loop_task = asyncio.create_task(potion_usage_loop())
-		rpc_loop_task = asyncio.create_task(rpc_loop())
-		drop_logging_loop_task = asyncio.create_task(drop_logging_loop())
-		zone_check_loop_task = asyncio.create_task(zone_check_loop())
-		anti_afk_questing_loop_task = asyncio.create_task(anti_afk_questing_loop())
-		ban_watcher_task = asyncio.create_task(ban_watcher())
-		tool_active_task = asyncio.create_task(tool_active())
+		while True:
+			pending = [t for t in all_tasks.values() if t is not None and not t.done()]
+			if not pending:
+				break
+			done, _ = await asyncio.wait(pending, return_when=asyncio.FIRST_EXCEPTION)
 
-		# while True:
-		# await asyncio.wait([foreground_client_switching_task, speed_switching_task, combat_loop_task, assign_foreground_clients_task, dialogue_loop_task, anti_afk_loop_task, sigil_loop_task, in_combat_loop_task, questing_leader_combat_detection_task, gui_task, potion_usage_loop_task, rpc_loop_task, drop_logging_loop_task, zone_check_loop_task])
-		done, _ = await asyncio.wait([
-			ban_watcher_task,
-			foreground_client_switching_task,
-			assign_foreground_clients_task,
-			anti_afk_loop_task,
-			in_combat_loop_task,
-			questing_leader_combat_detection_task,
-			gui_task,
-			potion_usage_loop_task,
-			rpc_loop_task,
-			drop_logging_loop_task,
-			zone_check_loop_task,
-			anti_afk_questing_loop_task,
-			tool_active_task
-			], return_when=asyncio.FIRST_EXCEPTION)
-
-		for t in done:
-			if t.done():
+			should_exit = False
+			for t in done:
 				exc = t.exception()
-				match exc:
-					case None:
-						continue
-					case deimosgui.ToolClosedException():
-						logger.info("Tool close triggered by user.")
-						continue
-					case _:
-						logger.exception(exc)
-						pass
+				if exc is None:
+					continue
+				elif isinstance(exc, deimosgui.ToolClosedException):
+					logger.info("Tool close triggered by user.")
+					should_exit = True
+				elif t == all_tasks.get('gui'):
+					# GUI task errors are always fatal
+					logger.opt(exception=exc).error("GUI task crashed")
+					should_exit = True
+				else:
+					# Client-dependent task died (memory error, dead process, etc.)
+					# Non-fatal — the client is likely closed
+					task_name = next((k for k, v in all_tasks.items() if v is t), '?')
+					logger.opt(exception=exc).warning(f"Task '{task_name}' ended")
+			if should_exit:
+				break
 
 	finally:
-		tasks: List[asyncio.Task] = [ban_watcher_task, foreground_client_switching_task, combat_task, assign_foreground_clients_task, dialogue_task, anti_afk_loop_task, sigil_task, questing_task, in_combat_loop_task, questing_leader_combat_detection_task, gui_task, potion_usage_loop_task, rpc_loop_task, drop_logging_loop_task, zone_check_loop_task, anti_afk_questing_loop_task, speed_task]
-		for task in tasks:
+		for task in all_tasks.values():
+			if task is not None and not task.cancelled():
+				task.cancel()
+		# Also cancel any active toggle tasks
+		for task in [combat_task, dialogue_task, sigil_task, questing_task, speed_task, auto_pet_task, bot_task]:
 			if task is not None and not task.cancelled():
 				task.cancel()
 
 		await tool_finish()
+		# Signal GUI thread that unhooking is done so it can exit cleanly
+		try:
+			gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.Close))
+		except Exception:
+			pass
 
 
 def bool_to_string(input: bool):
@@ -2207,8 +2901,16 @@ if __name__ == "__main__":
 	# handle_tool_updating()
 
 	current_log = logger.add(f"logs/{tool_name} - {generate_timestamp()}.log", encoding='utf-8', enqueue=True, backtrace=True)
-	asyncio.run(main())
-	# global gui_send_queue
-	# gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.Close))
-	# gui_task.cancel()
+
+	# Set up GUI queues before starting anything
+	gui_send_queue = queue.Queue()
+	recv_queue = queue.Queue()
+
+	# Run async backend in a background thread so the GUI can run on the main thread (required by Qt)
+	backend_thread = threading.Thread(target=lambda: asyncio.run(main()), daemon=True)
+	backend_thread.start()
+
+	# Run GUI on the main thread (swap queue order: sending from window = receiving from backend)
+	deimosgui.manage_gui(recv_queue, gui_send_queue, theme_dict, tool_name, tool_version, gui_on_top, gui_langcode, gui_font, gui_font_size, tool_author, settings=settings)
+
 	logger.remove(current_log)

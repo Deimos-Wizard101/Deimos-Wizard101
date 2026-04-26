@@ -26,17 +26,15 @@ jobs:
       with:
         fetch-depth: 0  # Full history for changelog
     
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
     - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    
+      run: uv python install
+
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt --force-reinstall
-        pip install pyinstaller
-    
+      run: uv sync --group dev
+
     - name: Get version from source code
       id: version
       shell: powershell
@@ -77,7 +75,7 @@ jobs:
     
     - name: Build with PyInstaller
       run: |
-        pyinstaller -F -w --clean -i Deimos-logo.ico --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest"
+        uv run --group dev pyinstaller --noconfirm --clean Deimos.spec
         echo "Build completed successfully"
         dir dist
     
@@ -87,10 +85,6 @@ jobs:
         echo "Checking for required files..."
         if [ ! -f "dist/Deimos.exe" ]; then
           echo "ERROR: Deimos.exe not found in dist folder"
-          exit 1
-        fi
-        if [ ! -f "Deimos-config.ini" ]; then
-          echo "ERROR: Deimos-config.ini not found"
           exit 1
         fi
         if [ ! -f "LICENSE" ]; then
@@ -108,7 +102,6 @@ jobs:
         
         # Copy files to release directory
         Copy-Item "dist/Deimos.exe" -Destination "release/"
-        Copy-Item "Deimos-config.ini" -Destination "release/"
         Copy-Item "LICENSE" -Destination "release/"
         
         # Create zip file with version in name using PowerShell

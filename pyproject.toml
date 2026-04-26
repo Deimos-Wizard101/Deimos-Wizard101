@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "deimos-wizard101"
+version = "3.13.0"
+description = "A Wizard101 automation tool"
+license = "GPL-3.0-only"
+requires-python = ">=3.13"
+dependencies = [
+    "loguru>=0.7.2",
+    "pypresence>=4.3.0",
+    "pyperclip>=1.9.0",
+    "PyQt6>=6.6.0",
+    "pywin32>=306; sys_platform == 'win32'",
+    "cryptography>=42.0.0",
+    "pyyaml>=6.0.1",
+    "requests>=2.32.3",
+    "thefuzz>=0.22.1",
+    "wizwalker",
+    "wizsprinter",
+    "wizlaunch",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.uv.workspace]
+members = ["libs/wizwalker", "libs/wizsprinter", "libs/wizlaunch"]
+
+[tool.uv.sources]
+wizwalker = { workspace = true }
+wizsprinter = { workspace = true }
+wizlaunch = { workspace = true }
+
+[dependency-groups]
+dev = ["pyinstaller>=6.0"]

@@ -1,0 +1,213 @@
+WizardCity;WizardCity/WC_Ravenwood_Teleporter;bartleby
+WizardCity;WizardCity/WC_Golem_Tower;golem court
+WizardCity;WizardCity/WC_Streets/Interiors/WC_PET_Park;pet pavilion
+WizardCity;WizardCity/WC_Duel_Arena;arena
+WizardCity;WizardCity/WC_Streets/WC_Unicorn;unicorn way
+WizardCity;WizardCity/WC_Shop_Area;shopping district
+WizardCity;WizardCity/WC_Streets/WC_Colossus;colossus boulevard
+WizardCity;WizardCity/WC_Streets/WC_OldeTown;olde town
+WizardCity;WizardCity/WC_Streets/Interiors/WC_OldeTown_AuctionHouse;bazaar
+WizardCity;WizardCity/WC_Streets/WC_Cyclops;cyclops lane
+WizardCity;WizardCity/WC_Streets/WC_Triton;triton avenue
+WizardCity;WizardCity/WC_Streets/WC_Firecat;firecat alley
+Krokopia;Krokotopia/KT_WorldTeleporter;KT world teleporter
+Krokotopia;;Krokotopia/KT_Hub;the oasis
+Krokotopia;Krokotopia/Interiors/KT_Library;KT library
+Krokotopia;Krokotopia/KT_Pyramid/KT_AltarOfKings;altar of the kings
+Krokotopia;Krokotopia/KT_Pyramid/KT_Hall;royal hall
+Krokotopia;Krokotopia/KT_Pyramid/KT_Chamber;chamber of fire
+Krokotopia;Krokotopia/KT_Pyramid/KT_PalaceOfFire;palace of fire
+Krokotopia;Krokotopia/KT_Hub_Sphinx;krokosphinx
+Krokotopia;Krokotopia/Interiors/KT_School;balance school
+Krokotopia;Krokotopia/KT_Krokosphinx/KT_EntranceHall;entrance hall
+Krokotopia;Krokotopia/KT_Krokosphinx/KT_Vault;vault of ice
+Krokotopia;Krokotopia/KT_Krokosphinx/KT_Retreat;emperor's retreat
+Krokotopia;Krokotopia/KT_Krokosphinx/KT_ChampHall;hall of champion's
+Krokotopia;Krokotopia/KT_Krokosphinx/KT_Arena;grand arena
+Krokotopia;Krokotopia/KT_Hub_Crypt;crypt
+Krokotopia;Krokotopia/KT_Tomb/KT_WellOfSpirits;well of spirits
+Krokotopia;Krokotopia/KT_Tomb/KT_TempleOfStorms;temple of storms
+Krokotopia;Krokotopia/KT_Tomb/KT_Barracks;barracks
+Krokotopia;Krokotopia/KT_Tomb/KT_DjeseritTomb;djeserit tomb
+Krokotopia;Krokotopia/KT_Tomb/KT_AhnicTomb;ahnic tomb
+Marleybone;Marleybone/Interiors/MB_WolfminsterAbbey;regents's square
+Marleybone;Marleybone/MB_Hub;regent's square
+Marleybone;Marleybone/MB_Station/MB_Station_Hub;digmoore station
+Marleybone;Marleybone/MB_Station/MB_Ironworks;Ironworks
+Marleybone;Marleybone/MB_Station/MB_HydePark;Hyde Park
+Marleybone;Marleybone/MB_Station/MB_ChelseaCourt;Chelsea Court
+Marleybone;Marleybone/Interiors/MB_ScotlandYard;Scotland Yard
+Marleybone;Marleybone/MB_ScotlandYard/MB_Roof;Scotland Yard roof
+Marleybone;Marleybone/MB_ScotlandYard/MB_KatzLab;katzensteins lab
+Marleybone;Marleybone/MB_ScotlandYard/MB_KnightsCourt;knights court
+Marleybone;Marleybone/MB_ScotlandYard/MB_Prison;newgate prison
+Marleybone;Marleybone/MB_BigBen/MB_Museum;royal museum
+Marleybone;Marleybone/MB_BigBen/MB_BigBen;big ben
+MooShu;MooShu/Interiors/MS_Teleport_Chamber;m0door
+MooShu;MooShu/MS_Hub;jade palace
+MooShu;MooShu/MS_War/MS_War_RuinedVillage_Hub;hametsu village
+MooShu;MooShu/MS_War/MS_War_BattlefieldA;crimson fields
+MooShu;MooShu/MS_War/MS_War_BattlefieldB;tatakai outpost
+MooShu;MooShu/Interiors/MS_WaterDojot1_Common;shoshun village entrance
+MooShu;MooShu/MS_Plague/MS_Plague_Hub_FarmVillage;shoshun village
+MooShu;MooShu/MS_Plague/MS_Plague_Zone3_CliffsidePalace;shirataki temple
+MooShu;MooShu/MS_Plague/MS_Plague_Zone1_WaterfallCave;cave of solitude
+MooShu;MooShu/MS_Plague/MS_Plague_Zone2_RiverVillage;kishibe village
+MooShu;MooShu/Interiors/MS_Emperor_Palace;throne room
+MooShu;MooShu/MS_Death/MS_Death_Hub_RuinedTemple;yoshihito temple
+MooShu;MooShu/MS_Death/MS_Death_Zone2_HauntedVillage;village of sorrow
+MooShu;MooShu/MS_Death/MS_Death_Zone3_AncientTree;tree of life
+MooShu;MooShu/MS_Death/MS_Death_Zone1_BurialGround;ancient burial grounds
+DragonSpire;DragonSpire/DS_Hub_Cathedral;the basilica
+DragonSpire;DragonSpire/DS_A1_Knowledge/DS_A1Hub_Library;the atheneum
+DragonSpire;DragonSpire/DS_A1_Knowledge/DS_A1Z1_WizardTower;the tower archives
+DragonSpire;DragonSpire/DS_A1_Knowledge/DS_A1Z3_GrandChasm;Grand Chasm
+DragonSpire;DragonSpire/DS_A2_Battle/DS_A2Hub_Necropolis;necropolis
+DragonSpire;DragonSpire/DS_A2_Battle/DS_A2Z1_Hatchery;drake hatchery
+DragonSpire;DragonSpire/DS_A2_Battle/DS_A2Z3_Detention;the labrinth
+DragonSpire;DragonSpire/DS_A2_Battle/DS_A2Z2_Arena;the crucible
+DragonSpire;DragonSpire/DS_A1_Knowledge/DS_A1Z2_ConquestPlaza;plaza of conquests
+DragonSpire;DragonSpire/DS_A3_Kings/DS_A3Hub_Academy;dragonspyre academy
+DragonSpire;DragonSpire/DS_A3_Kings/DS_A3Z3_Volcano/DS_LandingZone;dragons roost
+DragonSpire;DragonSpire/DS_A3_Kings/DS_A3Z2_Amphitheatre;the forum
+DragonSpire;DragonSpire/DS_A3_Kings/DS_A3Z1_CrystalGrove;crystal grove
+Celestia;Celestia/CL_Hub;celestia base camp
+Celestia;Celestia/CL_Z10_Kingdom_Of_The_Crabs;crustacean empire
+Celestia;Celestia/CL_Z06_StormHaven;storm riven
+Celestia;Celestia/CL_Z07_Storm_Lord_Temple;storm riven hall
+Celestia;Celestia/CL_Z03_District_Of_The_Stars;District Of The Stars
+Celestia;Celestia/CL_Z04_Temple_Of_The_Stars;the stellarium
+Celestia;Celestia/CL_Z08_Temple_Of_The_Moon/MoonC1;the portico
+Celestia;Celestia/CL_Z01_Survey_Camp;survey camp
+Celestia;Celestia/CL_Z02_Crab_Realm;the grotto
+Celestia;Celestia/CL_Z05_The_Floating_Land;the floating land
+Celestia;Celestia/CL_Z09_Science_Center;science center
+Wysteria;Wysteria/PA_Hub;pigswick academy
+Wysteria;Wysteria/PA_Z01_Pegasus;pegasus place
+Wysteria;Wysteria/PA_Z02_Tanglewood;tanglewood way
+Wysteria;Wysteria/Interiors/PA_Library;pigswick Library
+Wysteria;Wysteria/Interiors/PA_Library_Archive;Library Archive
+Grizzleheim;Grizzleheim/GH_MainHub;northguard
+Grizzleheim;Grizzleheim/Interiors/Hub_ThroneRoom;bear kings throne
+Grizzleheim;Grizzleheim/GH_Hero;savarstaad pass
+Grizzleheim;Grizzleheim/GH_Wolf;mirkholm keep
+Grizzleheim;Grizzleheim/GH_AbandCity/GH_EntranceHall;nidavellir
+Grizzleheim;Grizzleheim/GH_AbandCity/GH_Library;helgrind warren
+Grizzleheim;Grizzleheim/GH_Raven;ravenscar
+Grizzleheim;Grizzleheim/GH_RedClaw;vigrid roughland
+Grizzleheim;Grizzleheim/GH_HFjord/GH_HFjord;hrundle fjord
+Grizzleheim;Grizzleheim/GH_HFjord/Interiors/GH_HFjord_TownHall;town hall
+Grizzleheim;Grizzleheim/GH_HFjord/GH_Sudrilund;Sudrilund
+Grizzleheim;Grizzleheim/GH_HFjord/GH_Vestrilund;Vestrilund
+Grizzleheim;Grizzleheim/GH_HFjord/GH_Austrilund;Austrilund
+Grizzleheim;Grizzleheim/GH_HFjord/GH_Nordrilund;Nordrilund
+Grizzleheim;Grizzleheim/GH_HFjord/GH_Nastrond;Nastrond
+Zafaria;Zafaria/ZF_Z00_Hub;baobab crossroads
+Zafaria;Zafaria/ZF_Z02_Baobab_Market;Baobab Market
+Zafaria;Zafaria/ZF_Z07_Stone_Town;Stone Town
+Zafaria;Zafaria/Interiors/ZF_Z07_I01_Darajani_Palace;Darajani Palace
+Zafaria;Zafaria/ZF_Z08_Waterfront;Waterfront
+Zafaria;Zafaria/Interiors/ZF_Z08_I08_Librarians_Hideout;waterfront bar 
+Zafaria;Zafaria/ZF_Z09_Drum_Jungle;Drum Jungle
+Zafaria;Zafaria/ZF_Z10_Elephant_Graveyard;Elephant Graveyard
+Zafaria;Zafaria/ZF_Z01_Baobab_Crown;Baobab Crown
+Zafaria;Zafaria/ZF_Z03_Savannah;Savannah
+Zafaria;Zafaria/ZF_Z05_Zamunda_Outskirts;Zamunda Outskirts
+Zafaria;Zafaria/ZF_Z06_Zamunda;Zamunda
+Zafaria;Zafaria/Interiors/ZF_Z06_I03_Magicians_House;Magicians House
+Avalon;Avalon/AV_Z00_Hub;caliburn
+Avalon;Avalon/AV_Z01_AbbeyRoad;Abbey Road
+Avalon;Avalon/AV_Z02_HighRoad;High Road
+Avalon;Avalon/AV_Z03_CaerLyon;Caer Lyon
+Avalon;Avalon/AV_Z04_TheWild;The Wild
+Avalon;Avalon/AV_Z05_TheWyrd;The Wyrd
+Avalon;Avalon/AV_Z06_DunDara;Dun Dara
+Avalon;Avalon/AV_Z07_OuterYard;Outer Yard
+Avalon;Avalon/AV_Z08_LakeShore;Lake Shore
+Azteca;Azteca/AZ_Z00_Zocalo;Zocalo
+Azteca;Azteca/AZ_Z03_MangroveMarsh;Mangrove Marsh
+Azteca;Azteca/AZ_Z04_SaltmeadowSwamp;Saltmeadow Swamp
+Azteca;Azteca/AZ_Z01_ThreePoints;Three Points
+Azteca;Azteca/AZ_Z11_TwinGiants;Twin Giants
+Azteca;Azteca/AZ_Z02_Cenote;Cenote
+Azteca;Azteca/AZ_Z05_ZultunDock;Zultun Dock
+Azteca;Azteca/AZ_Z06_CloudburstIsland;Cloudburst Island
+Azteca;Azteca/AZ_Z07_TierraDeBrea;Tierra De Brea
+Azteca;Azteca/AZ_Z09_AltoAlto;Alto Alto
+Azteca;Azteca/AZ_Z10_FloatingMountains;Floating Mountains
+Khrysalis;Khrysalis/KR_Z00_Hub;bastion
+Khrysalis;Khrysalis/Interiors/KR_Z00_I00_BenightedBurrow;Benighted Burrow
+Khrysalis;Khrysalis/KR_Z02_MoonCliffs;Moon Cliffs
+Khrysalis;Khrysalis/KR_Z03_LastWood;Last Wood
+Khrysalis;Khrysalis/KR_Z01_SilentMarket;Silent Market
+Khrysalis;Khrysalis/Interiors/KR_Z01_WarRoom;War Room
+Khrysalis;Khrysalis/KR_Z04_TyrianGorge;Tyrian Gorge
+Khrysalis;Khrysalis/KR_Z07_RuinedAlcazar;Ruine Alcazar
+Khrysalis;Khrysalis/KR_Z08_RadianceReborn;Radiance Reborn
+Khrysalis;Khrysalis/KR_Z09_MantisCity;sardonyx
+Khrysalis;Khrysalis/KR_Z10_KondhaDesert;Kondha Desert
+Khrysalis;Khrysalis/KR_Z11_TheHive;The Hive
+Khrysalis;Khrysalis/KR_Z05_FortRachias;Fort Rachias
+Khrysalis;Khrysalis/KR_Z06_CrescentBeach;Crescent Beach
+Khrysalis;Khrysalis/Interiors/KR_Z06_I01_Hermitcave;skull rock
+Polaris;Polaris/PL_Z00_Walruskberg;Walruskberg
+Polaris;Polaris/Interiors/PL_Z00_Palace_04B;imperial palace
+Polaris;Polaris/PL_Z01_Harbor;Walruskberg harbor
+Polaris;Polaris/Interiors/PL_Z01_I03_HeadQuarters_A;inspectors brigade headquarters
+Polaris;Polaris/PL_Z02_ForlornTaig;Forlorn Tayg
+Polaris;Polaris/Interiors/PL_Z02_BabaYagaHut_Int;baba yaga's house
+Polaris;Polaris/PL_Z03_IcefallPassage;river of frozen tears
+Polaris;Polaris/PL_Z04_UrvilleStation;Urville Station
+Polaris;Polaris/PL_Z05_FrigidMine;Frigid Mine
+Polaris;Polaris/Interiors/PL_Z06_GolemGarden;Golem Garden
+Polaris;Polaris/PL_Z06_KatabaIceblock;Kataba Iceblock
+Polaris;Polaris/Interiors/PL_Z06_TitanPod;kalypso dock
+Polaris;Polaris/PL_Z07_BorealisPeaks;Borealis Peaks
+Polaris;Polaris/Interiors/PL_Z07_SkyAnchorPeak;sky anchor
+Mirage;Mirage/MR_Z00_Hub;caravan
+Mirage;Mirage/MR_Z01_AlkaliBarrows;Alkali Barrows
+Mirage;Mirage/MR_Z03_CaterwaulCanyon;Caterwaul Canyon
+Mirage;Mirage/MR_Z07_ThievesDen;Thieves Den
+Mirage;Mirage/MR_Z09_ZruvanGrotto;Zruvan Grotto
+Mirage;Mirage/MR_Z04_RubalWastes;Rubal Wastes
+Mirage;Mirage/MR_Z05_Istanboa;Istanboa
+Mirage;Mirage/MR_Z06_YakhalMountain;Yakhal Mountain
+Mirage;Mirage/Interiors/MR_Z06_PrincessHovel;miriam ice princess
+Mirage;Mirage/MR_Z00_Hub;Mirage/MR_Z02_Aggrobah;Aggrobah
+Mirage;Mirage/MR_Z00_Hub;Mirage/MR_Z08_EeremPalace;Eerem Palace
+Empyrea;Empyrea/EM_Z00_Aeriel_HUB;Aeriel Shore
+Empyrea;Empyrea/EM_Z01_Jungle;Aeriel jungle
+Empyrea;Empyrea/Interiors/EM_Z01_MonkeySpiderCave;Monkey Spider Cave
+Empyrea;Empyrea/EM_Z02_Zanadu;Zanadu
+Empyrea;Empyrea/Interiors/EM_Z02_Sewers; Zanadu Sewers
+Empyrea;Empyrea/EM_Z03_OuterAthanor;Outer Athanor
+Empyrea;Empyrea/EM_Z04_InnerAthanor;Inner Athanor
+Empyrea;Empyrea/EM_Z05_Sepidious;Sepidious
+Empyrea;Empyrea/Interiors/EM_Z05_NodoChord;The nodochord
+Empyrea;Empyrea/EM_Z12_LandingZone;the mandalla
+Empyrea;Empyrea/EM_Z13_SamsaraDestroyed;samsara village
+Empyrea;Empyrea/EM_Z14_ChaosJungle;Chaos Jungle
+Empyrea;Empyrea/EM_Z06_NimbusHanger;Nimbus Hanger
+Empyrea;Empyrea/EM_Z07_NimbusCitadel;Nimbus Citadel
+Empyrea;Empyrea/EM_Z10_PortAero;Port Aero
+Empyrea;Empyrea/EM_Z08_SWAeroplains;Aero plains
+Karamelle;Karamelle/KM_Z00_HUB;Karamelle City
+Karamelle;Karamelle/KM_Z03_GumdropForest;Gumdrop Forest
+Karamelle;Karamelle/KM_Z01_VonTrapEstate;Von Trap Estate
+Karamelle;Karamelle/KM_Z04_Sweetzburg;Sweetzburg
+Karamelle;Karamelle/KM_Z05_Nibbleheim;Nibbleheim
+Karamelle;Karamelle/KM_Z06_Mines;Nibbleheim Mines
+Karamelle;Karamelle/KM_Z07_Gutenstadt;Gutenstadt
+Karamelle;Karamelle/KM_Z08_LicoriceForest;black Licorice Forest
+Karamelle;Karamelle/Interiors/KM_Z08_ColaLake;Cola Lake
+Karamelle;Karamelle/KM_Z09_CandyCornFarm;Candy Corn Farm
+Karamelle;Karamelle/KM_Z10_Gobblerton;Gobblerton
+Lemuria;Lemuria/LM_Z00_Hub;telos
+Lemuria;Lemuria/LM_Z01_WildLands;WildLands
+Lemuria;Lemuria/LM_Z02_UrsaiVillage;Ursai Village
+Lemuria;Lemuria/LM_Z03_NightForest;Night Forest
+Lemuria;Lemuria/LM_Z04_Badlands;Badlands
+Lemuria;Lemuria/LM_Z05_Mandoria;_Mandoria
+Lemuria;Lemuria/LM_Z06_SkyCity;Sky City
+Lemuria;Lemuria/LM_Z07_Heap;Heap
+Lemuria;Lemuria/Interiors/LM_Z00_I07_HallofHeroesOuter;Hall of Heroes

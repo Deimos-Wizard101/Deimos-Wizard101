@@ -1,3 +1,4 @@
+__pycache__/
 *.pyc
 logs/
 Deimos-Testconfig.ini
@@ -5,9 +6,13 @@ venv
 *.exe
 testbot.txt
 *.spec
+!Deimos.spec
 build/
 dist/
 *.env
 .secret/*
 .secret
 .secrets
+*.lock
+!.gitignore
+.*
