@@ -816,12 +816,12 @@ async def main():
 			while True:
 				if not freecam_status:
 					if await is_visible_by_path(client, advance_dialog_path):
-						# if await is_visible_by_path(client, decline_quest_path) and not side_quest_status:
-						# 	await client.send_key(key=Keycode.ESC)
-						# 	await asyncio.sleep(0.1)
-						# 	await client.send_key(key=Keycode.ESC)
-						# else:
-						await client.send_key(key=Keycode.SPACEBAR)
+						if await is_visible_by_path(client, decline_quest_path): # and not side_quest_status:
+							await client.send_key(key=Keycode.ESC)
+							await asyncio.sleep(0.1)
+							await client.send_key(key=Keycode.ESC)
+						else:
+							await client.send_key(key=Keycode.SPACEBAR)
 				await asyncio.sleep(0.1)
 
 		await asyncio.gather(*[async_dialogue(p) for p in walker.clients])
