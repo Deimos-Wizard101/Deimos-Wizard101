@@ -80,7 +80,7 @@ DEFAULT_HOTKEYS = {
     "toggle_speed": {"key": "F5", "modifiers": []},
     "toggle_combat": {"key": "NINE", "modifiers": []},
     "toggle_dialogue": {"key": "F4", "modifiers": []},
-    # "toggle_dialogue_side_quests": {"key": "F4", "modifiers": ["SHIFT"]},
+    "toggle_dialogue_side_quests": {"key": "F4", "modifiers": ["SHIFT"]},
     "toggle_sigil": {"key": "F2", "modifiers": []},
     "toggle_questing": {"key": "F3", "modifiers": []},
     "toggle_freecam": {"key": "F1", "modifiers": []},
@@ -309,7 +309,7 @@ class DeimosSettings:
                 # Special case: dialogue also has shift variant
                 if action_id == "toggle_dialogue":
                     hotkeys["toggle_dialogue"] = {"key": value, "modifiers": []}
-                    # hotkeys["toggle_dialogue_side_quests"] = {"key": value, "modifiers": ["SHIFT"]}
+                    hotkeys["toggle_dialogue_side_quests"] = {"key": value, "modifiers": ["SHIFT"]}
                 elif action_id == "toggle_freecam":
                     hotkeys["toggle_freecam"] = {"key": value, "modifiers": []}
                     hotkeys["freecam_tp"] = {"key": value, "modifiers": ["SHIFT"]}
