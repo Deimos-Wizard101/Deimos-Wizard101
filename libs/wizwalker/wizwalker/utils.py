@@ -5,6 +5,7 @@ import io
 import math
 import struct
 import subprocess
+import contextlib
 
 # noinspection PyCompatibility
 import winreg
