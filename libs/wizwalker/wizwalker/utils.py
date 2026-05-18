@@ -855,9 +855,17 @@ async def timed_send_key(window_handle: int, key: Keycode, seconds: float):
         seconds: Number of seconds to send the key
     """
     keydown_task = asyncio.create_task(_send_keydown_forever(window_handle, key))
-    await asyncio.sleep(seconds)
-    keydown_task.cancel()
-    user32.SendMessageW(window_handle, 0x101, key.value, 0)
+    try:
+        await asyncio.sleep(seconds)
+    finally:
+        keydown_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await keydown_task
+        # Always send keyup, even if everything above went wrong.
+        try:
+            user32.SendMessageW(window_handle, 0x101, key.value, 0)
+        except Exception:
+            pass
 
 
 async def _send_keydown_forever(window_handle: int, key: Keycode):
