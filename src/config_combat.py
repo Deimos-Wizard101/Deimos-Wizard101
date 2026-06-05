@@ -51,7 +51,7 @@ def delegate_combat_configs(input_data: str, fallback_clients: int = 1, line_sep
     client_configs: Dict[int, str] = {}
 
     #Match number in "###pX", where X is a number. This determines the client index. This also strips all whitespace.
-    pattern = re.compile(r'###\sp\s*(\d+)')
+    pattern = re.compile(r'###\s*p\s*(\d+)')
     client_to_match = -1
     local_configs: List[str] = []
 
