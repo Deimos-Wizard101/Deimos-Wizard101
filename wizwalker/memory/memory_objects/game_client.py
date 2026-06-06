@@ -26,7 +26,7 @@ class GameClient(MemoryObject):
             rb"\x20\x02\x00\x48\x8B\x07\x33\xD2\x48\x8B\xCF",
             3,
             "elastic_camera_controller",
-            0x22260
+            0x222C8
         )
 
         addr = await self.read_value_from_offset(offset, Primitive.uint64)
@@ -42,7 +42,7 @@ class GameClient(MemoryObject):
             rb"\x41\xB8\x01\x00\x00\x00\x48\x8B\xCB\x48\x3B\xFA\x75",
             3,
             "free_camera_controller",
-            0x22270
+            0x222D8
         )
 
         addr = await self.read_value_from_offset(offset, Primitive.uint64)
@@ -62,7 +62,7 @@ class GameClient(MemoryObject):
             rb"....\x90\x48\x8B\x4C\x24",
             3,
             "selected_camera_controller",
-            0x22290
+            0x222F8
         )
 
         addr = await self.read_value_from_offset(offset, Primitive.uint64)
@@ -85,7 +85,7 @@ class GameClient(MemoryObject):
             rb"....\x90\x48\x8B\x4C\x24",
             3,
             "selected_camera_controller",
-            0x22290
+            0x222F8
         )
 
         await self.write_value_to_offset(offset, selected_camera_controller, Primitive.uint64)
@@ -100,7 +100,7 @@ class GameClient(MemoryObject):
             rb"\x55\xE0\x48\x8B\xCB\xE8",
             3,
             "is_freecam",
-            0x222A8
+            0x22310
         )
         return await self.read_value_from_offset(offset, Primitive.bool)
 
@@ -114,7 +114,7 @@ class GameClient(MemoryObject):
             rb"\x55\xE0\x48\x8B\xCB\xE8",
             3,
             "is_freecam",
-            0x222A8
+            0x22310
         )
         await self.write_value_to_offset(offset, is_freecam, Primitive.bool)
 
@@ -259,7 +259,7 @@ class GameClient(MemoryObject):
         return DynamicGamebryoPresenter(self.hook_handler, addr)
 
     async def fishing_manager(self) -> FishingManager:
-        addr = await self.read_value_from_offset(0x23140, Primitive.uint64)
+        addr = await self.read_value_from_offset(0x231a8, Primitive.uint64)
         return FishingManager(self.hook_handler, addr)
 
 class CurrentGameClient(GameClient):

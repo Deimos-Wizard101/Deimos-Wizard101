@@ -708,7 +708,7 @@ class Client:
                 b"\x48\xBA" + packed_new_camera_address +  # mov rdx, new_cam_addr
                 b"\x49\xC7\xC0\x01\x00\x00\x00"  # mov r8, 0x1
                 b"\x48\x8B\x01"  # mov rax, [rcx]
-                b"\x48\x8B\x80\x70\x04\x00\x00"  # mov rax, [rax+0x470]
+                b"\x48\x8B\x80\x78\x04\x00\x00"  # mov rax, [rax+0x478]
                 b"\x49\x89\xC1"  # mov r9, rax
                 b"\xFF\xD0"  # call rax
 

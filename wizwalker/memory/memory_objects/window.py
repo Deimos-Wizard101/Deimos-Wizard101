@@ -126,7 +126,7 @@ class Window(PropertyClass):
             if type_name != "SpellCheckBox":
                 raise ValueError(f"This object is a {type_name} not a SpellCheckBox.")
 
-        addr = await self.read_value_from_offset(960, Primitive.int64)
+        addr = await self.read_value_from_offset(1104, Primitive.int64)
 
         if addr == 0:
             return None
@@ -134,7 +134,7 @@ class Window(PropertyClass):
         return DynamicGraphicalSpell(self.hook_handler, addr)
 
     async def maybe_checked(self) -> bool:
-        return await self.read_value_from_offset(884, Primitive.bool)
+        return await self.read_value_from_offset(1028, Primitive.bool)
 
     # see maybe_graphical_spell
     # note: not defined
@@ -144,7 +144,7 @@ class Window(PropertyClass):
             if type_name != "SpellCheckBox":
                 raise ValueError(f"This object is a {type_name} not a SpellCheckBox")
 
-        return await self.read_value_from_offset(1064, Primitive.bool)
+        return await self.read_value_from_offset(1208, Primitive.bool)
 
     # See maybe_graphical_spell
     async def maybe_combat_participant(self, *, check_type: bool = False) -> Optional[DynamicCombatParticipant]:
@@ -155,7 +155,7 @@ class Window(PropertyClass):
                     f"This object is a {type_name} not a CombatantDataControl."
                 )
 
-        addr = await self.read_value_from_offset(1680, Primitive.int64)
+        addr = await self.read_value_from_offset(1888, Primitive.int64)
 
         if addr == 0:
             return None
@@ -166,7 +166,12 @@ class Window(PropertyClass):
     async def maybe_text(self, *, check_type: bool = False) -> str:
         # TODO: see if all types with .text have Control prefix
         #  and if so check that they have it
-        base_address = await self.read_base_address() + 584
+        offset = 736
+
+        if await self.maybe_read_type_name() == "ControlText":
+            offset = 712
+
+        base_address = await self.read_base_address() + offset
         string_len = await self.read_typed(base_address + 16, Primitive.int32)
         if string_len == 0:
             return ""
@@ -188,7 +193,12 @@ class Window(PropertyClass):
         """
         Writing to this when there isn't actually a .text could crash
         """
-        address = await self.read_base_address() + 584
+        offset = 736
+
+        if await self.maybe_read_type_name() == "ControlText":
+            offset = 712
+
+        address = await self.read_base_address() + offset
         string_len_addr = address + 16
         encoded = text.encode("utf-16-le")
         # len(encoded) instead of string bc it can be larger in some encodings
@@ -275,37 +285,37 @@ class Window(PropertyClass):
         await self.write_vector(160, tuple(window_rectangle), 4, Primitive.int32)
 
     async def target_alpha(self) -> float:
-        return await self.read_value_from_offset(212, Primitive.float32)
+        return await self.read_value_from_offset(340, Primitive.float32)
 
     async def write_target_alpha(self, target_alpha: float):
-        await self.write_value_to_offset(212, target_alpha, Primitive.float32)
+        await self.write_value_to_offset(340, target_alpha, Primitive.float32)
 
     async def disabled_alpha(self) -> float:
-        return await self.read_value_from_offset(216, Primitive.float32)
+        return await self.read_value_from_offset(344, Primitive.float32)
 
     async def write_disabled_alpha(self, disabled_alpha: float):
-        await self.write_value_to_offset(216, disabled_alpha, Primitive.float32)
+        await self.write_value_to_offset(344, disabled_alpha, Primitive.float32)
 
     async def alpha(self) -> float:
-        return await self.read_value_from_offset(208, Primitive.float32)
+        return await self.read_value_from_offset(336, Primitive.float32)
 
     async def write_alpha(self, alpha: float):
-        await self.write_value_to_offset(208, alpha, Primitive.float32)
+        await self.write_value_to_offset(336, alpha, Primitive.float32)
 
     # async def window_style(self) -> class SharedPointer<class WindowStyle>:
-    #     return await self.read_value_from_offset(232, "class SharedPointer<class WindowStyle>")
+    #     return await self.read_value_from_offset(360, "class SharedPointer<class WindowStyle>")
 
     async def help(self) -> str:
-        return await self.read_string_from_offset(248)
+        return await self.read_string_from_offset(376)
 
     async def write_help(self, _help: str):
-        await self.write_string_to_offset(248, _help)
+        await self.write_string_to_offset(376, _help)
 
     async def script(self) -> str:
-        return await self.read_string_from_offset(352)
+        return await self.read_string_from_offset(480)
 
     async def write_script(self, script: str):
-        await self.write_string_to_offset(352, script)
+        await self.write_string_to_offset(480, script)
 
     async def offset(self) -> tuple:
         return await self.read_vector(192, 2, Primitive.int32)
@@ -314,19 +324,19 @@ class Window(PropertyClass):
         await self.write_vector(192, offset, 2, Primitive.int32)
 
     async def scale(self) -> tuple:
-        return await self.read_vector(200, 2)
+        return await self.read_vector(328, 2)
 
     async def write_scale(self, scale: tuple):
-        await self.write_vector(200, scale, 2)
+        await self.write_vector(328, scale, 2)
 
     async def tip(self) -> str:
-        return await self.read_string_from_offset(392)
+        return await self.read_string_from_offset(520)
 
     async def write_tip(self, tip: str):
-        await self.write_string_to_offset(392, tip)
+        await self.write_string_to_offset(520, tip)
 
     # async def bubble_list(self) -> class WindowBubble:
-    #     return await self.read_value_from_offset(424, "class WindowBubble")
+    #     return await self.read_value_from_offset(552, "class WindowBubble")
 
     async def parent_offset(self) -> tuple:
         return await self.read_vector(176, 4, Primitive.int32)
@@ -334,9 +344,36 @@ class Window(PropertyClass):
     async def write_parent_offset(self, parent_offset: tuple):
         await self.write_vector(176, parent_offset, 4, Primitive.int32)
 
-    async def is_control_grayed(self):
+    async def neighbor_left(self) -> str:
+        return await self.read_string_from_offset(200)
+
+    async def write_neighbor_left(self, neighbor_left: str):
+        await self.write_string_to_offset(200, neighbor_left)
+
+    async def neighbor_top(self) -> str:
+        return await self.read_string_from_offset(232)
+
+    async def write_neighbor_top(self, neighbor_top: str):
+        await self.write_string_to_offset(232, neighbor_top)
+
+    async def neighbor_right(self) -> str:
+        return await self.read_string_from_offset(264)
+
+    async def write_neighbor_right(self, neighbor_right: str):
+        await self.write_string_to_offset(264, neighbor_right)
+
+    async def neighbor_bottom(self) -> str:
+        return await self.read_string_from_offset(296)
+
+    async def write_neighbor_bottom(self, neighbor_bottom: str):
+        await self.write_string_to_offset(296, neighbor_bottom)
+
+    async def is_control_grayed(self) -> bool:
         # Note this is from "class ControlButton", base class is window so it works. Likely should have its own class - Click
-        return await self.read_value_from_offset(688, Primitive.bool)
+        return await self.read_value_from_offset(808, Primitive.bool)
+
+    async def maybe_chat_channel_is_active(self) -> bool:
+        return await self.read_value_from_offset(1016, Primitive.bool)
 
 
 class DeckListControlSpellEntry(DynamicMemoryObject):
@@ -389,7 +426,7 @@ class SpellListControlSpellEntry(DynamicMemoryObject):
 
 class GraphicalSpellWindow(Window):
     async def graphical_spell(self) -> Optional[DynamicGraphicalSpell]:
-        addr = await self.read_value_from_offset(584, Primitive.uint64)
+        addr = await self.read_value_from_offset(712, Primitive.uint64)
 
         if addr == 0:
             return None
