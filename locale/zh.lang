@@ -1,0 +1,265 @@
+# Deimos 中文语言文件
+
+# 许可协议
+license_title=许可协议
+license_text=使用 Deimos 即表示你同意 GPL v3 许可协议。
+
+# 主横幅
+free_tool=Deimos 永远是免费工具。如果你为此付费，那你被骗了！
+
+# 标签页名称
+hotkeys=快捷键
+camera=镜头
+dev_utils=开发者工具
+utilities=实用工具
+stats=状态
+flythrough=飞行路径
+bot=脚本
+combat=战斗
+misc=杂项
+console=控制台
+
+# 开关
+toggles=开关
+speedhack=加速
+combat_toggle=自动战斗
+dialogue=自动对话
+sigil=传送阵
+questing=自动任务
+auto_pet=自动宠物
+auto_potion=自动药水
+
+# 快捷键
+hotkeys_label=快捷键
+quest_tp=任务传送
+freecam=自由视角
+freecam_tp=自由视角传送
+mass_hotkeys=群体快捷键
+mass_tp=群体传送
+xyz_sync=XYZ同步
+x_press=按下X键
+friend_tp=好友传送
+dialogue_side_quests=支线任务(+)
+kill_tool=结束工具
+
+# 快捷键管理器
+hotkey_manager=快捷键管理器
+bind_hotkey=绑定快捷键
+unbind_hotkey=解绑
+press_a_key=按下一个按键...
+reset_defaults=恢复默认
+unbound=未绑定
+key_conflict=按键冲突
+cat_toggles=开关
+cat_teleports=传送
+cat_multi_client=多开
+cat_camera=镜头
+cat_system=系统
+
+# 镜头
+set_camera_position=设置位置
+yaw=偏航
+roll=横滚
+pitch=俯仰
+entity=实体
+toggle_camera_collision=切换碰撞
+distance=距离
+dist_min=最小距离
+dist_max=最大距离
+copy_camera_position=复制镜头坐标
+populate_camera=填充
+
+# 开发工具
+advanced_warning=以下工具仅适用于高级用户，官方不提供支持。
+tp_utils=传送工具
+custom_tp=自定义传送
+entity_name=实体名称
+available_entities=可用实体
+available_paths=可用路径
+zone_name=区域名称
+go_to_zone=前往区域
+mass_go_to_zone=群体前往区域
+world_name=世界名称
+go_to_world=前往世界
+mass_go_to_world=群体前往世界
+go_to_bazaar=前往集市
+mass_go_to_bazaar=群体前往集市
+refill_potions=补充药水
+mass_refill_potions=群体补充药水
+
+# 状态
+caster_target_indices=施法者/目标索引
+dmg=伤害
+base_dmg=基础伤害
+school=系别
+crit=暴击
+view_stats=查看状态
+copy_stats=复制状态
+no_client_selected=未选择客户端。
+swap_members=交换成员
+swap_sides=交换阵营
+not_in_combat=当前选择的客户端未处于战斗中。
+
+# 飞行路径
+import_flythrough=导入飞行路径
+export_flythrough=导出飞行路径
+execute_flythrough=执行飞行路径
+kill_flythrough=停止飞行路径
+
+# 脚本
+import_bot=导入脚本
+export_bot=导出脚本
+run_bot=运行脚本
+kill_bot=停止脚本
+
+# 战斗
+import_playstyle=导入战斗风格
+export_playstyle=导出战斗风格
+set_playstyles=设置战斗风格
+
+# 杂项
+scale=缩放
+set_scale=设置缩放
+select_pet_world=选择宠物世界：
+
+# 控制台
+console_support=请求帮助时请附带日志。
+collapse_expand_logs=折叠 / 展开日志
+copy_logs=复制日志
+
+# 工具提示
+tooltip_license=许可协议
+tooltip_wiki_hotkeys=维基：快捷键
+tooltip_source_code=源代码
+tooltip_discord=Discord 社区
+tooltip_wiki_camera=维基：镜头
+tooltip_wiki_utilities=维基：实用工具
+tooltip_wiki_stats=维基：状态
+tooltip_wiki_flythroughs=维基：飞行路径
+tooltip_wiki_bots=维基：脚本
+tooltip_wiki_playstyles=维基：战斗风格
+
+# 区域工具提示
+tooltip_section_camera=设置镜头位置、朝向、锚点和距离
+tooltip_section_utils=使用当前镜头数值填充字段、复制位置或切换碰撞
+tooltip_section_tp_utils=传送到坐标或指定实体
+tooltip_section_navigation=前往区域、世界、集市，或补充药水
+
+# 启动器
+launcher=启动器
+saved_accounts=账号管理
+hooked_clients=客户端管理
+unhook_client=取消注入
+hook_client=注入
+kill_client=结束
+relaunch_client=重新启动
+unmanaged_clients=可用客户端
+add_account=添加账号
+remove_account=移除账号
+launch_login=启动并登录
+game_path=游戏路径
+nickname=昵称
+username=用户名
+password=密码
+save_account=保存
+no_accounts_selected=未选择账号。
+account_added=账号保存成功。
+account_removed=账号已移除。
+launching_instances=正在启动实例...
+tooltip_wiki_launcher=维基：启动器
+settings=设置
+
+# 状态标签
+status_dead=死亡
+status_stunned=眩晕
+status_friendly=友方
+status_hostile=敌对
+status_unknown=未知
+already_active=已激活
+recent_imports=最近导入
+no_recent_imports=暂无最近导入
+
+# 客户端信息
+client=客户端
+zone=区域
+
+# 设置窗口
+settings_title=设置
+settings_general=通用
+settings_appearance=外观
+settings_sigil=传送阵
+settings_questing=任务
+settings_auto_pet=自动宠物
+settings_combat=战斗
+settings_launcher=启动器
+settings_restart_note=* 需要重启后生效
+settings_save=保存
+settings_cancel=取消
+
+setting_speed_multiplier=速度倍率
+setting_use_potions=使用药水
+setting_buy_potions=购买药水
+setting_rich_presence=在线状态显示
+setting_drop_logging=掉落日志
+setting_use_anti_afk=防挂机
+setting_bg_color=背景
+setting_alt_bg=输入框背景
+setting_text_color=文字颜色
+setting_button_color=按钮颜色
+setting_stroke_color=描边颜色
+setting_titlebar_bg=标题栏背景
+settings_import_theme=导入主题
+settings_export_theme=导出主题
+settings_theme=主题
+setting_locale=语言
+setting_font=字体
+setting_font_size=字体大小
+setting_use_team_up=使用组队匹配
+setting_client_to_follow=跟随的客户端
+setting_client_to_boost=增益目标客户端
+setting_friend_teleport=好友传送
+setting_gear_switching=单人区域切换装备
+setting_hitter_client=输出客户端
+setting_ignore_pet_level_up=忽略宠物升级
+setting_only_dance_game=只玩跳舞游戏
+setting_remember_chosen_clients=记住已选择客户端
+setting_kill_minions_first=优先击杀小怪
+setting_auto_team_combat=自动团队战斗
+setting_discard_duplicates=丢弃重复卡牌
+
+# 通用
+ok=确定
+cancel=取消
+close=关闭
+search=搜索
+copy=复制
+copied=已复制！
+reset_to_default=恢复默认值（{0}）
+always_on_top=窗口置顶
+not_on_top=取消置顶
+individual=单个客户端
+all_clients=所有客户端
+navigation=导航
+cat_other=其他
+fetch_player_gid=获取玩家 GID
+copy_text=复制文本：{0}
+
+# 弹窗
+ui_tree=UI 树
+ui_tree_hint=点击需要的路径即可复制到剪贴板。
+entity_list=实体列表
+entity_list_hint=点击复制。右键打开传送 / 镜头选项。
+tp_to_entity=传送到实体
+anchor_cam_to_entity=将镜头锚定到实体
+
+# 设置附加项
+import_lang_file=导入 .lang 文件
+import_lang_title=导入语言文件
+overwrite_binding={0} 已经绑定到“{1}”。\n是否覆盖？
+
+# 底部信息
+position_xyz=位置（XYZ）：
+orientation_pry=朝向（PRY）：
+
+# 状态弹窗
+combat_stats=战斗统计
