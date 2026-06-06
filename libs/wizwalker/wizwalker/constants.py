@@ -9,6 +9,10 @@ gdi32 = ctypes.windll.gdi32
 ntdll = ctypes.windll.ntdll
 
 
+WM_KEYDOWN = 0x100
+WM_KEYUP = 0x101
+
+
 # Number of units covered in 1 second
 WIZARD_SPEED = 580
 
