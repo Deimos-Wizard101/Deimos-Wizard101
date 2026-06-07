@@ -380,6 +380,9 @@ def build_launcher_tab(ctx):
         def _pick():
             path = QFileDialog.getExistingDirectory(ctx.window, tl('game_path'))
             if path:
+                # Qt returns forward slashes even on Windows; normalize to the
+                # platform's native separators before storing/handing to wizlaunch.
+                path = os.path.normpath(path)
                 path_input.setText(path)
                 game_path_input.setText(path)
                 if ctx.settings:
