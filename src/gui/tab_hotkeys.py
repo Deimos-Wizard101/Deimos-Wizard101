@@ -33,8 +33,8 @@ def build_hotkeys_tab(ctx):
         send_queue.put(GUICommand(GUICommandType.XPress))
     def friend_tp_callback():
         send_queue.put(GUICommand(GUICommandType.FriendTeleport))
-    # def dialogue_side_quests_callback():
-    #     send_queue.put(GUICommand(GUICommandType.ToggleDialogueSideQuests))
+    def dialogue_side_quests_callback():
+        send_queue.put(GUICommand(GUICommandType.ToggleDialogueSideQuests))
 
     # --- Left panel: Hotkey Manager ---
     hk_manager = QWidget()
@@ -69,7 +69,7 @@ def build_hotkeys_tab(ctx):
             ("toggle_speed", tl('speedhack'), toggle_callback(send_queue, GUIKeys.toggle_speedhack), True, tl('speedhack'), _toggle_icons['gauge']),
             ("toggle_combat", tl('combat_toggle'), toggle_callback(send_queue, GUIKeys.toggle_combat), True, tl('combat_toggle'), _toggle_icons['combat']),
             ("toggle_dialogue", tl('dialogue'), toggle_callback(send_queue, GUIKeys.toggle_dialogue), True, tl('dialogue'), _toggle_icons['speech']),
-            # ("toggle_dialogue_side_quests", tl('dialogue_side_quests'), dialogue_side_quests_callback, False, None, _toggle_icons['speech']),
+            ("toggle_dialogue_side_quests", tl('dialogue_side_quests'), dialogue_side_quests_callback, True, 'SideQuestAccept', _toggle_icons['speech']),
             ("toggle_sigil", tl('sigil'), toggle_callback(send_queue, GUIKeys.toggle_sigil), True, tl('sigil'), _toggle_icons['bot']),
             ("toggle_questing", tl('questing'), toggle_callback(send_queue, GUIKeys.toggle_questing), True, tl('questing'), _toggle_icons['brain']),
             ("toggle_auto_pet", tl('auto_pet'), toggle_callback(send_queue, GUIKeys.toggle_auto_pet), True, tl('auto_pet'), _toggle_icons['paw']),

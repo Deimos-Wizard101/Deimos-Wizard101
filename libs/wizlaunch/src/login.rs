@@ -18,9 +18,9 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
 
 // Pattern to locate the game's internal command dispatcher.
-// Matches: mov r9b,1 / xor r8d,r8d / lea rdx,[rbp-59h] / mov rcx,[rip+??]
+// Matches: mov r9b,1 / xor r8d,r8d / lea rdx,[rbp-31h] / mov rcx,[rip+??]
 const LOGIN_PATTERN: &[u8] = &[
-    0x41, 0xB1, 0x01, 0x45, 0x33, 0xC0, 0x48, 0x8D, 0x55, 0xA7, 0x48, 0x8B, 0x0D,
+    0x41, 0xB1, 0x01, 0x45, 0x33, 0xC0, 0x48, 0x8D, 0x55, 0xCF, 0x48, 0x8B, 0x0D,
 ];
 
 // RootWindowHook injection-point pattern (wildcards = None).

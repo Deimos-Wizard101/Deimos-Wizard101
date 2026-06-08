@@ -52,7 +52,7 @@ from src.deimoslang import vm
 
 cMessageBox = ctypes.windll.user32.MessageBoxW
 
-tool_version: str = '3.13.0'
+tool_version: str = '3.13.1'
 tool_name: str = 'Deimos'
 tool_author: str = 'Deimos-Wizard101'
 repo_name: str = tool_name + '-Wizard101'
@@ -505,11 +505,11 @@ async def main():
 	async def toggle_dialogue_hotkey():
 		global dialogue_task
 		global gui_send_queue
-		# global side_quest_status
+		global side_quest_status
 
 		if not freecam_status:
 			if dialogue_task is not None and not dialogue_task.cancelled():
-				# side_quest_status = False
+				side_quest_status = False
 				dialogue_task.cancel()
 				dialogue_task = None
 				logger.debug('Dialogue hotkey pressed, disabling auto dialogue.')
@@ -525,8 +525,12 @@ async def main():
 				dialogue_task = asyncio.create_task(try_task_coro(dialogue_loop, walker.clients, True))
 
 
-	# async def toggle_dialogue_side_quests_hotkey():
-	# 	await toggle_dialogue_hotkey(True)
+	async def toggle_dialogue_side_quests_hotkey():
+		global side_quest_status
+		side_quest_status ^= True
+		status_str = 'Enabled' if side_quest_status else 'Disabled'
+		logger.debug(f'Side quests hotkey pressed, side quest acceptance {status_str}.')
+		gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SideQuestAcceptStatus', status_str)))
 
 
 
@@ -816,12 +820,12 @@ async def main():
 			while True:
 				if not freecam_status:
 					if await is_visible_by_path(client, advance_dialog_path):
-						# if await is_visible_by_path(client, decline_quest_path) and not side_quest_status:
-						# 	await client.send_key(key=Keycode.ESC)
-						# 	await asyncio.sleep(0.1)
-						# 	await client.send_key(key=Keycode.ESC)
-						# else:
-						await client.send_key(key=Keycode.SPACEBAR)
+						if await is_visible_by_path(client, decline_quest_path) and not side_quest_status:
+							await client.send_key(key=Keycode.ESC)
+							await asyncio.sleep(0.1)
+							await client.send_key(key=Keycode.ESC)
+						else:
+							await client.send_key(key=Keycode.SPACEBAR)
 				await asyncio.sleep(0.1)
 
 		await asyncio.gather(*[async_dialogue(p) for p in walker.clients])
@@ -1881,11 +1885,11 @@ async def main():
 								logger.info("This GUI option requires hooks to be active, skipping.")
 								continue
 							await friend_teleport_sync_hotkey()
-						# case deimosgui.GUICommandType.ToggleDialogueSideQuests:
-					# 	if not walker.clients:
-					# 		logger.info("This GUI option requires hooks to be active, skipping.")
-					# 		continue
-					# 	await toggle_dialogue_side_quests_hotkey()
+						case deimosgui.GUICommandType.ToggleDialogueSideQuests:
+							if not walker.clients:
+								logger.info("This GUI option requires hooks to be active, skipping.")
+								continue
+							await toggle_dialogue_side_quests_hotkey()
 						case deimosgui.GUICommandType.RebindHotkey:
 							action_id, new_key, new_mods = com.data
 							# Remove old binding from listener if active

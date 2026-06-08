@@ -5,6 +5,7 @@ import io
 import math
 import struct
 import subprocess
+import contextlib
 
 # noinspection PyCompatibility
 import winreg
@@ -15,7 +16,7 @@ from typing import Any, Callable, Iterable, List, Optional
 import appdirs
 
 from wizwalker import ExceptionalTimeout
-from wizwalker.constants import Keycode, kernel32, user32, gdi32
+from wizwalker.constants import Keycode, kernel32, user32, gdi32, WM_KEYDOWN, WM_KEYUP
 
 
 DEFAULT_INSTALL = "C:/ProgramData/KingsIsle Entertainment/Wizard101"
@@ -836,13 +837,21 @@ async def send_hotkey(window_handle: int, modifers: List[Keycode], key: Keycode)
         key: The key to press
     """
     for modifier in modifers:
-        user32.SendMessageW(window_handle, 0x100, modifier.value, 0)
+        _send_keydown(window_handle, modifier)
 
-    user32.SendMessageW(window_handle, 0x100, key.value, 0)
-    user32.SendMessageW(window_handle, 0x101, key.value, 0)
+    _send_keydown(window_handle, key)
+    _send_keyup(window_handle, key)
 
     for modifier in modifers:
-        user32.SendMessageW(window_handle, 0x101, modifier.value, 0)
+        _send_keyup(window_handle, modifier)
+
+
+def _send_keydown(window_handle: int, key: Keycode):
+    user32.SendMessageW(window_handle, WM_KEYDOWN, key.value, 0)
+
+
+def _send_keyup(window_handle: int, key: Keycode):
+    user32.SendMessageW(window_handle, WM_KEYUP, key.value, 0)
 
 
 async def timed_send_key(window_handle: int, key: Keycode, seconds: float):
@@ -855,14 +864,18 @@ async def timed_send_key(window_handle: int, key: Keycode, seconds: float):
         seconds: Number of seconds to send the key
     """
     keydown_task = asyncio.create_task(_send_keydown_forever(window_handle, key))
-    await asyncio.sleep(seconds)
-    keydown_task.cancel()
-    user32.SendMessageW(window_handle, 0x101, key.value, 0)
+    try:
+        await asyncio.sleep(seconds)
+    finally:
+        keydown_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await keydown_task
+        _send_keyup(window_handle, key)
 
 
 async def _send_keydown_forever(window_handle: int, key: Keycode):
     while True:
-        user32.SendMessageW(window_handle, 0x100, key.value, 0)
+        _send_keydown(window_handle, key)
         await asyncio.sleep(0.05)
 
 # TODO: Can replace this with more generic one if needed, but only here for camera maths

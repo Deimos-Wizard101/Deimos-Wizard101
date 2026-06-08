@@ -1,5 +1,3 @@
-**Do not contact anyone besides CowHunter privately about this repo.**
-
 WizSprinter is a semi-official extension to the `WizWalker library <https://github.com/StarrFox/wizwalker>`_.
 
 It adds:
