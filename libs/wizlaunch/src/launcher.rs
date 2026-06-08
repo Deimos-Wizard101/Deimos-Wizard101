@@ -45,11 +45,6 @@ pub fn get_wizard_handles() -> Vec<isize> {
 }
 
 /// Normalize a user-supplied path to the platform's native separators.
-///
-/// Callers (e.g. the game-install folder picker, or Unix-style input) can hand
-/// us paths containing forward slashes. Windows' `CreateProcess`/`current_dir`
-/// expect backslashes, so we rebuild the path from its components, which yields
-/// the host platform's separators. Done lexically — the path need not exist yet.
 fn normalize_path(path: &str) -> PathBuf {
     Path::new(path).components().collect()
 }
