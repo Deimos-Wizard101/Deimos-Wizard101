@@ -52,7 +52,7 @@ from src.deimoslang import vm
 
 cMessageBox = ctypes.windll.user32.MessageBoxW
 
-tool_version: str = '3.13.0'
+tool_version: str = '3.13.1'
 tool_name: str = 'Deimos'
 tool_author: str = 'Deimos-Wizard101'
 repo_name: str = tool_name + '-Wizard101'
