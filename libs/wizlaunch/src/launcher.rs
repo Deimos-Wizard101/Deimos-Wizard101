@@ -1,7 +1,7 @@
 use crate::errors::VaultError;
 use std::collections::HashSet;
 use std::ffi::c_void;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -44,10 +44,15 @@ pub fn get_wizard_handles() -> Vec<isize> {
     handles
 }
 
+/// Normalize a user-supplied path to the platform's native separators.
+fn normalize_path(path: &str) -> PathBuf {
+    Path::new(path).components().collect()
+}
+
 /// Launch the Wizard101 game process.
 /// `login_server` is "host:port" (e.g. "login.us.wizard101.com:12000").
 pub fn launch_game(game_path: &str, login_server: &str) -> Result<(), VaultError> {
-    let bin_dir = Path::new(game_path).join("Bin");
+    let bin_dir = normalize_path(game_path).join("Bin");
     let exe = bin_dir.join("WizardGraphicalClient.exe");
 
     if !exe.exists() {
