@@ -723,3 +723,445 @@ class MouselessCursorMoveHook(User32GetClassInfoBaseHook):
         if self.set_cursor_pos:
             set_cursor_pos, set_cursor_pos_bytes = self.set_cursor_pos
             await self.write_bytes(set_cursor_pos, set_cursor_pos_bytes)
+
+
+class ChatHook(SimpleHook):
+    """Captures incoming directed chat message data.
+
+    Binary RE source: FUN_1416dbb30 (r794925) — MSG_DirectedChat handler.
+
+    Hooks AFTER the handler has extracted all DML fields, at the point
+    where GetWideString just returned the Message wstring pointer in RAX
+    and SourceID is already stored at [RBP-0x80].
+
+    Hook point: func+0x379 (LEA RCX,[RBP-0x8], 4 bytes)
+    At this point:
+      RAX = pointer to std::wstring (Message from GetWideString)
+      [RBP-0x80] = SourceID (GID, 8 bytes)
+      RSI = chat owner object (saved from RCX at func entry)
+
+    The hook copies SourceID and Message text to persistent exports
+    and increments a counter so Python can detect new messages.
+
+    Pattern: uses the function prologue (same as before) to find the
+    function, then hooks at func+0x379 instead of func+0x00.
+    """
+    pattern = (
+        rb"\x48\x89\x5C\x24\x18"           # MOV [RSP+18h], RBX
+        rb"\x48\x89\x74\x24\x20"           # MOV [RSP+20h], RSI
+        rb"\x55\x57\x41\x56"               # PUSH RBP / PUSH RDI / PUSH R14
+        rb"\x48\x8D\xAC\x24\x40\xFF\xFF\xFF"  # LEA RBP, [RSP-0C0h]
+        rb"\x48\x81\xEC\xC0\x01\x00\x00"   # SUB RSP, 1C0h
+        rb"\x48\x8B\x05...."               # MOV RAX, [rip+??] (cookie)
+        rb"\x48\x33\xC4"                    # XOR RAX, RSP
+        rb"\x48\x89\x85\xB0\x00\x00\x00"   # MOV [RBP+0B0h], RAX
+        rb"\x48\x8B\xFA"                    # MOV RDI, RDX
+        rb"\x48\x8B\xF1"                    # MOV RSI, RCX
+        rb"\x45\x33\xF6"                    # XOR R14D, R14D
+    )
+    exports = [
+        ("chat_owner_addr", 8),        # persistent: chat owner (RSI)
+        ("recv_source_gid", 8),        # sender's GID
+        ("recv_message_buf", 160),     # message text (UTF-16LE, 80 wchars max)
+        ("recv_message_len", 8),       # wchar count
+        ("recv_counter", 8),           # increments on each message
+    ]
+    # Hook at func+0x379: LEA RCX,[RBP-0x8] (4 bytes) + CMP RCX,RAX (3 bytes)
+    # Both instructions must be replaced because a JMP is 5 bytes and
+    # the LEA is only 4 — the 5th byte would corrupt the CMP.
+    _HOOK_OFFSET = 0x379
+    instruction_length = 7   # 4 (LEA) + 3 (CMP) = 7 bytes
+    noops = 2                # 7 - 5 = 2 padding NOPs
+
+    # The prologue pattern returns ~10 results from the pattern scan.
+    # Of those ~10 results, only the DirectedChat handler has
+    # MOV dword ptr [RBP-10h], 9 at func+0x7E. So we override
+    # get_jump_address to probe each match and find the correct one.
+    _DISAMBIG_OFFSET = 0x7E
+    _DISAMBIG_BYTES = b"\xC7\x45\xF0\x09\x00\x00\x00"
+
+    async def get_jump_address(self, pattern: bytes, module: str = None) -> int:
+        candidates = await self.pattern_scan(
+            pattern, module=module, return_multiple=True
+        )
+        if isinstance(candidates, int):
+            candidates = [candidates]
+
+        for addr in candidates:
+            probe = await self.read_bytes(
+                addr + self._DISAMBIG_OFFSET, len(self._DISAMBIG_BYTES)
+            )
+            if probe == self._DISAMBIG_BYTES:
+                # Hook at func+0x379, not at the prologue
+                return addr + self._HOOK_OFFSET
+
+        from wizwalker import PatternFailed
+        raise PatternFailed(
+            f"ChatHook: pattern matched {len(candidates)} functions but none "
+            f"had type=9 marker at offset +{self._DISAMBIG_OFFSET:#x}"
+        )
+
+    async def hook(self):
+        """Override to allocate enough space for the extraction bytecode."""
+        pattern, module = await self.get_pattern()
+
+        self.jump_address = await self.get_jump_address(pattern, module=module)
+        self.hook_address = await self.get_hook_address(200)
+
+        logger.debug(f"Got hook address {self.hook_address} in {type(self)}")
+        logger.debug(f"Got jump address {self.jump_address} in {type(self)}")
+
+        self.hook_bytecode = await self.get_hook_bytecode()
+        self.jump_bytecode = await self.get_jump_bytecode()
+
+        self.jump_original_bytecode = await self.read_bytes(
+            self.jump_address, len(self.jump_bytecode)
+        )
+
+        await self.prehook()
+        await self.write_bytes(self.hook_address, self.hook_bytecode)
+        await self.write_bytes(self.jump_address, self.jump_bytecode)
+        await self.posthook()
+
+    async def bytecode_generator(self, packed_exports):
+        chat_owner  = packed_exports[0][1]
+        source_gid  = packed_exports[1][1]
+        message_buf = packed_exports[2][1]
+        message_len = packed_exports[3][1]
+        counter     = packed_exports[4][1]
+
+        # At hook point (func+0x379), register state:
+        #   RAX = wstring pointer (Message from GetWideString)
+        #   [RBP-0x80] = SourceID GID (8 bytes)
+        #   RSI = chat owner (saved from param_1 at func entry)
+
+        # fmt: off
+        preamble = (
+            # Save volatile registers
+            b"\x51"                              # push rcx
+            b"\x52"                              # push rdx
+            b"\x41\x50"                          # push r8
+            b"\x41\x51"                          # push r9
+
+            # RAX = wstring ptr from GetWideString
+
+            # Save chat owner (RSI → export)
+            b"\x50"                              # push rax
+            b"\x48\x89\xF0"                      # mov rax, rsi
+            b"\x48\xA3" + chat_owner +           # mov [chat_owner], rax
+            b"\x58"                              # pop rax
+
+            # Copy SourceID ([RBP-0x80] → export)
+            b"\x50"                              # push rax
+            b"\x48\x8B\x45\x80"                 # mov rax, [rbp-0x80]
+            b"\x48\xA3" + source_gid +           # mov [recv_source_gid], rax
+            b"\x58"                              # pop rax
+
+            # Save message length ([rax+0x10] → export)
+            b"\x50"                              # push rax
+            b"\x48\x8B\x40\x10"                 # mov rax, [rax+0x10]
+            b"\x48\xA3" + message_len +          # mov [recv_message_len], rax
+            b"\x58"                              # pop rax
+
+            # Get wstring data pointer into RDX
+            b"\x48\x8B\xD0"                      # mov rdx, rax (inline)
+            b"\x48\x83\x78\x18\x08"             # cmp [rax+0x18], 8
+            b"\x72\x03"                          # jb .copy
+            b"\x48\x8B\x10"                      # mov rdx, [rax] (heap)
+        )
+
+        # Copy 160 bytes (20 x 8-byte chunks) from RDX to export
+        # Use R8 as dest, R9 as counter, RCX as temp value
+        copy_loop = (
+            b"\x49\xB8" + message_buf +          # mov r8, &message_buf
+            b"\x41\xB9\x14\x00\x00\x00"         # mov r9d, 20 (iterations)
+            # .loop:
+            b"\x48\x8B\x0A"                      # mov rcx, [rdx]
+            b"\x49\x89\x08"                      # mov [r8], rcx
+            b"\x48\x83\xC2\x08"                 # add rdx, 8
+            b"\x49\x83\xC0\x08"                 # add r8, 8
+            b"\x41\xFF\xC9"                      # dec r9d
+            b"\x75\xED"                          # jnz .loop (-19 bytes back)
+        )
+
+        # Increment message counter
+        inc_counter = (
+            b"\x50"                              # push rax
+            b"\x48\xA1" + counter +              # mov rax, [recv_counter]
+            b"\x48\xFF\xC0"                      # inc rax
+            b"\x48\xA3" + counter +              # mov [recv_counter], rax
+            b"\x58"                              # pop rax
+        )
+
+        # Restore registers
+        restore = (
+            b"\x41\x59"                          # pop r9
+            b"\x41\x58"                          # pop r8
+            b"\x5A"                              # pop rdx
+            b"\x59"                              # pop rcx
+        )
+
+        # Original instructions: LEA RCX,[RBP-0x8] (4) + CMP RCX,RAX (3) = 7 bytes
+        original = await self.read_bytes(self.jump_address, 7)
+
+        bytecode = preamble + copy_loop + inc_counter + restore + original
+        # fmt: on
+
+        return bytecode
+
+
+class ChatSendHook(SimpleHook):
+    """Main-thread action hook for social operations.
+
+    Hooks the game's main loop at the shutdown_signal check:
+      CMP [RDI+0x211B8], BL  (RDI = GameClient)
+
+    This runs every frame on the main game thread. Each iteration
+    the hook checks trigger flags. When Python sets a trigger, the
+    hook calls the corresponding game function on the main thread
+    where UI updates and game state access are safe.
+
+    Supported actions:
+      send_trigger=1  -> call send_directed_chat(GameClient, &send_struct)
+      buddy_trigger=1 -> call buddy_request_add(&buddy_obj)
+
+    Python writes data to the export buffer, sets the trigger to 1,
+    then polls until the hook clears it back to 0 (action complete).
+
+    Current chat limitation: messages must be <=7 wchars (SSO inline).
+    """
+    # Pattern: shutdown_signal CMP in the main game loop, followed
+    # by JZ (loop back), CALL, and CMP EAX,0x64 (return check).
+    # The displacement in the CMP and the JZ offset are wildcarded
+    # for patch survivability.
+    pattern = (
+        rb"\x38\x9F....\x74.\xE8....\x83\xF8\x64\x0F\x8F"
+    )
+    instruction_length = 6  # CMP [RDI+offset], BL = 6 bytes
+    noops = 0
+    exports = [
+        ("send_trigger", 1),      # chat: 1 = send requested, 0 = idle
+        ("send_struct", 0x28),    # chat: DirectedChatRequest (40 bytes)
+        ("buddy_trigger", 1),     # buddy: 1 = add requested, 0 = idle
+        ("buddy_obj", 0xE8),      # buddy: fake object, GID at +0xE0
+    ]
+
+    # --- Send directed chat function ---
+    _SEND_PATTERN = (
+        rb"\x48\x89\x5C\x24\x18"
+        rb"\x55\x56\x57"
+        rb"\x48\x8D\xAC\x24\x30\xFF\xFF\xFF"
+        rb"\x48\x81\xEC\xD0\x01\x00\x00"
+        rb"\x48\x8B\x05...."
+        rb"\x48\x33\xC4"
+        rb"\x48\x89\x85\xC0\x00\x00\x00"
+        rb"\x48\x8B\xDA"
+        rb"\x48\x8B\xF9"
+    )
+    _SEND_DISAMBIG_OFFSET = 0x33
+    _SEND_DISAMBIG_BYTES = b"\x48\x83\xC2\x20"
+
+    # --- Buddy add function: FUN_141710e10 ---
+    # This is the clean buddy add that takes (BuddyListManager, target_gid).
+    # The key differentiator from FUN_1412536b0 (dialog callback) is
+    # MOV [RSP+20h], RDX at func+0x1E — it saves param_2 (the GID).
+    # FUN_1412536b0 doesn't have this instruction because it only
+    # takes one parameter.
+    _BUDDY_PATTERN = (
+        rb"\x48\x81\xEC\xA0\x00\x00\x00"       # SUB RSP, 0xA0
+        rb"\x48\x8B\x05...."                   # MOV RAX, [cookie]
+        rb"\x48\x33\xC4"                        # XOR RAX, RSP
+        rb"\x48\x89\x84\x24\x90\x00\x00\x00"  # MOV [RSP+90h], RAX
+        rb"\x48\x8B\xD9"                        # MOV RBX, RCX
+        rb"\x48\x89\x54\x24\x20"               # MOV [RSP+20h], RDX (saves param_2)
+        rb"\xBA\x10\x00\x00\x00"               # MOV EDX, 0x10
+        rb"\x48\x8D\x4C\x24\x30"               # LEA RCX, [RSP+30h]
+    )
+    # MOVUPS at func+0x72 loads "MSG_BUDDYREQUESTADD". Pattern starts
+    # at func+2 (skips PUSH RBX), so disambig offset is 0x72 - 2.
+    _BUDDY_DISAMBIG_OFFSET = 0x70
+    _BUDDY_DISAMBIG_BYTES = b"\x0F\x10\x05"
+
+    async def _resolve_send_func(self) -> int:
+        """Resolve FUN_1416e5ac0 via pattern scan + disambiguation."""
+        candidates = await self.pattern_scan(
+            self._SEND_PATTERN,
+            module="WizardGraphicalClient.exe",
+            return_multiple=True,
+        )
+        if isinstance(candidates, int):
+            candidates = [candidates]
+
+        for addr in candidates:
+            probe = await self.read_bytes(
+                addr + self._SEND_DISAMBIG_OFFSET,
+                len(self._SEND_DISAMBIG_BYTES),
+            )
+            if probe == self._SEND_DISAMBIG_BYTES:
+                return addr
+
+        from wizwalker import PatternFailed
+        raise PatternFailed(
+            f"ChatSendHook: send function pattern matched "
+            f"{len(candidates)} but none had ADD RDX,0x20"
+        )
+
+    async def _resolve_buddy_add_func(self) -> int:
+        """Resolve FUN_141710e10 via pattern scan + string verification.
+
+        Multiple buddy functions (Add, Drop, etc.) share the same prologue
+        and all have MOVUPS at the same offset. We disambiguate by reading
+        the RIP-relative target of the MOVUPS and verifying it points to
+        the "MSG_BUDDYREQUESTADD" string (starts with 'M','S','G','_','B',
+        'U','D','D','Y','R','E','Q','U','E','S','T','A','D','D').
+        """
+        candidates = await self.pattern_scan(
+            self._BUDDY_PATTERN,
+            module="WizardGraphicalClient.exe",
+            return_multiple=True,
+        )
+        if isinstance(candidates, int):
+            candidates = [candidates]
+
+        for addr in candidates:
+            probe = await self.read_bytes(
+                addr + self._BUDDY_DISAMBIG_OFFSET,
+                len(self._BUDDY_DISAMBIG_BYTES),
+            )
+            if probe != self._BUDDY_DISAMBIG_BYTES:
+                continue
+
+            # Read the RIP-relative offset from the MOVUPS instruction.
+            # MOVUPS XMM0,[rip+disp32] = 0F 10 05 <disp32> (7 bytes)
+            movups_addr = addr + self._BUDDY_DISAMBIG_OFFSET
+            disp32_bytes = await self.read_bytes(movups_addr + 3, 4)
+            disp32 = struct.unpack("<i", disp32_bytes)[0]
+            string_addr = (movups_addr + 7) + disp32
+
+            # Verify it's "MSG_BUDDYREQUESTADD" (not DROP, ACCEPT, etc.)
+            string_bytes = await self.read_bytes(string_addr, 19)
+            if string_bytes == b"MSG_BUDDYREQUESTADD":
+                return addr - 2  # pattern starts at func+2
+
+        from wizwalker import PatternFailed
+        raise PatternFailed(
+            f"ChatSendHook: buddy add pattern matched "
+            f"{len(candidates)} but none loaded MSG_BUDDYREQUESTADD"
+        )
+
+    async def hook(self):
+        """Override to allocate enough space for the larger bytecode."""
+        pattern, module = await self.get_pattern()
+
+        self.jump_address = await self.get_jump_address(pattern, module=module)
+        self.hook_address = await self.get_hook_address(300)
+
+        logger.debug(f"Got hook address {self.hook_address} in {type(self)}")
+        logger.debug(f"Got jump address {self.jump_address} in {type(self)}")
+
+        self.hook_bytecode = await self.get_hook_bytecode()
+        self.jump_bytecode = await self.get_jump_bytecode()
+
+        self.jump_original_bytecode = await self.read_bytes(
+            self.jump_address, len(self.jump_bytecode)
+        )
+
+        await self.prehook()
+        await self.write_bytes(self.hook_address, self.hook_bytecode)
+        await self.write_bytes(self.jump_address, self.jump_bytecode)
+        await self.posthook()
+
+    def _build_action_block(self, trigger_addr, save_restore, call_setup, clear_trigger):
+        """Build a check-trigger + call + clear block with jz skip."""
+        # Check trigger
+        check = (
+            b"\x50"                              # push rax
+            b"\xA0" + trigger_addr +             # movabs al, [trigger]
+            b"\x84\xC0"                          # test al, al
+            b"\x58"                              # pop rax
+            b"\x0F\x84" + b"\x00\x00\x00\x00"   # jz skip (patch below)
+        )
+        body = save_restore + call_setup + clear_trigger
+        # Patch jz: skip over body
+        jz_offset = 13  # position of 0F 84 in check block
+        rel32 = len(body)
+        patched = bytearray(check)
+        struct.pack_into("<i", patched, jz_offset + 2, rel32)
+        return bytes(patched) + body
+
+    def _save_restore_regs(self, call_bytes, trigger_addr):
+        """Wrap a call with register save/restore and trigger clear."""
+        save = (
+            b"\x50"                              # push rax
+            b"\x51"                              # push rcx
+            b"\x52"                              # push rdx
+            b"\x41\x50"                          # push r8
+            b"\x41\x51"                          # push r9
+            b"\x41\x52"                          # push r10
+            b"\x41\x53"                          # push r11
+            b"\x48\x81\xEC\x28\x00\x00\x00"     # sub rsp, 0x28
+        )
+        restore = (
+            b"\x48\x81\xC4\x28\x00\x00\x00"     # add rsp, 0x28
+            b"\x41\x5B"                          # pop r11
+            b"\x41\x5A"                          # pop r10
+            b"\x41\x59"                          # pop r9
+            b"\x41\x58"                          # pop r8
+            b"\x5A"                              # pop rdx
+            b"\x59"                              # pop rcx
+            b"\x58"                              # pop rax
+        )
+        clear = (
+            b"\x50"                              # push rax
+            b"\x30\xC0"                          # xor al, al
+            b"\xA2" + trigger_addr +             # movabs [trigger], al
+            b"\x58"                              # pop rax
+        )
+        return save + call_bytes + restore, clear
+
+    async def bytecode_generator(self, packed_exports):
+        send_func = await self._resolve_send_func()
+        buddy_func = await self._resolve_buddy_add_func()
+
+        send_trigger = packed_exports[0][1]
+        send_struct  = packed_exports[1][1]
+        buddy_trigger = packed_exports[2][1]
+        buddy_obj    = packed_exports[3][1]
+
+        original_cmp = await self.read_bytes(self.jump_address, 6)
+
+        q = lambda v: struct.pack("<Q", v)
+
+        # --- Action 1: send directed chat ---
+        chat_call = (
+            b"\x48\x89\xF9" +                   # mov rcx, rdi (GameClient)
+            b"\x48\xBA" + send_struct +          # movabs rdx, &send_struct
+            b"\x48\xB8" + q(send_func) +         # movabs rax, send_func
+            b"\xFF\xD0"                          # call rax
+        )
+        chat_body, chat_clear = self._save_restore_regs(chat_call, send_trigger)
+        chat_block = self._build_action_block(
+            send_trigger, chat_body, b"", chat_clear
+        )
+
+        # --- Action 2: buddy add ---
+        # FUN_141710e10(BuddyListManager, target_gid_value)
+        #   param_1 needs [+0x18] = GameClient pointer
+        #   param_2 = raw GID value (not a pointer)
+        # We use buddy_obj as a fake BuddyListManager, writing RDI
+        # (GameClient from the game loop) into [buddy_obj+0x18] at
+        # call time. The target GID was written by Python at +0xE0.
+        buddy_call = (
+            b"\x48\xB9" + buddy_obj +           # movabs rcx, &buddy_obj
+            b"\x48\x89\x79\x18" +               # mov [rcx+0x18], rdi  (GameClient)
+            b"\x48\x8B\x91\xE0\x00\x00\x00" +   # mov rdx, [rcx+0xE0]  (target GID)
+            b"\x48\xB8" + q(buddy_func) +        # movabs rax, buddy_func
+            b"\xFF\xD0"                          # call rax
+        )
+        buddy_body, buddy_clear = self._save_restore_regs(buddy_call, buddy_trigger)
+        buddy_block = self._build_action_block(
+            buddy_trigger, buddy_body, b"", buddy_clear
+        )
+
+        bytecode = chat_block + buddy_block + original_cmp
+        return bytecode

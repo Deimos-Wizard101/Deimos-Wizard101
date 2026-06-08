@@ -1,4 +1,11 @@
 from .actor_body import ActorBody, CurrentActorBody, DynamicActorBody
+from .basic_chat_channel_info import (
+    BasicChatChannelInfo,
+    DynamicBasicChatChannelInfo,
+)
+from .basic_chat_player import BasicChatPlayer, DynamicBasicChatPlayer
+from .chat_owner import ChatOwner, CurrentChatOwner, DynamicChatOwner
+from .guild_chat_info import GuildChatInfo, DynamicGuildChatInfo
 from .client_zone import ClientZone, DynamicClientZone
 from .client_object import (
     ClientObject,
