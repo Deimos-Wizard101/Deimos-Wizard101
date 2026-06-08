@@ -17,6 +17,7 @@ from .constants import WIZARD_SPEED, Primitive
 from .errors import PatternMultipleResults
 from .memory import (
     CurrentActorBody,
+    CurrentChatOwner,
     CurrentClientObject,
     CurrentDuel,
     CurrentGameStats,
@@ -75,6 +76,7 @@ class Client:
         self.render_context = CurrentRenderContext(self.hook_handler)
         self.game_client = CurrentGameClient(self.hook_handler)
         self.social_systems_manager = CurrentSocialSystemsManager(self.hook_handler)
+        self.chat_owner = CurrentChatOwner(self.hook_handler)
 
         self._teleport_helper = TeleportHelper(self.hook_handler)
 
