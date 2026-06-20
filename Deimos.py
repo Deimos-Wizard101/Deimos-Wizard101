@@ -18,6 +18,7 @@ import winreg
 import subprocess
 from loguru import logger
 import datetime
+import importlib.metadata
 import statistics
 import re
 # import pypresence
@@ -32,14 +33,14 @@ from src.teleport_math import navmap_tp, calc_Distance
 from src.questing import Quester
 from src.sigil import Sigil
 from src.utils import index_with_str, is_visible_by_path, is_free, auto_potions, auto_potions_force_buy, to_world, collect_wisps_with_limit, try_task_coro, read_webpage, override_wiz_install_using_handle, get_window_from_path#, assign_pet_level
-from src.paths import advance_dialog_path, decline_quest_path, play_button_path
+from src.paths import advance_dialog_path, decline_quest_path, dialog_window_path, dialog_text_path, game_settings_page_path, close_spellbook_path, play_button_path
 import pyperclip
 from src.sprinty_client import SprintyClient
 from src.gui_inputs import param_input, trunc
 from src import discsdk
 from wizwalker.extensions.wizsprinter.wiz_navigator import toZoneDisplayName, toZone
 from wizwalker.extensions.wizsprinter.sprinty_combat import SprintyCombat
-from src.config_combat import StrCombatConfigProvider, delegate_combat_configs, default_config
+from src.config_combat import StrCombatConfigProvider, CarriedSupportCombatProvider, delegate_combat_configs, default_config, apply_combat_profile_options, combat_config_provider_for_client
 from typing import List
 
 from src import gui as deimosgui
@@ -115,7 +116,8 @@ kill_minions_first = False
 automatic_team_based_combat = False
 discard_duplicate_cards = True
 ignore_pet_level_up = False
-only_play_dance_game = False
+skip_pet_games = False
+only_play_dance_game = True
 
 settings = DeimosSettings()
 settings.migrate_theme_from_settings()
@@ -142,7 +144,8 @@ questing_friend_tp = _json_settings.get('friend_teleport', questing_friend_tp)
 gear_switching_in_solo_zones = _json_settings.get('gear_switching_in_solo_zones', gear_switching_in_solo_zones)
 hitter_client = _json_settings.get('hitter_client', hitter_client)
 ignore_pet_level_up = _json_settings.get('ignore_pet_level_up', ignore_pet_level_up)
-only_play_dance_game = _json_settings.get('only_play_dance_game', only_play_dance_game)
+skip_pet_games = _json_settings.get('skip_pet_games', skip_pet_games)
+only_play_dance_game = not skip_pet_games
 kill_minions_first = _json_settings.get('kill_minions_first', kill_minions_first)
 automatic_team_based_combat = _json_settings.get('automatic_team_based_combat', automatic_team_based_combat)
 discard_duplicate_cards = _json_settings.get('discard_duplicate_cards', discard_duplicate_cards)
@@ -167,9 +170,12 @@ sigil_status = False
 freecam_status = False
 hotkey_status = False
 questing_status = False
+questing_movement_mode = "teleport"
+carry_follow_status = False
 auto_pet_status = False
 auto_potion_status = False
 side_quest_status = False
+side_questing_status = False
 tool_status = True
 original_client_locations = dict()
 
@@ -179,6 +185,7 @@ sigil_leader_pid: int = None
 questing_leader_pid: int = None
 
 questing_task: asyncio.Task = None
+carry_follow_task: asyncio.Task = None
 auto_pet_task: asyncio.Task = None
 sigil_task: asyncio.Task = None
 dialogue_task: asyncio.Task = None
@@ -504,15 +511,17 @@ async def main():
 
 	async def toggle_dialogue_hotkey():
 		global dialogue_task
+		global dialogue_status
 		global gui_send_queue
 		global side_quest_status
 
 		if not freecam_status:
 			if dialogue_task is not None and not dialogue_task.cancelled():
 				side_quest_status = False
+				dialogue_status = False
 				dialogue_task.cancel()
 				dialogue_task = None
-				logger.debug('Dialogue hotkey pressed, disabling auto dialogue.')
+				logger.debug('Dialogue hotkey pressed, disabling auto dialogue for all hooked clients.')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('DialogueStatus', 'Disabled')))
 
 			else:
@@ -520,7 +529,9 @@ async def main():
 				# side_quest_status = side_quests
 				# if side_quest_status:
 				# 	side_quest_log_str += " and auto side quests functionality"
-				logger.debug('Dialogue hotkey pressed, enabling auto dialogue.')
+				dialogue_status = True
+				logger.debug('Dialogue hotkey pressed, enabling auto dialogue for all hooked clients.')
+				_log_dialogue_client_modes('hotkey enabled')
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('DialogueStatus', 'Enabled')))
 				dialogue_task = asyncio.create_task(try_task_coro(dialogue_loop, walker.clients, True))
 
@@ -533,11 +544,41 @@ async def main():
 		gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SideQuestAcceptStatus', status_str)))
 
 
+	async def toggle_side_questing_hotkey():
+		global side_questing_status
+		side_questing_status ^= True
+		status_str = 'Enabled' if side_questing_status else 'Disabled'
+
+		carry_leader_client, carry_hitter_client = _get_carry_follow_clients()
+		for p in walker.clients:
+			if carry_follow_status and carry_hitter_client is not None and p.process_id == carry_hitter_client.process_id:
+				p.side_questing_status = False
+				p.side_questing_accept_until = 0.0
+				continue
+
+			if carry_follow_status and carry_leader_client is not None and p.process_id != carry_leader_client.process_id:
+				p.side_questing_status = False
+				p.side_questing_accept_until = 0.0
+				continue
+
+			p.side_questing_status = side_questing_status
+			if side_questing_status:
+				p.side_questing_accept_until = time.time() + 30.0
+			else:
+				p.side_questing_accept_until = 0.0
+
+		logger.debug(f'Side questing hotkey pressed, side questing {status_str}.')
+		gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SideQuestingStatus', status_str)))
+
+		if side_questing_status and not questing_status:
+			asyncio.create_task(side_quest_sweep_hotkey())
+
 
 	async def toggle_sigil_hotkey():
 		global sigil_task
 		global questing_status
 		global questing_task
+		global questing_movement_mode
 		global gui_send_queue
 
 		if not freecam_status:
@@ -557,11 +598,12 @@ async def main():
 				logger.debug('Sigil hotkey pressed, enabling auto sigil.')
 				if questing_task is not None and not questing_task.cancelled():
 					logger.debug('Questing hotkey pressed, disabling auto questing.')
-					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('QuestingStatus', 'Disabled')))
+					_set_questing_window_status(None)
 					questing_task.cancel()
 					for p in walker.clients:
 						p.questing_status = False
 					questing_status = False
+					questing_movement_mode = "teleport"
 					questing_task = None
 
 				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SigilStatus', 'Enabled')))
@@ -600,40 +642,383 @@ async def main():
 				await foreground_client.teleport(camera_pos, wait_on_inuse=True, purge_on_after_unuser_fixer=True)
 
 
-	async def toggle_questing_hotkey():
+	def _set_questing_window_status(active_mode: str = None):
+		gui_send_queue.put(deimosgui.GUICommand(
+			deimosgui.GUICommandType.UpdateWindow,
+			('QuestingStatus', 'Enabled' if active_mode == 'teleport' else 'Disabled')
+		))
+		gui_send_queue.put(deimosgui.GUICommand(
+			deimosgui.GUICommandType.UpdateWindow,
+			('QuestingWalkStatus', 'Enabled' if active_mode == 'walk' else 'Disabled')
+		))
+
+
+	def _set_carry_follow_window_status(enabled: bool):
+		gui_send_queue.put(deimosgui.GUICommand(
+			deimosgui.GUICommandType.UpdateWindow,
+			('CarryFollowStatus', 'Enabled' if enabled else 'Disabled')
+		))
+
+
+	def _find_client_by_title_fragment(title_fragment: str):
+		if not title_fragment:
+			return None
+		for client in walker.clients:
+			if client.title == title_fragment:
+				return client
+		for client in walker.clients:
+			if title_fragment in client.title:
+				return client
+		return None
+
+
+	def _refresh_configured_client_roles(reason: str = "settings"):
+		global sigil_leader_pid
+		global questing_leader_pid
+
+		sigil_leader_pid = None
+		questing_leader_pid = None
+
+		sigil_leader_client = _find_client_by_title_fragment(client_to_follow)
+		questing_leader_client = _find_client_by_title_fragment(client_to_boost)
+
+		if sigil_leader_client is not None:
+			sigil_leader_pid = sigil_leader_client.process_id
+		if questing_leader_client is not None:
+			questing_leader_pid = questing_leader_client.process_id
+
+		for client in walker.clients:
+			client.client_to_follow = client_to_follow
+
+		logger.debug(
+			f'Client role refresh ({reason}) - '
+			f'Sigil leader={sigil_leader_client.title if sigil_leader_client else None}, '
+			f'Questing leader={questing_leader_client.title if questing_leader_client else None}, '
+			f'Hitter={hitter_client}.'
+		)
+
+
+	def _get_carry_follow_clients():
+		leader_client = _find_client_by_title_fragment(client_to_boost)
+		hitter_follow_client = _find_client_by_title_fragment(hitter_client)
+		return leader_client, hitter_follow_client
+
+
+	def _is_carry_follow_leader(client: Client) -> bool:
+		leader_client, hitter_follow_client = _get_carry_follow_clients()
+		return bool(carry_follow_status and leader_client is not None and hitter_follow_client is not None and client.process_id == leader_client.process_id)
+
+
+	def _is_carry_follow_hitter(client: Client) -> bool:
+		leader_client, hitter_follow_client = _get_carry_follow_clients()
+		return bool(carry_follow_status and leader_client is not None and hitter_follow_client is not None and client.process_id == hitter_follow_client.process_id)
+
+
+	def _dialogue_primary_client():
+		questing_leader_client = _find_client_by_title_fragment(client_to_boost)
+		if questing_leader_client is not None:
+			return questing_leader_client
+		if walker.clients:
+			return walker.clients[0]
+		return None
+
+
+	def _dialogue_mode_for_client(client: Client) -> str:
+		primary_client = _dialogue_primary_client()
+		configured_hitter_client = _find_client_by_title_fragment(hitter_client)
+		if configured_hitter_client is not None and client.process_id == configured_hitter_client.process_id:
+			return 'conservative_hitter'
+		if _is_carry_follow_hitter(client):
+			return 'conservative_hitter'
+		if primary_client is not None and client.process_id == primary_client.process_id:
+			return 'full_quester'
+		return 'conservative_follower'
+
+
+	def _log_dialogue_client_modes(reason: str):
+		client_modes = ', '.join(
+			f'{client.title}={_dialogue_mode_for_client(client)}'
+			for client in walker.clients
+		) or 'none'
+		logger.info(
+			f'Auto dialogue coverage ({reason}): {client_modes}; '
+			f'Carry Follow hitter dialogue close is {"enabled" if carry_follow_status else "disabled"}. '
+			f'Conservative clients advance shared dialogue but reject quest offers.'
+		)
+
+
+	async def _carry_follow_friend_teleport(hitter_follow_client: Client, leader_client: Client):
+		await hitter_follow_client.send_key(Keycode.F, 0.1)
+		async with hitter_follow_client.mouse_handler:
+			if getattr(leader_client, "wizard_name", None):
+				await teleport_to_friend_from_list(hitter_follow_client, name=leader_client.wizard_name)
+			else:
+				logger.debug(
+					f'Carry Follow - leader {leader_client.title} wizard name unavailable; '
+					f'using existing p1 friend icon fallback.'
+				)
+				await teleport_to_friend_from_list(hitter_follow_client, icon_list=1, icon_index=50)
+
+		for _ in range(80):
+			if not await hitter_follow_client.is_loading():
+				break
+			await asyncio.sleep(0.25)
+
+
+	async def _carry_support_provider(hitter_follow_client: Client):
+		try:
+			hitter_owner_id = await hitter_follow_client.client_object.global_id_full()
+		except Exception as error:
+			hitter_owner_id = None
+			logger.debug(
+				f'Carry Follow support could not read hitter owner ID for '
+				f'{hitter_follow_client.title}: {error}'
+			)
+		return CarriedSupportCombatProvider(hitter_owner_id, hitter_follow_client.title)
+
+
+	async def _run_carry_leader_support_combat(leader_client: Client, hitter_follow_client: Client):
+		try:
+			logger.debug(
+				f'Carry Follow - {leader_client.title} is leader in combat; '
+				f'supporting hitter {hitter_follow_client.title}.'
+			)
+			battle = SprintyCombat(leader_client, await _carry_support_provider(hitter_follow_client), True)
+			await battle.wait_for_combat()
+		except asyncio.CancelledError:
+			return
+		except Exception as e:
+			logger.debug(f'Carry Follow leader support combat failed for {leader_client.title}: {e}')
+
+
+	async def carry_follow_loop():
+		last_config_log = 0.0
+		last_follow_teleport = 0.0
+		last_friend_teleport = 0.0
+		last_join_attempt = 0.0
+		last_wait_log = 0.0
+		leader_support_task = None
+
+		while carry_follow_status:
+			try:
+				await asyncio.sleep(0.75)
+
+				if freecam_status:
+					continue
+
+				leader_client, hitter_follow_client = _get_carry_follow_clients()
+				if leader_client is None or hitter_follow_client is None or leader_client == hitter_follow_client:
+					if time.time() - last_config_log > 10.0:
+						logger.debug(
+							f'Carry Follow waiting for valid settings: '
+							f'Client to Boost={client_to_boost}, Hitter Client={hitter_client}.'
+						)
+						last_config_log = time.time()
+					continue
+
+				hitter_in_battle = await hitter_follow_client.in_battle()
+				if hitter_in_battle:
+					if combat_task is None or combat_task.cancelled():
+						logger.debug(
+							f'Carry Follow - {hitter_follow_client.title} is in combat; '
+							f'running hitter-only combat.'
+						)
+						battle = SprintyCombat(
+							hitter_follow_client,
+							combat_config_provider_for_client(hitter_follow_client),
+							True
+						)
+						await battle.wait_for_combat()
+						hitter_follow_client.entity_detect_combat_status = False
+						hitter_follow_client.just_entered_combat = None
+					continue
+
+				if (
+					hitter_follow_client.just_entered_combat is not None
+					and time.time() >= hitter_follow_client.just_entered_combat + 8.0
+				):
+					logger.debug(
+						f'Carry Follow - {hitter_follow_client.title} did not enter combat after teleport; '
+						f'clearing join attempt state.'
+					)
+					hitter_follow_client.entity_detect_combat_status = False
+					hitter_follow_client.just_entered_combat = None
+
+				leader_zone = await leader_client.zone_name()
+				hitter_zone = await hitter_follow_client.zone_name()
+				leader_in_combat = await leader_client.in_battle() or leader_client.entity_detect_combat_status
+				if (
+					leader_in_combat
+					and (combat_task is None or combat_task.cancelled())
+					and (leader_support_task is None or leader_support_task.done())
+				):
+					leader_support_task = asyncio.create_task(
+						_run_carry_leader_support_combat(leader_client, hitter_follow_client)
+					)
+
+				if leader_zone != hitter_zone:
+					if questing_friend_tp and await is_free(hitter_follow_client):
+						if time.time() - last_friend_teleport > 20.0:
+							logger.debug(
+								f'Carry Follow - {hitter_follow_client.title} is in {hitter_zone}, '
+								f'{leader_client.title} is in {leader_zone}; attempting friend teleport.'
+							)
+							last_friend_teleport = time.time()
+							try:
+								await _carry_follow_friend_teleport(hitter_follow_client, leader_client)
+							except Exception as e:
+								logger.debug(f'Carry Follow friend teleport failed: {e}')
+					elif time.time() - last_wait_log > 10.0:
+						logger.debug(
+							f'Carry Follow - {hitter_follow_client.title} is not in leader zone and '
+							f'Friend Teleport is disabled or hitter is busy.'
+						)
+						last_wait_log = time.time()
+					continue
+
+				if leader_in_combat:
+					if (
+						await is_free(hitter_follow_client)
+						and not hitter_follow_client.entity_detect_combat_status
+						and not hitter_follow_client.invincible_combat_timer
+						and time.time() - last_join_attempt > 8.0
+					):
+						distance, duel_circle_xyz = await nearest_duel_circle_distance_and_xyz(SprintyClient(leader_client))
+						if duel_circle_xyz is not None:
+							logger.debug(
+								f'Carry Follow - {leader_client.title} is in combat; teleporting '
+								f'{hitter_follow_client.title} to duel circle at distance {distance}.'
+							)
+							last_join_attempt = time.time()
+							hitter_follow_client.entity_detect_combat_status = True
+							hitter_follow_client.just_entered_combat = time.time()
+							try:
+								await hitter_follow_client.teleport(duel_circle_xyz)
+							except ValueError:
+								hitter_follow_client.entity_detect_combat_status = False
+								hitter_follow_client.just_entered_combat = None
+						elif time.time() - last_wait_log > 5.0:
+							logger.debug(
+								f'Carry Follow - {leader_client.title} is in combat, but no duel circle '
+								f'was readable yet for {hitter_follow_client.title} to join.'
+							)
+							last_wait_log = time.time()
+					continue
+
+				if hitter_follow_client.entity_detect_combat_status:
+					hitter_follow_client.entity_detect_combat_status = False
+					hitter_follow_client.just_entered_combat = None
+
+				if await is_free(hitter_follow_client):
+					leader_pos = await leader_client.body.position()
+					hitter_pos = await hitter_follow_client.body.position()
+					distance = calc_Distance(leader_pos, hitter_pos)
+					if distance > 850 and time.time() - last_follow_teleport > 3.0:
+						logger.debug(
+							f'Carry Follow - teleporting {hitter_follow_client.title} to '
+							f'{leader_client.title}; distance={round(distance, 1)}.'
+						)
+						last_follow_teleport = time.time()
+						await hitter_follow_client.teleport(leader_pos, yaw=await leader_client.body.yaw())
+
+			except asyncio.CancelledError:
+				if leader_support_task is not None and not leader_support_task.done():
+					leader_support_task.cancel()
+				return
+			except Exception as e:
+				logger.debug(f'Carry Follow loop error: {e}')
+				await asyncio.sleep(2.0)
+
+		if leader_support_task is not None and not leader_support_task.done():
+			leader_support_task.cancel()
+
+
+	async def toggle_carry_follow_hotkey():
+		global carry_follow_status
+		global carry_follow_task
+
+		if not freecam_status:
+			if carry_follow_task is not None and not carry_follow_task.cancelled():
+				logger.debug('Carry Follow hotkey pressed, disabling carry follow.')
+				carry_follow_task.cancel()
+				carry_follow_task = None
+				carry_follow_status = False
+				_set_carry_follow_window_status(False)
+				return
+
+			_refresh_configured_client_roles("carry follow toggle")
+			leader_client, hitter_follow_client = _get_carry_follow_clients()
+			if leader_client is None or hitter_follow_client is None or leader_client == hitter_follow_client:
+				logger.info(
+					f'Carry Follow requires different connected clients for Client to Boost and '
+					f'Hitter Client. Current settings: Client to Boost={client_to_boost}, '
+					f'Hitter Client={hitter_client}.'
+				)
+				_set_carry_follow_window_status(False)
+				return
+
+			carry_follow_status = True
+			leader_client.side_questing_status = side_questing_status
+			if side_questing_status:
+				leader_client.side_questing_accept_until = time.time() + 30.0
+			hitter_follow_client.side_questing_status = False
+			hitter_follow_client.side_questing_accept_until = 0.0
+			logger.debug(
+				f'Carry Follow hotkey pressed, enabling carry follow. '
+				f'Leader={leader_client.title}, hitter={hitter_follow_client.title}, '
+				f'leader side questing={leader_client.side_questing_status}.'
+			)
+			_set_carry_follow_window_status(True)
+			carry_follow_task = asyncio.create_task(try_task_coro(carry_follow_loop, walker.clients, True))
+
+
+	async def toggle_questing_hotkey(movement_mode: str = "teleport"):
 		global sigil_task
 		global questing_task
 		global questing_status
+		global questing_movement_mode
 		global sigil_status
 		global gui_send_queue
 
 		if not freecam_status:
-			questing_status ^= True
-			for p in walker.clients:
-				p.questing_status ^= True
-
 			if questing_task is not None and not questing_task.cancelled():
 				logger.debug('Questing hotkey pressed, disabling auto questing.')
-				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('QuestingStatus', 'Disabled')))
+				_set_questing_window_status(None)
 				questing_task.cancel()
 				questing_task = None
+				questing_status = False
+				for p in walker.clients:
+					p.questing_status = False
 
-			else:
+				if questing_movement_mode == movement_mode:
+					questing_movement_mode = "teleport"
+					return
+
+			_refresh_configured_client_roles("questing toggle")
+			for p in walker.clients:
+				p.questing_status = True
+				p.sigil_status = False
+
+			if sigil_task is not None and not sigil_task.cancelled():
+				logger.debug('Sigil hotkey pressed, disabling auto sigil.')
+				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SigilStatus', 'Disabled')))
+				sigil_task.cancel()
+				sigil_task = None
 				for p in walker.clients:
 					p.sigil_status = False
+				sigil_status = False
 
-				if sigil_task is not None and not sigil_task.cancelled():
-					logger.debug('Sigil hotkey pressed, disabling auto sigil.')
-					gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('SigilStatus', 'Disabled')))
-					sigil_task.cancel()
-					sigil_task = None
-					for p in walker.clients:
-						p.sigil_status = False
-					sigil_status = False
-
-				logger.debug('Questing hotkey pressed, enabling auto questing.')
-				gui_send_queue.put(deimosgui.GUICommand(deimosgui.GUICommandType.UpdateWindow, ('QuestingStatus', 'Enabled')))
-				questing_task = asyncio.create_task(try_task_coro(questing_loop, walker.clients, True))
+			questing_status = True
+			questing_movement_mode = movement_mode
+			resolved_questing_leader = _find_client_by_title_fragment(client_to_boost)
+			logger.debug(
+				f'Questing hotkey pressed, enabling auto questing ({movement_mode}). '
+				f'Client to Boost={client_to_boost}, resolved leader='
+				f'{resolved_questing_leader.title if resolved_questing_leader else None}, '
+				f'questing_leader_pid={questing_leader_pid}.'
+			)
+			_set_questing_window_status(movement_mode)
+			questing_task = asyncio.create_task(try_task_coro(questing_loop, walker.clients, True))
 
 
 	async def toggle_auto_pet_hotkey():
@@ -739,6 +1124,23 @@ async def main():
 			return walker.clients[0]
 		return foreground_client
 
+	async def side_quest_sweep_hotkey():
+		if not walker.clients:
+			return
+
+		carry_leader_client, carry_hitter_client = _get_carry_follow_clients()
+		target_client = carry_leader_client if carry_follow_status and carry_leader_client is not None else get_foreground_client()
+		if target_client is None:
+			return
+
+		if carry_follow_status and carry_hitter_client is not None:
+			carry_hitter_client.side_questing_status = False
+			carry_hitter_client.side_questing_accept_until = 0.0
+
+		target_client.side_questing_accept_until = time.time() + 30.0
+		questing = Quester(target_client, walker.clients, None, movement_mode=questing_movement_mode)
+		await questing.scan_accept_and_prioritize_side_quests(target_client, [target_client], force=True)
+
 	def get_background_clients():
 		return [c for c in walker.clients if not c.is_foreground]
 
@@ -809,23 +1211,211 @@ async def main():
 						logger.debug(f'Client {client.title} in combat, handling combat.')
 
 						#CONFIG COMBAT
-						battle = SprintyCombat(client, StrCombatConfigProvider(client.combat_config), True)
+						if _is_carry_follow_leader(client):
+							_, hitter_follow_client = _get_carry_follow_clients()
+							if hitter_follow_client is None:
+								logger.debug(f'Carry Follow - hitter unavailable for {client.title}; passing safely.')
+								battle = SprintyCombat(client, StrCombatConfigProvider("pass"), True)
+							else:
+								logger.debug(
+									f'Carry Follow - global combat handling {client.title} as '
+									f'support for {hitter_follow_client.title}.'
+								)
+								battle = SprintyCombat(
+									client,
+									await _carry_support_provider(hitter_follow_client),
+									True,
+								)
+						else:
+							battle = SprintyCombat(client, combat_config_provider_for_client(client), True)
 						await battle.wait_for_combat()
 
 		await asyncio.gather(*[async_combat(p) for p in walker.clients])
 
 	async def dialogue_loop():
 		# auto advances dialogue for every client, individually and concurrently
+		async def visible_window(client: Client, path):
+			try:
+				window = await get_window_from_path(client.root_window, path)
+				if window and await window.is_visible():
+					return window
+			except Exception:
+				pass
+			return None
+
+		async def dialogue_snapshot(client: Client):
+			dialog_window = await visible_window(client, dialog_window_path)
+			advance_button = await visible_window(client, advance_dialog_path)
+			if dialog_window is None or advance_button is None:
+				return False, False, ''
+
+			decline_visible = await visible_window(client, decline_quest_path) is not None
+			text = ''
+			try:
+				text_window = await get_window_from_path(client.root_window, dialog_text_path)
+				if text_window:
+					text = await text_window.maybe_text()
+			except Exception:
+				pass
+			return True, decline_visible, text or ''
+
+		async def click_verified_dialog_button(client: Client, path, action_name: str):
+			before = await dialogue_snapshot(client)
+			if not before[0]:
+				logger.debug(f'Auto dialogue {client.title}: skipped {action_name}; dialogue already closed.')
+				return False, 'closed-before-click'
+
+			button = await visible_window(client, path)
+			if button is None:
+				logger.debug(f'Auto dialogue {client.title}: skipped {action_name}; target button is not visible.')
+				return False, 'button-not-visible'
+
+			try:
+				async with client.mouse_handler:
+					if not (await dialogue_snapshot(client))[0] or not await button.is_visible():
+						logger.debug(f'Auto dialogue {client.title}: skipped {action_name}; UI changed before click.')
+						return False, 'changed-before-click'
+					await client.mouse_handler.click_window(button)
+			except Exception as error:
+				logger.debug(
+					f'Auto dialogue {client.title}: skipped {action_name}; '
+					f'button became unavailable during click: {error}'
+				)
+				return False, 'click-failed'
+
+			deadline = time.monotonic() + 1.0
+			while time.monotonic() < deadline:
+				await asyncio.sleep(0.1)
+				after = await dialogue_snapshot(client)
+				if not after[0]:
+					return True, 'closed'
+				if after[1:] != before[1:]:
+					return True, 'advanced'
+
+			return True, 'unchanged-after-timeout'
+
+		async def recover_accidental_settings_menu(client: Client):
+			settings_page = await visible_window(client, game_settings_page_path)
+			close_button = await visible_window(client, close_spellbook_path)
+			if settings_page is None or close_button is None:
+				return False
+
+			logger.warning(
+				f'Auto dialogue {client.title}: game settings opened immediately after dialogue; '
+				f'closing it once with the visible Close button.'
+			)
+			try:
+				async with client.mouse_handler:
+					if await settings_page.is_visible() and await close_button.is_visible():
+						await client.mouse_handler.click_window(close_button)
+						return True
+			except Exception as error:
+				logger.debug(f'Auto dialogue {client.title}: settings recovery click failed: {error}')
+			return False
+
 		async def async_dialogue(client: Client):
+			dialogue_was_visible = False
+			action_count = 0
+			last_mode = None
+			ignored_reason = None
+			last_dialogue_action_time = 0.0
+			settings_recovery_done = False
+			logger.info(f'Auto dialogue worker started for {client.title} in {_dialogue_mode_for_client(client)} mode.')
 			while True:
-				if not freecam_status:
-					if await is_visible_by_path(client, advance_dialog_path):
-						if await is_visible_by_path(client, decline_quest_path) and not side_quest_status:
-							await client.send_key(key=Keycode.ESC)
-							await asyncio.sleep(0.1)
-							await client.send_key(key=Keycode.ESC)
-						else:
-							await client.send_key(key=Keycode.SPACEBAR)
+				if freecam_status:
+					await asyncio.sleep(0.1)
+					continue
+
+				if getattr(client, 'feeding_pet_status', False):
+					if ignored_reason != 'pet game':
+						logger.debug(f'Auto dialogue ignored for {client.title}: pet game is active.')
+						ignored_reason = 'pet game'
+					await asyncio.sleep(0.1)
+					continue
+
+				if await client.is_loading():
+					if ignored_reason != 'loading':
+						logger.debug(f'Auto dialogue ignored for {client.title}: client is loading.')
+						ignored_reason = 'loading'
+					await asyncio.sleep(0.1)
+					continue
+
+				ignored_reason = None
+				dialogue_visible, decline_visible, _ = await dialogue_snapshot(client)
+				if not dialogue_visible:
+					if dialogue_was_visible:
+						logger.debug(f'Auto dialogue cleared on {client.title} after {action_count} action(s).')
+					if (
+						last_dialogue_action_time > 0
+						and time.monotonic() - last_dialogue_action_time <= 1.5
+						and not settings_recovery_done
+					):
+						settings_recovery_done = await recover_accidental_settings_menu(client)
+					dialogue_was_visible = False
+					action_count = 0
+					last_mode = None
+					await asyncio.sleep(0.1)
+					continue
+
+				mode = _dialogue_mode_for_client(client)
+				in_combat = await client.in_battle()
+				if not dialogue_was_visible or mode != last_mode:
+					logger.info(
+						f'Auto dialogue detected on {client.title}: mode={mode}, '
+						f'quest_offer={decline_visible}, in_combat={in_combat}, '
+						f'carry_follow={carry_follow_status}.'
+					)
+				dialogue_was_visible = True
+				last_mode = mode
+				settings_recovery_done = False
+				clicked = False
+				transition = 'not-attempted'
+
+				if mode == 'full_quester':
+					accept_profile_side_quests = getattr(client, "scan_nearby_side_quests", False)
+					accept_side_questing = side_questing_status or getattr(client, "side_questing_status", False) or time.time() < getattr(client, "side_questing_accept_until", 0.0)
+					accept_quest_offer = side_quest_status or accept_profile_side_quests or accept_side_questing
+					if decline_visible and not accept_quest_offer:
+						if action_count == 0:
+							logger.debug(f'Auto dialogue {client.title}: closing quest offer; side quest acceptance is blocked.')
+						clicked, transition = await click_verified_dialog_button(
+							client, decline_quest_path, 'decline quest offer'
+						)
+					else:
+						if action_count == 0:
+							logger.debug(
+								f'Auto dialogue {client.title}: advancing quester dialogue; '
+								f'side quest acceptance allowed={accept_quest_offer}.'
+							)
+						clicked, transition = await click_verified_dialog_button(
+							client, advance_dialog_path, 'advance quester dialogue'
+						)
+				elif decline_visible:
+					if action_count == 0:
+						logger.debug(
+							f'Auto dialogue {client.title}: closing quest offer in {mode} mode; '
+							f'side quest acceptance is blocked.'
+						)
+					clicked, transition = await click_verified_dialog_button(
+						client, decline_quest_path, f'decline quest offer in {mode} mode'
+					)
+				else:
+					if action_count == 0:
+						logger.debug(
+							f'Auto dialogue {client.title}: advancing naturally received shared dialogue '
+							f'in {mode} mode; blocking_combat={in_combat}, side quest acceptance is blocked.'
+						)
+					clicked, transition = await click_verified_dialog_button(
+						client, advance_dialog_path, f'advance shared dialogue in {mode} mode'
+					)
+
+				if clicked:
+					action_count += 1
+					last_dialogue_action_time = time.monotonic()
+					logger.debug(
+						f'Auto dialogue {client.title}: action complete; transition={transition}, '
+						f'action_count={action_count}.'
+					)
 				await asyncio.sleep(0.1)
 
 		await asyncio.gather(*[async_dialogue(p) for p in walker.clients])
@@ -844,12 +1434,12 @@ async def main():
 						if client.process_id == questing_leader_pid:
 							# if follow leader is off, quest on all clients, passing through only the leader
 							logger.debug(f'Client {client.title} - Handling questing for all clients.')
-							questing = Quester(client, walker.clients, questing_leader_pid)
+							questing = Quester(client, walker.clients, questing_leader_pid, movement_mode=questing_movement_mode)
 							await questing.auto_quest_leader(questing_friend_tp, gear_switching_in_solo_zones, hitter_client, ignore_pet_level_up, only_play_dance_game)
 					else:
 						# if follow leader is off, quest on all clients, passing through only the leader
 						logger.debug(f'Client {client.title} - Handling questing.')
-						questing = Quester(client, walker.clients, None)
+						questing = Quester(client, walker.clients, None, movement_mode=questing_movement_mode)
 						await questing.auto_quest(ignore_pet_level_up, only_play_dance_game)
 
 		await asyncio.gather(*[async_questing(p) for p in walker.clients])
@@ -963,6 +1553,7 @@ async def main():
 					other_clients.append(c)
 
 			safe_distance = 620
+			last_carry_follow_guard_log = 0.0
 			while True:
 				await asyncio.sleep(.5)
 
@@ -1008,13 +1599,38 @@ async def main():
 
 									# original_client_locations = dict()
 									all_fighting_clients = [p]
+									carry_leader_client, carry_hitter_client = _get_carry_follow_clients() if carry_follow_status else (None, None)
+									carry_follow_ready = bool(
+										carry_follow_status
+										and carry_leader_client is not None
+										and carry_hitter_client is not None
+										and carry_leader_client != carry_hitter_client
+									)
 
 									# don't teleport clients to duel circles that are closed off, and don't teleport clients if they are in separate instances
 									if p.duel_circle_joinable and not p.in_solo_zone:
+										if carry_follow_ready and p.process_id != carry_leader_client.process_id:
+											if time.time() - last_carry_follow_guard_log > 5.0:
+												logger.debug(
+													f'Carry Follow guard - ignoring combat detected from {p.title}; '
+													f'only leader {carry_leader_client.title} may pull hitter {carry_hitter_client.title}.'
+												)
+												last_carry_follow_guard_log = time.time()
+											continue
+
 										p.helper_clients = []
 										none_in_solo_zone = True
 										all_already_in_battle = False
 										for c in other_clients:
+											if carry_follow_ready and c.process_id != carry_hitter_client.process_id:
+												if time.time() - last_carry_follow_guard_log > 5.0:
+													logger.debug(
+														f'Carry Follow guard - not teleporting {c.title}; '
+														f'only hitter {carry_hitter_client.title} follows leader combat.'
+													)
+													last_carry_follow_guard_log = time.time()
+												continue
+
 											client_is_hitter_client = False
 											if hitter_client is not None:
 												if hitter_client in c.title:
@@ -1197,6 +1813,187 @@ async def main():
 			_build_hooked_clients_info()
 		))
 
+	def _next_hook_label(exclude_client=None, reserved_numbers=None) -> str:
+		existing_nums = set(reserved_numbers or [])
+		for c in walker.clients:
+			if c is exclude_client:
+				continue
+			try:
+				title = c.title
+			except Exception:
+				continue
+			if title.startswith('p') and title[1:].isdigit():
+				existing_nums.add(int(title[1:]))
+		num = 1
+		while num in existing_nums:
+			num += 1
+		return f'p{num}'
+
+	def _package_version(package_name: str) -> str:
+		try:
+			return importlib.metadata.version(package_name)
+		except Exception:
+			return 'unknown'
+
+	def _hook_dependency_versions() -> dict[str, str]:
+		return {
+			'deimos': tool_version,
+			'deimos-wizard101': _package_version('deimos-wizard101'),
+			'wizwalker': _package_version('wizwalker'),
+			'wizsprinter': _package_version('wizsprinter'),
+			'wizlaunch': _package_version('wizlaunch'),
+			'pymem': _package_version('pymem'),
+		}
+
+	def _process_name_from_pid(pid: int | None) -> str:
+		if not pid:
+			return 'unknown'
+		process_handle = None
+		try:
+			PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+			process_handle = ctypes.windll.kernel32.OpenProcess(
+				PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid)
+			)
+			if not process_handle:
+				return 'unknown'
+			buffer = ctypes.create_unicode_buffer(32768)
+			size = ctypes.c_ulong(len(buffer))
+			if ctypes.windll.kernel32.QueryFullProcessImageNameW(
+				process_handle, 0, buffer, ctypes.byref(size)
+			):
+				return os.path.basename(buffer.value)
+		except Exception:
+			pass
+		finally:
+			if process_handle:
+				ctypes.windll.kernel32.CloseHandle(process_handle)
+		return 'unknown'
+
+	def _pid_from_handle(handle: int, client=None) -> int | None:
+		try:
+			if client is not None:
+				return client.process_id
+		except Exception:
+			pass
+		try:
+			return utils.get_pid_from_handle(handle)
+		except Exception:
+			return None
+
+	def _looks_like_autobot_pattern_failure(error: Exception) -> bool:
+		try:
+			from wizwalker.memory.handler import HookHandler
+			pattern = getattr(error, 'pattern', None)
+			return pattern == HookHandler.AUTOBOT_PATTERN or repr(HookHandler.AUTOBOT_PATTERN) in str(error)
+		except Exception:
+			return False
+
+	def _pattern_failure_context(error: Exception) -> dict[str, str]:
+		source = getattr(error, 'pattern_source', None)
+		requester = getattr(error, 'pattern_requester', None)
+		scan_module = getattr(error, 'pattern_scan_module', None)
+		if _looks_like_autobot_pattern_failure(error):
+			source = source or 'libs/wizwalker/wizwalker/memory/handler.py::HookHandler.AUTOBOT_PATTERN'
+			requester = requester or 'wizwalker.memory.handler.HookHandler._get_autobot_address'
+			scan_module = scan_module or 'WizardGraphicalClient.exe'
+		return {
+			'pattern_source': source or 'unknown',
+			'pattern_requester': requester or 'unknown',
+			'pattern_scan_module': scan_module or 'unknown',
+		}
+
+	def _surface_hook_failure(handle: int, attempted_label: str, error: Exception):
+		short_error = str(error).replace('\n', ' ')
+		if len(short_error) > 180:
+			short_error = short_error[:177] + '...'
+		gui_send_queue.put(deimosgui.GUICommand(
+			deimosgui.GUICommandType.UpdateWindow,
+			('Title', f'Hook failed: {attempted_label} handle {handle}')
+		))
+		gui_send_queue.put(deimosgui.GUICommand(
+			deimosgui.GUICommandType.UpdateWindow,
+			('Zone', f'Hook error: {short_error}')
+		))
+
+	def _log_hook_failure(handle: int, attempted_label: str, error: Exception, client=None, context: str = 'hook'):
+		pid = _pid_from_handle(handle, client)
+		process_name = _process_name_from_pid(pid)
+		pattern_context = _pattern_failure_context(error)
+		versions = _hook_dependency_versions()
+		active_state = 'added' if client in walker.clients else 'not_added'
+		managed_state = 'managed' if handle in walker._managed_handles else 'unmanaged'
+		logger.error(
+			f"{context} failed before full client initialization | "
+			f"process_name={process_name} | pid={pid} | handle={handle} | "
+			f"attempted_label={attempted_label} | "
+			f"pattern_source={pattern_context['pattern_source']} | "
+			f"pattern_requester={pattern_context['pattern_requester']} | "
+			f"pattern_scan_module={pattern_context['pattern_scan_module']} | "
+			f"dependency_versions={versions} | active_clients_state={active_state} | "
+			f"managed_handles_state={managed_state} | error={error}"
+		)
+		if _looks_like_autobot_pattern_failure(error):
+			logger.error(
+				"Hook failed on wizwalker HookHandler.AUTOBOT_PATTERN. "
+				"If this happens on fresh clients with matching privileges, the local "
+				"wizwalker WizardGraphicalClient.exe signature is likely stale after a "
+				"Wizard101 client update; restarting alone may not fix it."
+			)
+
+	async def _reject_failed_hook_client(client, handle: int, attempted_label: str, original_title: str | None, context: str):
+		was_active = client in walker.clients
+		was_managed = handle in walker._managed_handles
+		restore_title = original_title or 'Wizard101'
+		if restore_title == attempted_label or (restore_title.startswith('p') and restore_title[1:].isdigit()):
+			restore_title = 'Wizard101'
+		try:
+			client.title = restore_title
+		except Exception as title_error:
+			logger.debug(f"{context}: failed to restore title for handle {handle}: {title_error}")
+		try:
+			await client.close()
+		except Exception as close_error:
+			logger.debug(f"{context}: cleanup close skipped/failed for handle {handle}: {close_error}")
+		if handle in walker._managed_handles:
+			walker._managed_handles.remove(handle)
+		if client in walker.clients:
+			walker.clients.remove(client)
+		_hooking_in_progress.discard(handle)
+		logger.warning(
+			f"Rejected failed hook client | context={context} | handle={handle} | "
+			f"attempted_label={attempted_label} | restored_title={restore_title} | "
+			f"active_before={was_active} | managed_before={was_managed} | "
+			f"active_after={client in walker.clients} | managed_after={handle in walker._managed_handles}"
+		)
+
+	async def _activate_and_init_client(client, attempted_label: str, context: str) -> bool:
+		handle = client.window_handle
+		try:
+			original_title = client.title
+		except Exception:
+			original_title = 'Wizard101'
+		_hooking_in_progress.add(handle)
+		_send_hooked_clients_update()
+		try:
+			already_hooked = False
+			try:
+				await client.activate_hooks()
+			except wizwalker.errors.HookAlreadyActivated:
+				already_hooked = True
+			client.title = attempted_label
+			await _init_client_attrs(client)
+			status = 'already hooked' if already_hooked else 'hooked'
+			logger.info(f"{context} client '{client.title}' ({status}, handle {handle}).")
+			return True
+		except Exception as error:
+			_log_hook_failure(handle, attempted_label, error, client, context)
+			_surface_hook_failure(handle, attempted_label, error)
+			await _reject_failed_hook_client(client, handle, attempted_label, original_title, context)
+			return False
+		finally:
+			_hooking_in_progress.discard(handle)
+			_send_hooked_clients_update()
+
 	async def _init_client_attrs(client):
 		"""Initialize all per-client attributes. Called once per client after hooking."""
 		client_speeds[client.process_id] = await client.client_object.speed_multiplier()
@@ -1223,6 +2020,10 @@ async def main():
 		client.automatic_team_based_combat = automatic_team_based_combat
 		client.latest_drops = ''
 		client.combat_config = default_config
+		apply_combat_profile_options(client, client.combat_config)
+		client.side_questing_status = side_questing_status
+		client.side_questing_accept_until = 0.0
+		client.side_quest_skip_cache = {}
 		client.use_potions = use_potions
 		client.buy_potions = buy_potions
 		client.client_to_follow = client_to_follow
@@ -1247,13 +2048,8 @@ async def main():
 			client.player_gid = None
 			logger.debug(f"[GID] _init_client_attrs '{client.title}': exception {e}")
 
-		# Set follower/leader statuses for auto questing/sigil
-		if client_to_follow and client_to_follow in client.title:
-			global sigil_leader_pid
-			sigil_leader_pid = client.process_id
-		if client_to_boost and client_to_boost in client.title:
-			global questing_leader_pid
-			questing_leader_pid = client.process_id
+		# Set follower/leader statuses for auto questing/sigil.
+		_refresh_configured_client_roles(f"client init {client.title}")
 
 	async def handle_gui():
 
@@ -1406,6 +2202,7 @@ async def main():
 		global dialogue_task
 		global sigil_task
 		global questing_task
+		global carry_follow_task
 		global speed_task
 		global auto_pet_task
 		global highlight_task
@@ -1483,6 +2280,7 @@ async def main():
 							"speed": speed_task,
 							"bot": bot_task,
 							"auto_pet": auto_pet_task,
+							"carry_follow": carry_follow_task,
 						}
 						for name, task in task_vars.items():
 							if task is not None and not task.cancelled():
@@ -1503,6 +2301,8 @@ async def main():
 							bot_task = None
 						if "auto_pet" in active_tasks:
 							auto_pet_task = None
+						if "carry_follow" in active_tasks:
+							carry_follow_task = None
 
 						# Reset per-client status flags on remaining alive clients
 						for c in walker.clients:
@@ -1564,31 +2364,10 @@ async def main():
 						walker._managed_handles.append(handle)
 						nc = walker.client_cls(handle)
 						walker.clients.append(nc)
-						existing_nums = set()
-						for c in walker.clients:
-							if c.title.startswith('p') and c.title[1:].isdigit():
-								existing_nums.add(int(c.title[1:]))
-						num = 1
-						while num in existing_nums:
-							num += 1
-						nc.title = f'p{num}'
-						_hooking_in_progress.add(handle)
-						_send_hooked_clients_update()
-						try:
-							await nc.activate_hooks()
-							await _init_client_attrs(nc)
-							logger.info(f"Auto-hooked vault-launched client '{nc.title}' ({launched_account_map[handle]}).")
+						attempted_label = _next_hook_label(exclude_client=nc)
+						account_nick = launched_account_map.get(handle, 'unknown account')
+						if await _activate_and_init_client(nc, attempted_label, f"Auto-hook vault-launched ({account_nick})"):
 							hooked_any = True
-						except wizwalker.errors.HookAlreadyActivated:
-							await _init_client_attrs(nc)
-							logger.info(f"Auto-hooked vault-launched client '{nc.title}' ({launched_account_map[handle]}, already hooked).")
-							hooked_any = True
-						except Exception as e:
-							logger.error(f"Failed to auto-hook vault-launched client (handle {handle}): {e}")
-							walker._managed_handles.remove(handle)
-							walker.clients.remove(nc)
-						finally:
-							_hooking_in_progress.discard(handle)
 
 				if hooked_any:
 					_send_hooked_clients_update()
@@ -1607,36 +2386,17 @@ async def main():
 				new_clients = walker.get_new_clients()
 				if new_clients:
 					# Assign titles — fill gaps using the next available number
-					existing_nums = set()
-					for c in walker.clients:
-						if c.title.startswith('p') and c.title[1:].isdigit():
-							existing_nums.add(int(c.title[1:]))
-
+					hooked_clients = []
+					reserved_nums = set()
 					for nc in new_clients:
-						num = 1
-						while num in existing_nums:
-							num += 1
-						nc.title = f'p{num}'
-						existing_nums.add(num)
-
-					# Hook new clients individually
-					for nc in new_clients:
-						_hooking_in_progress.add(nc.window_handle)
-						_send_hooked_clients_update()
-						try:
-							await nc.activate_hooks()
-						except wizwalker.errors.HookAlreadyActivated:
-							logger.debug(f"Client '{nc.title}' already hooked, skipping.")
-						except Exception as e:
-							logger.error(f"Failed to hook client '{nc.title}': {e}")
-						finally:
-							_hooking_in_progress.discard(nc.window_handle)
-						await _init_client_attrs(nc)
-						logger.info(f"New client '{nc.title}' hooked.")
+						attempted_label = _next_hook_label(exclude_client=nc, reserved_numbers=reserved_nums)
+						reserved_nums.add(int(attempted_label[1:]))
+						if await _activate_and_init_client(nc, attempted_label, "Reconnect hook"):
+							hooked_clients.append(nc)
 					_send_hooked_clients_update()
 
 					# Check if count restored
-					if len(walker.clients) >= previous_client_count:
+					if hooked_clients and len(walker.clients) >= previous_client_count:
 						# Re-enable tasks that were active before disconnect
 						resumable = paused_task_names - {"bot"}
 						for name in resumable:
@@ -1660,6 +2420,8 @@ async def main():
 								for c in walker.clients:
 									c.feeding_pet_status = True
 								auto_pet_task = asyncio.create_task(try_task_coro(auto_pet_loop, walker.clients, True))
+							elif name == "carry_follow":
+								carry_follow_task = asyncio.create_task(try_task_coro(carry_follow_loop, walker.clients, True))
 
 						previous_client_count = None
 						paused_task_names = None
@@ -1695,6 +2457,12 @@ async def main():
 									await toggle_sigil_hotkey()
 								case GUIKeys.toggle_questing:
 									await toggle_questing_hotkey()
+								case GUIKeys.toggle_questing_walk:
+									await toggle_questing_hotkey("walk")
+								case GUIKeys.toggle_side_questing:
+									await toggle_side_questing_hotkey()
+								case GUIKeys.toggle_carry_follow:
+									await toggle_carry_follow_hotkey()
 								case GUIKeys.toggle_auto_pet:
 									await toggle_auto_pet_hotkey()
 								case GUIKeys.toggle_auto_potion:
@@ -2188,6 +2956,7 @@ async def main():
 							combat_configs = delegate_combat_configs(str(com.data), len(walker.clients))
 							for i, client in enumerate(walker.clients):
 								client.combat_config = combat_configs.get(i, default_config)
+								apply_combat_profile_options(client, client.combat_config)
 							await toggle_combat_hotkey(False)
 							await toggle_combat_hotkey(False)
 						case deimosgui.GUICommandType.SetScale:
@@ -2293,36 +3062,13 @@ async def main():
 								logger.error(f"Handle {handle} no longer exists.")
 								_send_hooked_clients_update()
 								continue
-							# Create client, assign title, hook, init
+							# Create client, hook, init, then assign title only after validation
 							walker._managed_handles.append(handle)
 							nc = walker.client_cls(handle)
 							walker.clients.append(nc)
-							existing_nums = set()
-							for c in walker.clients:
-								if c.title.startswith('p') and c.title[1:].isdigit():
-									existing_nums.add(int(c.title[1:]))
-							num = 1
-							while num in existing_nums:
-								num += 1
-							nc.title = f'p{num}'
-							_hooking_in_progress.add(handle)
-							_send_hooked_clients_update()
-							try:
-								await nc.activate_hooks()
-								await _init_client_attrs(nc)
-								logger.info(f"Manually hooked client '{nc.title}' (handle {handle}).")
-							except wizwalker.errors.HookAlreadyActivated:
-								await _init_client_attrs(nc)
-								logger.info(f"Manually hooked client '{nc.title}' (handle {handle}, already hooked).")
-							except Exception as e:
-								logger.error(f"Failed to hook client (handle {handle}): {e}")
-								walker._managed_handles.remove(handle)
-								walker.clients.remove(nc)
-								_hooking_in_progress.discard(handle)
-								_send_hooked_clients_update()
+							attempted_label = _next_hook_label(exclude_client=nc)
+							if not await _activate_and_init_client(nc, attempted_label, "Manual hook"):
 								continue
-							_hooking_in_progress.discard(handle)
-							_send_hooked_clients_update()
 							_restart_always_on_tasks()
 							_restart_active_toggle_tasks()
 
@@ -2388,7 +3134,7 @@ async def main():
 							global speed_multiplier, use_potions, rpc_status, drop_status, anti_afk_status
 							global buy_potions, use_team_up, client_to_follow, client_to_boost
 							global questing_friend_tp, gear_switching_in_solo_zones, hitter_client
-							global ignore_pet_level_up, only_play_dance_game
+							global ignore_pet_level_up, skip_pet_games, only_play_dance_game
 							global kill_minions_first, automatic_team_based_combat, discard_duplicate_cards
 							settings_dict = com.data
 							for key, value in settings_dict.items():
@@ -2406,10 +3152,14 @@ async def main():
 									case 'gear_switching_in_solo_zones': gear_switching_in_solo_zones = value
 									case 'hitter_client': hitter_client = value
 									case 'ignore_pet_level_up': ignore_pet_level_up = value
-									case 'only_play_dance_game': only_play_dance_game = value
+									case 'skip_pet_games':
+										skip_pet_games = value
+										only_play_dance_game = not value
 									case 'kill_minions_first': kill_minions_first = value
 									case 'automatic_team_based_combat': automatic_team_based_combat = value
 									case 'discard_duplicate_cards': discard_duplicate_cards = value
+							if any(key in settings_dict for key in ('client_to_follow', 'client_to_boost', 'hitter_client')):
+								_refresh_configured_client_roles("settings update")
 							logger.debug(f'Settings updated: {list(settings_dict.keys())}')
 
 			except queue.Empty:
@@ -2574,7 +3324,7 @@ async def main():
 				task_str = 'Fighting '
 
 			elif questing_status:
-				task_str = 'Questing '
+				task_str = 'Questing Walk ' if questing_movement_mode == 'walk' else 'Questing '
 
 			elif sigil_status:
 				task_str = 'Farming '
@@ -2762,7 +3512,7 @@ async def main():
 
 	def _restart_active_toggle_tasks():
 		"""Cancel and recreate any currently-active toggle tasks so they pick up new clients."""
-		global combat_task, dialogue_task, sigil_task, questing_task, speed_task, auto_pet_task
+		global combat_task, dialogue_task, sigil_task, questing_task, carry_follow_task, speed_task, auto_pet_task
 
 		if combat_task is not None and not combat_task.cancelled():
 			combat_task.cancel()
@@ -2772,6 +3522,7 @@ async def main():
 
 		if dialogue_task is not None and not dialogue_task.cancelled():
 			dialogue_task.cancel()
+			_log_dialogue_client_modes('client list changed')
 			dialogue_task = asyncio.create_task(try_task_coro(dialogue_loop, walker.clients, True))
 
 		if sigil_task is not None and not sigil_task.cancelled():
@@ -2785,6 +3536,10 @@ async def main():
 			for c in walker.clients:
 				c.questing_status = True
 			questing_task = asyncio.create_task(try_task_coro(questing_loop, walker.clients, True))
+
+		if carry_follow_task is not None and not carry_follow_task.cancelled():
+			carry_follow_task.cancel()
+			carry_follow_task = asyncio.create_task(try_task_coro(carry_follow_loop, walker.clients, True))
 
 		if speed_task is not None and not speed_task.cancelled():
 			speed_task.cancel()
@@ -2842,7 +3597,7 @@ async def main():
 			if task is not None and not task.cancelled():
 				task.cancel()
 		# Also cancel any active toggle tasks
-		for task in [combat_task, dialogue_task, sigil_task, questing_task, speed_task, auto_pet_task, bot_task]:
+		for task in [combat_task, dialogue_task, sigil_task, questing_task, carry_follow_task, speed_task, auto_pet_task, bot_task]:
 			if task is not None and not task.cancelled():
 				task.cancel()
 

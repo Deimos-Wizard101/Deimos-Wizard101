@@ -3,8 +3,10 @@ from wizwalker import XYZ, Orient, Client, Keycode
 from wizwalker.file_readers.wad import Wad
 import math
 import struct
+from heapq import heappop, heappush
 from io import BytesIO
 from typing import Tuple, Union
+from loguru import logger
 from src.utils import is_free
 from copy import copy
 
@@ -110,6 +112,59 @@ def get_neighbors(vertex: XYZ, vertices: list[XYZ], edges: list[(int, int)]):
         if edge[0] == vert_idx:
             result.append(vertices[edge[1]])
     return result
+
+
+def build_nav_graph(vertices: list[XYZ], edges: list[tuple[int, int]]) -> dict[int, list[tuple[int, float]]]:
+    graph = {index: [] for index in range(len(vertices))}
+    for start_index, stop_index in edges:
+        if start_index not in graph or stop_index not in graph:
+            continue
+        distance = calc_Distance(vertices[start_index], vertices[stop_index])
+        graph[start_index].append((stop_index, distance))
+        graph[stop_index].append((start_index, distance))
+    return graph
+
+
+def nearest_vertex_index(vertices: list[XYZ], xyz: XYZ) -> int:
+    return min(range(len(vertices)), key=lambda index: calc_squareDistance(vertices[index], xyz))
+
+
+def reconstruct_nav_path(came_from: dict[int, int], current_index: int) -> list[int]:
+    path = [current_index]
+    while current_index in came_from:
+        current_index = came_from[current_index]
+        path.append(current_index)
+    path.reverse()
+    return path
+
+
+def astar_nav_path(vertices: list[XYZ], graph: dict[int, list[tuple[int, float]]], start_index: int, goal_index: int) -> list[int]:
+    frontier: list[tuple[float, int, int]] = []
+    counter = 0
+    heappush(frontier, (0.0, counter, start_index))
+    came_from: dict[int, int] = {}
+    known_costs = {start_index: 0.0}
+    visited: set[int] = set()
+
+    while frontier:
+        _, _, current_index = heappop(frontier)
+        if current_index in visited:
+            continue
+        if current_index == goal_index:
+            return reconstruct_nav_path(came_from, current_index)
+
+        visited.add(current_index)
+        for next_index, edge_cost in graph.get(current_index, []):
+            next_cost = known_costs[current_index] + edge_cost
+            if next_cost >= known_costs.get(next_index, float("inf")):
+                continue
+            came_from[next_index] = current_index
+            known_costs[next_index] = next_cost
+            counter += 1
+            estimated_total = next_cost + calc_Distance(vertices[next_index], vertices[goal_index])
+            heappush(frontier, (estimated_total, counter, next_index))
+
+    return []
 
 
 def calc_PointOn3DLine(xyz_1 : XYZ, xyz_2 : XYZ, additional_distance):
@@ -238,6 +293,85 @@ async def auto_adjusting_teleport(client: Client, quest_position: XYZ = None):
             
 async def fallback_spiral_tp(client: Client, xyz: XYZ):
     await auto_adjusting_teleport(client, xyz)
+
+
+async def walk_to(
+    client: Client,
+    target_xyz: XYZ,
+    *,
+    waypoint_arrival_threshold: float = 250.0,
+    final_arrival_threshold: float = 750.0,
+    stuck_distance_threshold: float = 35.0,
+) -> bool:
+    if not await is_free(client):
+        return False
+
+    starting_zone = await client.zone_name()
+    try:
+        wad = await load_wad(starting_zone)
+        nav_file = await wad.get_file("zone.nav")
+        vertices, edges = parse_nav_data(nav_file)
+    except Exception as error:
+        logger.debug(f"Walk movement unavailable in {starting_zone}: {error}")
+        return False
+
+    if not vertices or not edges:
+        logger.debug(f"Walk movement unavailable in {starting_zone}: empty nav graph")
+        return False
+
+    graph = build_nav_graph(vertices, edges)
+    starting_xyz = await client.body.position()
+    start_index = nearest_vertex_index(vertices, starting_xyz)
+    goal_index = nearest_vertex_index(vertices, target_xyz)
+    path = astar_nav_path(vertices, graph, start_index, goal_index)
+
+    if not path:
+        logger.debug(f"Walk movement could not find a nav path in {starting_zone}")
+        return False
+
+    for waypoint_index in path[1:]:
+        if await client.zone_name() != starting_zone:
+            return True
+        if not await is_free(client):
+            return True
+
+        waypoint = vertices[waypoint_index]
+        current_xyz = await client.body.position()
+        if calc_Distance(current_xyz, waypoint) <= waypoint_arrival_threshold:
+            continue
+
+        await client.goto(waypoint.x, waypoint.y)
+        await asyncio.sleep(0.2)
+
+        moved_xyz = await client.body.position()
+        if await client.zone_name() != starting_zone:
+            return True
+        if not await is_free(client):
+            return True
+        if (
+            calc_Distance(current_xyz, moved_xyz) < stuck_distance_threshold
+            and calc_Distance(moved_xyz, waypoint) > waypoint_arrival_threshold
+        ):
+            logger.debug(f"Walk movement appears stuck in {starting_zone}")
+            return False
+
+    if await client.zone_name() != starting_zone:
+        return True
+    if not await is_free(client):
+        return True
+
+    final_xyz = await client.body.position()
+    if calc_Distance(final_xyz, target_xyz) > final_arrival_threshold:
+        await client.goto(target_xyz.x, target_xyz.y)
+        await asyncio.sleep(0.2)
+
+    if await client.zone_name() != starting_zone:
+        return True
+    if not await is_free(client):
+        return True
+
+    return calc_Distance(await client.body.position(), target_xyz) <= final_arrival_threshold
+
 
 async def navmap_tp(client: Client, xyz: XYZ = None, leader_client: Client = None):
     # TODO: What is leader_client meant to be for?

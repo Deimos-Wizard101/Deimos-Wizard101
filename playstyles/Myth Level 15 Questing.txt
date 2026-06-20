@@ -1,0 +1,24 @@
+# Myth Level 15 Questing
+# deimos_profile: Myth Level 15 Questing
+# scan_nearby_side_quests: true
+# health_wisp_threshold: 0.80
+# collect_object_fallback_enabled: true
+# collect_object_scan_radius: 2200
+# collect_object_scan_timeout_seconds: 45
+# collect_object_interact_key: X
+# collect_object_max_failed_attempts: 6
+# collect_object_scan_step_size: 550
+# Early Myth questing profile for level 15 PvE before Humongofrog, Minotaur, and Orthrus.
+# Keep the in-game deck small: Mythblade, Myth Trap, optional Myth Prism, optional Golem Minion,
+# Troll, Cyclops, Blood Bat, and wand hits.
+# This profile does not require treasure cards, pets, off-school spells, special gear cards,
+# Humongofrog, Minotaur, Orthrus, or high-level Sun enchants.
+# Deimos uses profile-specific Python combat logic for this profile only:
+# - Killable enemies are hit before any blade, trap, prism, minion, or pass.
+# - Blood Bat breaks Myth/Tower/relevant shields before Troll or Cyclops.
+# - Myth Prism is only used against Myth enemies and is discarded against non-Myth enemies when safe.
+# - Mythblade, Myth Trap, Myth Prism, and Golem Minion avoid duplicates when effects are readable.
+# - If smart rules find no preferred action, any castable damage is used before pass.
+# The line below is only a conservative fallback for the normal playstyle parser.
+
+?(enemy.health <= 150) "Blood Bat" [any<mod_damage>] @ enemy | ?(enemy.health <= 150) "Troll" [any<mod_damage>] @ enemy | ?(enemy.health <= 150) "Cyclops" [any<mod_damage>] @ enemy | ?(enemy.health <= 150) any<damage> @ enemy | "Mythblade" @ self | "Myth Trap" @ enemy | "Troll" [any<mod_damage>] @ enemy | "Cyclops" [any<mod_damage>] @ enemy | "Blood Bat" [any<mod_damage>] @ enemy | any<damage> @ enemy | pass

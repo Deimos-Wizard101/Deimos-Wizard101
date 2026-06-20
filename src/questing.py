@@ -2,6 +2,7 @@ import asyncio
 import time
 import traceback
 import math
+from typing import List, Optional
 
 from loguru import logger
 
@@ -18,14 +19,109 @@ from src.paths import *
 from thefuzz import fuzz
 
 
+PROFILE_HEALTH_WISP_MAX_DISTANCE = 1800.0
+PROFILE_HEALTH_WISP_SCAN_COOLDOWN = 20.0
+PROFILE_SIDE_QUEST_SCAN_RADIUS = 2200.0
+PROFILE_SIDE_QUEST_SCAN_COOLDOWN = 15.0
+PROFILE_SIDE_QUEST_NPC_CACHE_SECONDS = 1800.0
+PROFILE_SIDE_QUEST_NPC_MISS_CACHE_SECONDS = 45.0
+PROFILE_SIDE_QUEST_MAX_NPCS = 4
+PROFILE_SIDE_QUEST_UNKNOWN_NPC_MAX = 2
+SIDE_QUEST_AREA_SWEEP_COOLDOWN = 20.0
+SIDE_QUEST_SWEEP_RADIUS = 3500.0
+SIDE_QUEST_SWEEP_MAX_NPCS = 12
+SIDE_QUEST_SWEEP_UNKNOWN_NPC_MAX = 4
+SIDE_QUEST_STUCK_ITERATIONS = 5
+SIDE_QUEST_NO_MARKER_STUCK_ITERATIONS = 3
+SIDE_QUEST_SKIP_SECONDS = 1800.0
+COLLECT_OBJECT_DEFAULT_SCAN_RADIUS = 2200.0
+COLLECT_OBJECT_DEFAULT_SCAN_TIMEOUT_SECONDS = 45.0
+COLLECT_OBJECT_DEFAULT_MAX_FAILED_ATTEMPTS = 6
+COLLECT_OBJECT_DEFAULT_SCAN_STEP_SIZE = 550.0
+COLLECT_OBJECT_FAILED_CACHE_SECONDS = 300.0
+COLLECT_OBJECT_INTERACT_WAIT_SECONDS = 3.0
+COLLECT_OBJECT_SAFE_DISTANCE = 900.0
+COLLECT_OBJECT_FUZZY_MATCH_THRESHOLD = 78
+COLLECT_OBJECT_PROMPT_KEYWORDS = ("to collect", "to use", "to interact", "to search", "to open", "press x")
+COLLECT_OBJECT_EXCLUDED_ENTITY_NAMES = {
+    'Basic Positional',
+    'Basic Ambient',
+    'DuelCircle',
+    'KT_WispHealth',
+    'KT_WispMana',
+    'Player Object',
+    'SkeletonKeySigilArt',
+    'TeleportPad',
+    'WispGold',
+    'WispHealth',
+    'WispMana',
+}
+SIDE_QUEST_QUEST_HINT_KEYWORDS = {
+    "availablequest",
+    "exclamation",
+    "quest",
+    "questavailable",
+    "questgiver",
+    "questicon",
+    "sidequest",
+}
+SIDE_QUEST_SERVICE_KEYWORDS = {
+    "auction",
+    "bank",
+    "bazaar",
+    "cantrip",
+    "craft",
+    "deck",
+    "dye",
+    "equipment",
+    "fish",
+    "fishing",
+    "hatch",
+    "housing",
+    "jewel",
+    "merchant",
+    "minigame",
+    "pet",
+    "potion",
+    "recipe",
+    "reagent",
+    "redeem",
+    "shop",
+    "shopkeeper",
+    "snack",
+    "spell",
+    "stitch",
+    "tome",
+    "train",
+    "trainer",
+    "vendor",
+}
+
+
 class Quester():
-    def __init__(self, client: Client, clients: list[Client], leader_pid: int):
+    def __init__(self, client: Client, clients: list[Client], leader_pid: int, movement_mode: str = "teleport"):
         self.client = client
         self.clients = clients
         self.leader_pid = leader_pid
         self.current_leader_client = client
         self.current_leader_pid = leader_pid
+        self.movement_mode = movement_mode
         self.d_location = None
+        self.side_quest_scan_times = {}
+        self.side_quest_area_sweep_times = {}
+        self.side_quest_scan_cache = {}
+
+    async def move_to(self, client: Client, xyz: XYZ, leader_client: Client = None) -> bool:
+        if self.movement_mode == "walk":
+            return await walk_to(client, xyz)
+
+        if self.movement_mode == "hybrid":
+            if await walk_to(client, xyz):
+                return True
+            logger.debug(f"Walk movement failed for {client.title}; falling back to navmap teleport.")
+
+        await navmap_tp(client, xyz, leader_client=leader_client)
+        return True
 
     async def read_quest_txt(self, client: Client) -> str:
         try:
@@ -61,8 +157,11 @@ class Quester():
         else:
             return False
 
-    async def is_position_safe(self, position: XYZ, safe_distance: float = 1000) -> bool:
-        sp = SprintyClient(self.client)
+    async def is_position_safe(self, position: XYZ, safe_distance: float = 1000, client: Client = None) -> bool:
+        if client is None:
+            client = self.client
+
+        sp = SprintyClient(client)
 
         for mob in await sp.get_mobs():
             mob_pos = await mob.location()
@@ -87,6 +186,488 @@ class Quester():
         if len(res) == 0:
             return ''
         return res[0].strip()
+
+    def clean_quest_objective_text(self, text: str) -> str:
+        if text is None:
+            return ""
+
+        text = text.replace('<center>', '').replace('</center>', '')
+        text = re.sub(r"<[^>]+>", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def detect_quest_objective_type(self, text: str) -> str:
+        cleaned_text = self.clean_quest_objective_text(text).lower()
+        if cleaned_text.startswith(("talk to", "talk")):
+            return "Talk To"
+        if cleaned_text.startswith("defeat"):
+            return "Defeat"
+        if cleaned_text.startswith(("collect", "gather")):
+            return "Collect"
+        if cleaned_text.startswith("search"):
+            return "Search"
+        if cleaned_text.startswith("find"):
+            return "Find"
+        if cleaned_text.startswith(("interact", "use", "activate", "open")):
+            return "Interact"
+        if cleaned_text.startswith(("go to", "go into", "enter")):
+            return "Go To"
+        return "Unknown"
+
+    def parse_collect_objective_text(self, text: str):
+        raw_text = text or ""
+        cleaned_text = self.clean_quest_objective_text(raw_text)
+        objective_type = self.detect_quest_objective_type(raw_text)
+        logger.debug(
+            f'Collect-object parser objective raw={raw_text!r}, cleaned={cleaned_text!r}, '
+            f'detected_type={objective_type}.'
+        )
+        if not cleaned_text:
+            return None
+
+        progress_match = re.search(r"\((\d+)\s+of\s+(\d+)\)", cleaned_text, re.IGNORECASE)
+        current_count = int(progress_match.group(1)) if progress_match else None
+        target_count = int(progress_match.group(2)) if progress_match else None
+
+        objective_without_count = re.sub(r"\([^)]*\)", "", cleaned_text).strip()
+        match = re.match(
+            r"^(?:collect|gather|find|search(?:\s+for)?|interact(?:\s+with)?|use|activate|open)\s+(.+?)(?:\s+in\s+.+)?$",
+            objective_without_count,
+            re.IGNORECASE,
+        )
+        if match is None:
+            return None
+
+        collectible_name = match.group(1).strip(" .:-")
+        collectible_name = re.sub(r"^(?:the|a|an)\s+", "", collectible_name, flags=re.IGNORECASE)
+        if len(collectible_name) < 3:
+            return None
+
+        return {
+            "raw_objective": raw_text,
+            "objective": cleaned_text,
+            "type": objective_type,
+            "name": collectible_name,
+            "current": current_count,
+            "target": target_count,
+        }
+
+    async def current_collect_objective(self, client: Client):
+        try:
+            return self.parse_collect_objective_text(await get_quest_name(client))
+        except (ValueError, MemoryReadError, AttributeError):
+            return None
+
+    def collect_object_fallback_enabled(self, client: Client) -> bool:
+        return bool(getattr(client, "collect_object_fallback_enabled", False) or getattr(client, "questing_status", False))
+
+    def collect_object_float_setting(self, client: Client, attr: str, default: float) -> float:
+        try:
+            value = float(getattr(client, attr, default))
+        except (TypeError, ValueError):
+            return default
+        return value if value > 0 else default
+
+    def collect_object_int_setting(self, client: Client, attr: str, default: int) -> int:
+        try:
+            value = int(getattr(client, attr, default))
+        except (TypeError, ValueError):
+            return default
+        return value if value > 0 else default
+
+    def collect_object_interact_keycode(self, client: Client):
+        key_name = str(getattr(client, "collect_object_interact_key", "X") or "X").upper()
+        return getattr(Keycode, key_name, Keycode.X)
+
+    def collect_object_failed_cache(self, client: Client) -> dict:
+        cache = getattr(client, "collect_object_failed_cache", None)
+        if cache is None:
+            cache = {}
+            client.collect_object_failed_cache = cache
+
+        now = time.time()
+        expired_keys = [key for key, expires_at in cache.items() if expires_at <= now]
+        for key in expired_keys:
+            cache.pop(key, None)
+
+        return cache
+
+    def normalize_collect_object_name(self, name: str) -> str:
+        if name is None:
+            return ""
+
+        name = re.sub(r"<[^>]+>", " ", str(name))
+        name = re.sub(r"[_\-]+", " ", name)
+        name = re.sub(r"\d+", " ", name)
+        name = re.sub(r"[^a-zA-Z ]+", " ", name)
+        name = re.sub(r"\s+", " ", name)
+        return name.strip().lower()
+
+    def collect_object_match_score(self, target_name: str, candidate_names: List[str]) -> int:
+        normalized_target = self.normalize_collect_object_name(target_name)
+        if not normalized_target:
+            return 0
+
+        best_score = 0
+        for candidate_name in candidate_names:
+            normalized_candidate = self.normalize_collect_object_name(candidate_name)
+            if not normalized_candidate:
+                continue
+
+            if normalized_candidate == normalized_target:
+                return 100
+
+            if normalized_target in normalized_candidate or normalized_candidate in normalized_target:
+                best_score = max(best_score, 95)
+                continue
+
+            best_score = max(best_score, fuzz.token_sort_ratio(normalized_candidate, normalized_target))
+
+        return best_score
+
+    async def collect_object_entity_names(self, entity: DynamicClientObject) -> List[str]:
+        names = []
+        try:
+            display_name = await entity.display_name()
+            if display_name:
+                names.append(display_name)
+        except (ValueError, MemoryReadError, AttributeError):
+            pass
+
+        try:
+            object_name = await entity.object_name()
+            if object_name:
+                names.append(object_name)
+        except (ValueError, MemoryReadError, AttributeError):
+            pass
+
+        try:
+            object_template = await entity.object_template()
+            if object_template is not None:
+                template_name = await object_template.object_name()
+                if template_name:
+                    names.append(template_name)
+                description = await object_template.description()
+                if description:
+                    names.append(description)
+        except (ValueError, MemoryReadError, AttributeError):
+            pass
+
+        return list(dict.fromkeys(names))
+
+    async def collect_object_entity_details(self, entity: DynamicClientObject) -> dict:
+        details = {
+            "names": [],
+            "icon": "",
+            "object_type": "",
+            "behaviors": [],
+            "has_wizard_select": False,
+        }
+
+        try:
+            object_template = await entity.object_template()
+            if object_template is not None:
+                try:
+                    object_type = await object_template.object_type()
+                    details["object_type"] = getattr(object_type, "name", "")
+                except (ValueError, MemoryReadError, AttributeError):
+                    pass
+
+                try:
+                    details["icon"] = await object_template.icon() or ""
+                except (ValueError, MemoryReadError, AttributeError):
+                    pass
+        except (ValueError, MemoryReadError, AttributeError):
+            pass
+
+        details["names"] = await self.collect_object_entity_names(entity)
+
+        try:
+            details["behaviors"] = [await behavior.behavior_name() for behavior in await entity.inactive_behaviors()]
+        except (ValueError, MemoryReadError, AttributeError):
+            details["behaviors"] = []
+
+        details["has_wizard_select"] = any("wizardselect" in behavior.lower() for behavior in details["behaviors"])
+        return details
+
+    async def nearby_collect_object_candidates(
+        self,
+        client: Client,
+        collectible_name: str,
+        origin: XYZ,
+        radius: float,
+    ):
+        sprinter = SprintyClient(client)
+        failed_cache = self.collect_object_failed_cache(client)
+        zone_name = await client.zone_name()
+        candidates = []
+
+        for entity in await sprinter.get_base_entity_list():
+            try:
+                entity_id = await entity.global_id_full()
+                entity_pos = await entity.location()
+                distance_from_origin = calc_Distance(origin, entity_pos)
+                if distance_from_origin > radius:
+                    continue
+
+                cache_key = (zone_name, self.normalize_collect_object_name(collectible_name), entity_id)
+                location_key = (zone_name, self.normalize_collect_object_name(collectible_name), round(entity_pos.x / 50), round(entity_pos.y / 50), round(entity_pos.z / 50))
+                if cache_key in failed_cache or location_key in failed_cache:
+                    logger.debug(f'Collect-object candidate cache hit for entity_id={entity_id}; skipping failed/unreachable candidate.')
+                    continue
+
+                details = await self.collect_object_entity_details(entity)
+                names = details["names"]
+                if not names:
+                    logger.debug(f'Collect-object candidate entity_id={entity_id} skipped: no readable names; details={details!r}.')
+                    continue
+
+                if any(name in COLLECT_OBJECT_EXCLUDED_ENTITY_NAMES for name in names):
+                    logger.debug(f'Collect-object candidate entity_id={entity_id} skipped: excluded name; names={names!r}.')
+                    continue
+
+                score = self.collect_object_match_score(collectible_name, names)
+                if score < COLLECT_OBJECT_FUZZY_MATCH_THRESHOLD:
+                    logger.debug(
+                        f'Collect-object candidate entity_id={entity_id} skipped: score={score}, '
+                        f'target={collectible_name!r}, details={details!r}.'
+                    )
+                    continue
+
+                current_pos = await client.body.position()
+                distance_from_client = calc_Distance(current_pos, entity_pos)
+                logger.debug(
+                    f'Collect-object candidate accepted: entity_id={entity_id}, score={score}, '
+                    f'distance={round(distance_from_client, 1)}, origin_distance={round(distance_from_origin, 1)}, '
+                    f'target={collectible_name!r}, details={details!r}.'
+                )
+                candidates.append((score, distance_from_client, entity_id, entity, entity_pos, names))
+            except (ValueError, MemoryReadError, AttributeError):
+                continue
+
+        candidates.sort(key=lambda candidate: (-candidate[0], candidate[1]))
+        logger.debug(f'Collect-object scan found {len(candidates)} matching candidate(s) for {collectible_name!r}.')
+        return candidates
+
+    def bounded_collect_scan_points(self, origin: XYZ, radius: float, step_size: float) -> List[XYZ]:
+        points = [origin]
+        ring = step_size
+        while ring <= radius:
+            points.extend([
+                XYZ(origin.x + ring, origin.y, origin.z),
+                XYZ(origin.x - ring, origin.y, origin.z),
+                XYZ(origin.x, origin.y + ring, origin.z),
+                XYZ(origin.x, origin.y - ring, origin.z),
+                XYZ(origin.x + ring, origin.y + ring, origin.z),
+                XYZ(origin.x - ring, origin.y + ring, origin.z),
+                XYZ(origin.x + ring, origin.y - ring, origin.z),
+                XYZ(origin.x - ring, origin.y - ring, origin.z),
+            ])
+            ring += step_size
+
+        return points
+
+    async def move_to_collect_object_position(self, client: Client, xyz: XYZ) -> bool:
+        logger.debug(f'Client {client.title} moving to collect object using movement_mode={self.movement_mode}. Target={xyz}.')
+        if self.movement_mode in {"walk", "hybrid"}:
+            if await walk_to(client, xyz):
+                return True
+
+            if self.movement_mode == "walk":
+                return False
+
+        return await self.move_to(client, xyz)
+
+    async def wait_for_collect_objective_change(self, client: Client, before_text: str, timeout: float = COLLECT_OBJECT_INTERACT_WAIT_SECONDS) -> str:
+        start_time = time.time()
+        last_text = before_text
+        while time.time() < start_time + timeout:
+            await asyncio.sleep(0.25)
+            try:
+                current_text = await get_quest_name(client)
+            except (ValueError, MemoryReadError, AttributeError):
+                continue
+
+            last_text = current_text
+            if current_text != before_text:
+                return current_text
+
+        return last_text
+
+    async def try_collect_object_entity(self, client: Client, entity: DynamicClientObject, entity_pos: XYZ, collectible_name: str, entity_names: List[str]) -> bool:
+        zone_name = await client.zone_name()
+        normalized_name = self.normalize_collect_object_name(collectible_name)
+        failed_cache = self.collect_object_failed_cache(client)
+
+        try:
+            entity_id = await entity.global_id_full()
+        except (ValueError, MemoryReadError, AttributeError):
+            entity_id = None
+
+        location_key = (zone_name, normalized_name, round(entity_pos.x / 50), round(entity_pos.y / 50), round(entity_pos.z / 50))
+        entity_key = (zone_name, normalized_name, entity_id) if entity_id is not None else location_key
+
+        if not await self.is_position_safe(entity_pos, safe_distance=COLLECT_OBJECT_SAFE_DISTANCE, client=client):
+            logger.debug(f'Collect-object candidate "{collectible_name}" skipped: unsafe position near mob. names={entity_names!r}.')
+            failed_cache[entity_key] = time.time() + COLLECT_OBJECT_FAILED_CACHE_SECONDS
+            failed_cache[location_key] = time.time() + COLLECT_OBJECT_FAILED_CACHE_SECONDS
+            return False
+
+        before_text = await get_quest_name(client)
+        before_clean = self.clean_quest_objective_text(before_text)
+        logger.debug(
+            f'Client {client.title} chose collect target "{collectible_name}" with names={entity_names!r}; '
+            f'distance={round(calc_Distance(await client.body.position(), entity_pos), 1)}, objective_before={before_clean!r}.'
+        )
+        try:
+            if not await self.move_to_collect_object_position(client, entity_pos):
+                logger.debug(f'Client {client.title} failed to move to collect target "{collectible_name}" at {entity_pos}.')
+                failed_cache[entity_key] = time.time() + COLLECT_OBJECT_FAILED_CACHE_SECONDS
+                failed_cache[location_key] = time.time() + COLLECT_OBJECT_FAILED_CACHE_SECONDS
+                return False
+        except (ValueError, MemoryReadError):
+            logger.debug(f'Client {client.title} movement raised while moving to collect target "{collectible_name}" at {entity_pos}.')
+            failed_cache[entity_key] = time.time() + COLLECT_OBJECT_FAILED_CACHE_SECONDS
+            failed_cache[location_key] = time.time() + COLLECT_OBJECT_FAILED_CACHE_SECONDS
+            return False
+
+        await asyncio.sleep(0.5)
+        popup_text = (await self.read_popup(client)).lower()
+        if await is_visible_by_path(client, npc_range_path) and any(keyword in popup_text for keyword in COLLECT_OBJECT_PROMPT_KEYWORDS):
+            interact_key = self.collect_object_interact_keycode(client)
+            logger.debug(
+                f'Client {client.title} pressing {interact_key} for collect target "{collectible_name}" '
+                f'from entity names {entity_names}. Popup: {popup_text!r}.'
+            )
+            for _ in range(3):
+                await client.send_key(interact_key, 0.1)
+                await asyncio.sleep(0.15)
+
+            after_text = await self.wait_for_collect_objective_change(client, before_text)
+            logger.debug(
+                f'Client {client.title} collect interaction result for "{collectible_name}": '
+                f'before={before_clean!r}, after={self.clean_quest_objective_text(after_text)!r}.'
+            )
+            if after_text != before_text:
+                return True
+
+            logger.debug(f'Client {client.title} interacted with "{collectible_name}", but objective text did not change.')
+        else:
+            logger.debug(f'Client {client.title} found "{collectible_name}" candidate but no collect prompt appeared. Popup: {popup_text!r}.')
+
+        failed_cache[entity_key] = time.time() + COLLECT_OBJECT_FAILED_CACHE_SECONDS
+        failed_cache[location_key] = time.time() + COLLECT_OBJECT_FAILED_CACHE_SECONDS
+        return False
+
+    async def collect_object_fallback(self, client: Client) -> bool:
+        if not self.collect_object_fallback_enabled(client):
+            return False
+
+        objective = await self.current_collect_objective(client)
+        if objective is None:
+            return False
+
+        collectible_name = objective["name"]
+        radius = self.collect_object_float_setting(client, "collect_object_scan_radius", COLLECT_OBJECT_DEFAULT_SCAN_RADIUS)
+        timeout_seconds = self.collect_object_float_setting(client, "collect_object_scan_timeout_seconds", COLLECT_OBJECT_DEFAULT_SCAN_TIMEOUT_SECONDS)
+        max_failed_attempts = self.collect_object_int_setting(client, "collect_object_max_failed_attempts", COLLECT_OBJECT_DEFAULT_MAX_FAILED_ATTEMPTS)
+        step_size = self.collect_object_float_setting(client, "collect_object_scan_step_size", COLLECT_OBJECT_DEFAULT_SCAN_STEP_SIZE)
+        origin = await client.body.position()
+        scan_points = self.bounded_collect_scan_points(origin, radius, step_size)
+        scan_index = 0
+        failed_attempts = 0
+        start_time = time.time()
+        profile_enabled = bool(getattr(client, "collect_object_fallback_enabled", False))
+
+        logger.info(
+            f'Client {client.title} using collect-object fallback for "{collectible_name}" '
+            f'within {round(radius)} units. objective={objective["objective"]!r}, '
+            f'type={objective["type"]}, progress={objective["current"]}/{objective["target"]}, '
+            f'profile_collect_object_fallback_enabled={profile_enabled}, '
+            f'effective_enabled={self.collect_object_fallback_enabled(client)}, '
+            f'timeout={round(timeout_seconds)}s, step_size={round(step_size)}, '
+            f'interact_key={getattr(client, "collect_object_interact_key", "X")}.'
+        )
+
+        while time.time() < start_time + timeout_seconds and failed_attempts < max_failed_attempts:
+            if not await is_free_leader_questing(client) or client.entity_detect_combat_status:
+                await asyncio.sleep(0.25)
+                continue
+
+            objective = await self.current_collect_objective(client)
+            if objective is None or self.normalize_collect_object_name(objective["name"]) != self.normalize_collect_object_name(collectible_name):
+                logger.info(f'Client {client.title} collect-object fallback finished; objective changed.')
+                return True
+
+            candidates = await self.nearby_collect_object_candidates(client, collectible_name, origin, radius)
+            if candidates:
+                _, _, _, entity, entity_pos, names = candidates[0]
+                logger.debug(f'Client {client.title} selected nearest/best collect candidate for "{collectible_name}": names={names!r}, pos={entity_pos}.')
+                if await self.try_collect_object_entity(client, entity, entity_pos, collectible_name, names):
+                    failed_attempts = 0
+                    await asyncio.sleep(0.5)
+                    continue
+
+                failed_attempts += 1
+                continue
+
+            if scan_index >= len(scan_points):
+                break
+
+            scan_point = scan_points[scan_index]
+            scan_index += 1
+            if calc_Distance(origin, scan_point) > radius:
+                continue
+
+            logger.debug(f'Client {client.title} scanning local area for "{collectible_name}" at radius {round(calc_Distance(origin, scan_point))}.')
+            try:
+                await self.move_to_collect_object_position(client, scan_point)
+            except (ValueError, MemoryReadError):
+                failed_attempts += 1
+            await asyncio.sleep(0.5)
+
+        logger.info(
+            f'Client {client.title} collect-object fallback gave up for "{collectible_name}" '
+            f'after {failed_attempts} failed attempts or timeout; returning control to main quest loop.'
+        )
+        return False
+
+    async def handle_collect_object_fallback(self) -> bool:
+        if not self.collect_object_fallback_enabled(self.current_leader_client):
+            objective = await self.current_collect_objective(self.current_leader_client)
+            if objective is not None:
+                logger.debug(
+                    f'Client {self.current_leader_client.title} detected collect-style objective '
+                    f'{objective["objective"]!r}, but collect-object fallback is disabled.'
+                )
+            return False
+
+        leader_objective = await self.current_collect_objective(self.current_leader_client)
+        if leader_objective is None:
+            raw_objective = await get_quest_name(self.current_leader_client)
+            logger.debug(
+                f'Client {self.current_leader_client.title} collect-object fallback not applicable; '
+                f'current objective={self.clean_quest_objective_text(raw_objective)!r}, '
+                f'type={self.detect_quest_objective_type(raw_objective)}.'
+            )
+            return False
+
+        leader_truncated_objective = await self.get_truncated_quest_objectives(self.current_leader_client)
+        handled = False
+        for client in self.clients:
+            if client.process_id == self.current_leader_client.process_id:
+                continue
+
+            if not self.collect_object_fallback_enabled(client):
+                continue
+
+            if await self.get_truncated_quest_objectives(client) != leader_truncated_objective:
+                continue
+
+            collect_quester = Quester(client, self.clients, None, movement_mode=self.movement_mode)
+            handled = await collect_quester.collect_object_fallback(client) or handled
+
+        handled = await self.collect_object_fallback(self.current_leader_client) or handled
+        return handled
 
     # TODO: Does this need a client?
     async def get_quest_zone_name(self, c: Client) -> str:
@@ -251,7 +832,7 @@ class Quester():
         # for solo zone questing support across multiple clients
         async def solo_zone_questing_loop(clients_in_solo: List[Client], zone: str):
             async def solo_zone_questing(solo_cl: Client):
-                questing = Quester(solo_cl, self.clients, None)
+                questing = Quester(solo_cl, self.clients, None, movement_mode=self.movement_mode)
                 while solo_cl.questing_status and await solo_cl.zone_name() == zone:
                     await asyncio.sleep(1.0)
 
@@ -305,6 +886,7 @@ class Quester():
         return maybe_solo_zone
 
     async def heal_and_handle_potions(self):
+        await asyncio.gather(*[self.maybe_collect_profile_health_wisp(p) for p in self.clients])
         await asyncio.gather(*[self.collect_wisps(p) for p in self.clients])
         await asyncio.gather(*[self.guarantee_use_potion(p) for p in self.clients])
 
@@ -332,6 +914,672 @@ class Quester():
         if await is_free(p):
             if await is_potion_needed(p) and await p.stats.current_mana() > 1 and await p.stats.current_hitpoints() > 1:
                 await collect_wisps(p)
+
+    def profile_side_quest_scan_enabled(self, client: Client) -> bool:
+        return bool(getattr(client, "scan_nearby_side_quests", False) or getattr(client, "side_questing_status", False))
+
+    def profile_health_wisp_threshold(self, client: Client):
+        threshold = getattr(client, "health_wisp_threshold", None)
+        if threshold is None:
+            return None
+
+        try:
+            threshold = float(threshold)
+        except (TypeError, ValueError):
+            return None
+
+        if threshold > 1:
+            threshold /= 100.0
+
+        if threshold <= 0:
+            return None
+
+        return min(threshold, 1.0)
+
+    async def maybe_collect_profile_health_wisp(self, client: Client, max_distance: float = PROFILE_HEALTH_WISP_MAX_DISTANCE) -> bool:
+        threshold = self.profile_health_wisp_threshold(client)
+        if threshold is None or not await is_free(client) or client.entity_detect_combat_status:
+            return False
+
+        max_health = await client.stats.max_hitpoints()
+        current_health = await client.stats.current_hitpoints()
+        if max_health <= 0 or current_health <= 1:
+            return False
+
+        if float(current_health) / float(max_health) > threshold:
+            return False
+
+        now = time.time()
+        last_scan = getattr(client, "profile_health_wisp_scan_time", 0.0)
+        if now - last_scan < PROFILE_HEALTH_WISP_SCAN_COOLDOWN:
+            return False
+
+        client.profile_health_wisp_scan_time = now
+        sprinter = SprintyClient(client)
+
+        try:
+            health_wisps = await sprinter.get_health_wisps()
+            health_wisps = await sprinter.find_safe_entities_from(health_wisps, safe_distance=1200)
+        except (ValueError, MemoryReadError):
+            return False
+
+        current_pos = await client.body.position()
+        closest_wisp = None
+        closest_distance = None
+        for wisp in health_wisps:
+            try:
+                wisp_pos = await wisp.location()
+                distance = calc_Distance(current_pos, wisp_pos)
+            except (ValueError, MemoryReadError):
+                continue
+
+            if distance > max_distance:
+                continue
+
+            if closest_distance is None or distance < closest_distance:
+                closest_wisp = wisp_pos
+                closest_distance = distance
+
+        if closest_wisp is None:
+            logger.debug(f'Client {client.title} is below profile health threshold, but no nearby health wisp was found.')
+            return False
+
+        logger.debug(f'Client {client.title} collecting nearby profile health wisp at {round((float(current_health) / float(max_health)) * 100, 1)}% health.')
+        await self.move_to(client, closest_wisp)
+        await asyncio.sleep(0.3)
+        return True
+
+    async def side_quest_candidate_names(self, entity: DynamicClientObject) -> List[str]:
+        names = []
+        try:
+            display_name = await entity.display_name()
+            if display_name:
+                names.append(display_name)
+        except (ValueError, MemoryReadError, AttributeError):
+            pass
+
+        try:
+            object_name = await entity.object_name()
+            if object_name:
+                names.append(object_name)
+        except (ValueError, MemoryReadError, AttributeError):
+            pass
+
+        return list(dict.fromkeys(names))
+
+    async def side_quest_candidate_details(self, entity: DynamicClientObject) -> dict:
+        details = {
+            "names": [],
+            "icon": "",
+            "object_type": "",
+            "behaviors": [],
+            "has_npc_behavior": False,
+            "is_combat_npc": False,
+        }
+
+        try:
+            object_template = await entity.object_template()
+            if object_template is None:
+                return details
+
+            object_type = await object_template.object_type()
+            details["object_type"] = getattr(object_type, "name", "")
+
+            try:
+                icon = await object_template.icon()
+                details["icon"] = icon or ""
+            except (ValueError, MemoryReadError, AttributeError):
+                pass
+
+            details["names"] = await self.side_quest_candidate_names(entity)
+
+            try:
+                details["behaviors"] = [await behavior.behavior_name() for behavior in await entity.inactive_behaviors()]
+            except (ValueError, MemoryReadError, AttributeError):
+                details["behaviors"] = []
+
+            npc_template = await entity.fetch_npc_behavior_template()
+            if npc_template is not None:
+                details["has_npc_behavior"] = True
+                try:
+                    if await npc_template.starting_health() > 0:
+                        details["is_combat_npc"] = True
+                except (ValueError, MemoryReadError, AttributeError):
+                    pass
+        except (ValueError, MemoryReadError, AttributeError):
+            pass
+
+        return details
+
+    def side_quest_detail_tokens(self, details: dict) -> List[str]:
+        tokens = []
+        tokens.extend(details.get("names", []))
+        tokens.append(details.get("icon", ""))
+        tokens.append(details.get("object_type", ""))
+        tokens.extend(details.get("behaviors", []))
+        return [self.normalize_collect_object_name(token) for token in tokens if token]
+
+    def has_side_quest_hint(self, details: dict) -> bool:
+        for token in self.side_quest_detail_tokens(details):
+            compact_token = token.replace(" ", "")
+            if any(keyword in compact_token for keyword in SIDE_QUEST_QUEST_HINT_KEYWORDS):
+                return True
+        return False
+
+    def has_side_quest_service_hint(self, details: dict) -> bool:
+        for token in self.side_quest_detail_tokens(details):
+            compact_token = token.replace(" ", "")
+            if any(keyword in compact_token for keyword in SIDE_QUEST_SERVICE_KEYWORDS):
+                return True
+        return False
+
+    def side_quest_candidate_rejection_reason(self, details: dict, force: bool = False, allow_unknown_probe: bool = False) -> str:
+        if details.get("object_type") == "player":
+            return "player object"
+        if details.get("is_combat_npc"):
+            return "combat NPC"
+        if not details.get("has_npc_behavior") and details.get("object_type") != "npc":
+            return f'not an NPC candidate (object_type={details.get("object_type")!r})'
+        if self.has_side_quest_service_hint(details):
+            return "service/vendor/trainer/shop hint"
+        if self.has_side_quest_hint(details):
+            return ""
+        if allow_unknown_probe:
+            return ""
+        return "no quest icon/name/behavior hint"
+
+    async def nearby_optional_quest_candidates(self, client: Client, radius: float = PROFILE_SIDE_QUEST_SCAN_RADIUS, force: bool = False):
+        sprinter = SprintyClient(client)
+        current_pos = await client.body.position()
+        zone_name = await client.zone_name()
+        now = time.time()
+        candidates = []
+        allow_unknown_probe = force or self.profile_side_quest_scan_enabled(client)
+        unknown_probe_limit = SIDE_QUEST_SWEEP_UNKNOWN_NPC_MAX if force or getattr(client, "side_questing_status", False) else PROFILE_SIDE_QUEST_UNKNOWN_NPC_MAX
+
+        for entity in await sprinter.get_base_entity_list():
+            try:
+                details = await self.side_quest_candidate_details(entity)
+                entity_id = await entity.global_id_full()
+                names = details.get("names", [])
+                display_name = names[0] if names else str(entity_id)
+                has_quest_hint = self.has_side_quest_hint(details)
+                rejection_reason = self.side_quest_candidate_rejection_reason(details, force=force, allow_unknown_probe=allow_unknown_probe)
+                if rejection_reason:
+                    logger.debug(
+                        f'Client {client.title} skipping nearby optional quest candidate "{display_name}": '
+                        f'{rejection_reason}; icon={details.get("icon")!r}; '
+                        f'object_type={details.get("object_type")!r}; behaviors={details.get("behaviors")!r}.'
+                    )
+                    continue
+
+                cache_key = (zone_name, entity_id)
+                if now - self.side_quest_scan_cache.get(cache_key, 0.0) < PROFILE_SIDE_QUEST_NPC_CACHE_SECONDS:
+                    logger.debug(f'Client {client.title} skipping cached side quest candidate "{display_name}".')
+                    continue
+
+                entity_pos = await entity.location()
+                distance = calc_Distance(current_pos, entity_pos)
+                if distance > radius:
+                    continue
+
+                if not has_quest_hint:
+                    logger.debug(
+                        f'Client {client.title} keeping "{display_name}" as an unknown non-service NPC probe candidate; '
+                        f'will cap unknown probes after distance sorting.'
+                    )
+
+                selected_reason = "quest hint" if has_quest_hint else "bounded unknown non-service NPC probe"
+                logger.debug(
+                    f'Client {client.title} side quest candidate "{display_name}" selected by {selected_reason}; '
+                    f'distance={round(distance)}; icon={details.get("icon")!r}; '
+                    f'object_type={details.get("object_type")!r}; behaviors={details.get("behaviors")!r}.'
+                )
+                candidates.append((0 if has_quest_hint else 1, distance, entity_id, display_name, entity_pos, details))
+            except (ValueError, MemoryReadError, AttributeError):
+                continue
+
+        candidates.sort(key=lambda candidate: (candidate[0], candidate[1]))
+        hint_candidates = [candidate for candidate in candidates if candidate[0] == 0]
+        unknown_candidates = [candidate for candidate in candidates if candidate[0] == 1]
+        if len(unknown_candidates) > unknown_probe_limit:
+            logger.debug(
+                f'Client {client.title} limiting unknown side quest NPC probes from '
+                f'{len(unknown_candidates)} to {unknown_probe_limit} closest candidates.'
+            )
+
+        return hint_candidates + unknown_candidates[:unknown_probe_limit]
+
+    async def move_to_side_quest_candidate(self, client: Client, entity_pos: XYZ) -> bool:
+        if await walk_to(client, entity_pos):
+            return True
+
+        return await self.move_to(client, entity_pos)
+
+    def side_quest_candidate_cache_for_seconds(self, zone_name: str, entity_id: int, seconds: float):
+        self.side_quest_scan_cache[(zone_name, entity_id)] = time.time() - PROFILE_SIDE_QUEST_NPC_CACHE_SECONDS + seconds
+
+    def side_quest_non_quest_ui_paths(self):
+        return (
+            exit_recipe_shop_path,
+            exit_equipment_shop_path,
+            exit_snack_shop_path,
+            exit_reagent_shop_path,
+            cancel_spell_vendor,
+            exit_tc_vendor,
+            exit_minigame_sigil,
+            potion_exit_path,
+            cancel_multiple_quest_menu_path,
+            exit_zafaria_class_picture_button,
+            exit_pet_leveled_up_button_path,
+            avalon_badge_exit_button_path,
+        )
+
+    async def close_side_quest_non_quest_ui(self, client: Client, present_clients: list[Client], display_name: str) -> bool:
+        paths = self.side_quest_non_quest_ui_paths()
+        visible_paths = []
+        for path in paths:
+            try:
+                if await is_visible_by_path(client, path):
+                    visible_paths.append(path)
+            except (ValueError, MemoryReadError, AttributeError):
+                continue
+
+        if not visible_paths:
+            return False
+
+        logger.debug(f'Client {client.title} opened non-quest/shop UI from "{display_name}", closing paths: {visible_paths!r}.')
+        await asyncio.gather(*[exit_menus(c, paths) for c in present_clients])
+        await asyncio.sleep(0.3)
+        for _ in range(2):
+            if not await client.is_in_dialog():
+                break
+            await client.send_key(Keycode.ESC, 0.1)
+            await asyncio.sleep(0.2)
+        return True
+
+    async def maybe_scan_nearby_side_quests(
+        self,
+        client: Client,
+        present_clients: list[Client] = None,
+        force: bool = False,
+        radius: float = PROFILE_SIDE_QUEST_SCAN_RADIUS,
+        max_npcs: int = PROFILE_SIDE_QUEST_MAX_NPCS
+    ) -> bool:
+        if not force and not self.profile_side_quest_scan_enabled(client):
+            return False
+
+        if present_clients is None:
+            present_clients = [client]
+
+        if not await is_free_leader_questing(client) or client.entity_detect_combat_status:
+            return False
+
+        zone_name = await client.zone_name()
+        scan_key = (client.process_id, zone_name)
+        now = time.time()
+        if not force and now - self.side_quest_scan_times.get(scan_key, 0.0) < PROFILE_SIDE_QUEST_SCAN_COOLDOWN:
+            return False
+
+        self.side_quest_scan_times[scan_key] = now
+        candidates = await self.nearby_optional_quest_candidates(client, radius=radius, force=force)
+        if not candidates:
+            logger.debug(f'Client {client.title} found no nearby optional quest NPC candidates.')
+            return False
+
+        interacted = False
+        for _, _, entity_id, display_name, entity_pos, details in candidates[:max_npcs]:
+            if await client.zone_name() != zone_name or not await is_free_leader_questing(client):
+                break
+
+            try:
+                await self.move_to_side_quest_candidate(client, entity_pos)
+            except (ValueError, MemoryReadError):
+                logger.debug(f'Client {client.title} could not reach side quest candidate "{display_name}", temporarily caching miss.')
+                self.side_quest_candidate_cache_for_seconds(zone_name, entity_id, PROFILE_SIDE_QUEST_NPC_MISS_CACHE_SECONDS)
+                continue
+
+            await asyncio.sleep(0.5)
+            popup_text = (await self.read_popup(client)).lower()
+            if not await is_visible_by_path(client, npc_range_path) or "to talk" not in popup_text:
+                logger.debug(f'Client {client.title} side quest candidate "{display_name}" did not show a talk prompt. Popup: {popup_text!r}')
+                self.side_quest_candidate_cache_for_seconds(zone_name, entity_id, PROFILE_SIDE_QUEST_NPC_MISS_CACHE_SECONDS)
+                continue
+
+            logger.debug(f'Client {client.title} checking nearby optional quest NPC: {display_name}')
+            before_quests = await self.accepted_quest_ids(client)
+            client.side_questing_accept_until = time.time() + 20.0
+            await client.send_key(Keycode.X, 0.1)
+            await self.advance_side_quest_dialogue(client, present_clients)
+            closed_non_quest_ui = await self.close_side_quest_non_quest_ui(client, present_clients, display_name)
+            after_quests = await self.accepted_quest_ids(client)
+            accepted_now = after_quests - before_quests
+            if accepted_now:
+                logger.debug(f'Client {client.title} accepted side quest(s) from "{display_name}": {accepted_now}.')
+                self.side_quest_scan_cache[(zone_name, entity_id)] = time.time()
+            elif closed_non_quest_ui:
+                logger.debug(f'Client {client.title} rejected "{display_name}" as non-quest/service NPC after UI cleanup.')
+                self.side_quest_scan_cache[(zone_name, entity_id)] = time.time()
+            else:
+                logger.debug(
+                    f'Client {client.title} interacted with "{display_name}" but no new quest was detected; '
+                    f'details={details!r}. Temporarily caching miss.'
+                )
+                self.side_quest_candidate_cache_for_seconds(zone_name, entity_id, PROFILE_SIDE_QUEST_NPC_MISS_CACHE_SECONDS)
+            interacted = True
+            await asyncio.sleep(0.5)
+
+        return interacted
+
+    async def advance_side_quest_dialogue(self, client: Client, present_clients: list[Client], timeout: float = 20.0):
+        start_time = time.time()
+        no_dialogue_timeout = start_time + 2.0
+        saw_dialogue = False
+        while time.time() < start_time + timeout:
+            if await is_visible_by_path(client, advance_dialog_path):
+                saw_dialogue = True
+                await client.send_key(Keycode.SPACEBAR, 0.1)
+                await asyncio.sleep(0.2)
+                continue
+
+            if not await is_free_leader_questing(client):
+                saw_dialogue = True
+                await asyncio.sleep(0.1)
+                continue
+
+            if saw_dialogue:
+                break
+
+            if time.time() > no_dialogue_timeout:
+                break
+
+            await asyncio.sleep(0.1)
+
+        after_talking_paths = self.side_quest_non_quest_ui_paths()
+        await asyncio.gather(*[exit_menus(c, after_talking_paths) for c in present_clients])
+
+    async def accepted_quest_ids(self, client: Client) -> set[int]:
+        quest_manager = await client.quest_manager()
+        return set((await quest_manager.quest_data()).keys())
+
+    def side_quest_skip_cache(self, client: Client) -> dict:
+        skip_cache = getattr(client, "side_quest_skip_cache", None)
+        if skip_cache is None:
+            skip_cache = {}
+            client.side_quest_skip_cache = skip_cache
+
+        now = time.time()
+        expired_keys = [key for key, expires_at in skip_cache.items() if expires_at <= now]
+        for key in expired_keys:
+            skip_cache.pop(key, None)
+
+        return skip_cache
+
+    def is_side_quest_skipped(self, client: Client, quest_id: int, goal_id: int) -> bool:
+        return (quest_id, goal_id) in self.side_quest_skip_cache(client)
+
+    async def active_quest_goal_ids(self, client: Client):
+        try:
+            return await client.quest_id(), await client.goal_id()
+        except (ValueError, MemoryReadError, AttributeError):
+            return None
+
+    async def active_quest_record(self, client: Client):
+        active_ids = await self.active_quest_goal_ids(client)
+        if active_ids is None:
+            return None
+
+        quest_id, goal_id = active_ids
+        quest_manager = await client.quest_manager()
+        quest = (await quest_manager.quest_data()).get(quest_id)
+        if quest is None:
+            return None
+
+        goal = (await quest.goal_data()).get(goal_id)
+        return quest_id, goal_id, quest, goal
+
+    async def restore_active_quest_goal(self, client: Client, active_ids) -> bool:
+        if active_ids is None:
+            return False
+
+        quest_id, goal_id = active_ids
+        quest_manager = await client.quest_manager()
+        quest = (await quest_manager.quest_data()).get(quest_id)
+        if quest is None:
+            return False
+
+        if goal_id not in (await quest.goal_data()):
+            return False
+
+        registry = await client.character_registry()
+        await registry.write_active_quest_id(quest_id)
+        await registry.write_active_goal_id(goal_id)
+        return True
+
+    async def quest_text(self, client: Client, lang_key: str) -> str:
+        if not lang_key or lang_key == "Quest Finder":
+            return lang_key
+
+        try:
+            return await client.cache_handler.get_langcode_name(lang_key)
+        except (ValueError, MemoryReadError, AttributeError):
+            return lang_key
+
+    async def local_side_quest_candidates(self, client: Client, preferred_quest_ids: set[int] = None):
+        if preferred_quest_ids is None:
+            preferred_quest_ids = set()
+
+        current_zone = await client.zone_name()
+        quest_manager = await client.quest_manager()
+        quests = await quest_manager.quest_data()
+        candidates = []
+
+        for quest_id, quest in quests.items():
+            try:
+                if await quest.mainline() or await quest.pet_only_quest() or not await quest.permit_quest_helper():
+                    continue
+
+                goal_candidates = []
+                for goal_id, goal in (await quest.goal_data()).items():
+                    try:
+                        if self.is_side_quest_skipped(client, quest_id, goal_id):
+                            continue
+
+                        if await goal.goal_status() or await goal.no_quest_helper() or await goal.pet_only_quest():
+                            continue
+
+                        destination_zone = await goal.goal_destination_zone()
+                        if destination_zone != current_zone:
+                            continue
+
+                        goal_candidates.append((goal_id, destination_zone))
+                    except (ValueError, MemoryReadError, AttributeError):
+                        continue
+
+                if not goal_candidates:
+                    continue
+
+                quest_name = await self.quest_text(client, await quest.name_lang_key())
+                priority = 0 if quest_id in preferred_quest_ids else 1
+                candidates.append((priority, quest_id, goal_candidates[0][0], quest_name, goal_candidates[0][1]))
+            except (ValueError, MemoryReadError, AttributeError):
+                continue
+
+        candidates.sort(key=lambda candidate: (candidate[0], candidate[3].lower()))
+        return candidates
+
+    async def mainline_quest_candidates(self, client: Client):
+        current_zone = await client.zone_name()
+        quest_manager = await client.quest_manager()
+        quests = await quest_manager.quest_data()
+        candidates = []
+
+        for quest_id, quest in quests.items():
+            try:
+                if not await quest.mainline() or await quest.pet_only_quest() or not await quest.permit_quest_helper():
+                    continue
+
+                for goal_id, goal in (await quest.goal_data()).items():
+                    try:
+                        if await goal.goal_status() or await goal.no_quest_helper() or await goal.pet_only_quest():
+                            continue
+
+                        destination_zone = await goal.goal_destination_zone()
+                        priority = 0 if destination_zone == current_zone else 1
+                        quest_name = await self.quest_text(client, await quest.name_lang_key())
+                        candidates.append((priority, quest_id, goal_id, quest_name, destination_zone))
+                    except (ValueError, MemoryReadError, AttributeError):
+                        continue
+            except (ValueError, MemoryReadError, AttributeError):
+                continue
+
+        candidates.sort(key=lambda candidate: (candidate[0], candidate[3].lower()))
+        return candidates
+
+    async def prioritize_local_side_quest(self, client: Client, preferred_quest_ids: set[int] = None) -> bool:
+        candidates = await self.local_side_quest_candidates(client, preferred_quest_ids)
+        if not candidates:
+            return False
+
+        _, quest_id, goal_id, quest_name, destination_zone = candidates[0]
+        if await client.quest_id() == quest_id and await client.goal_id() == goal_id:
+            return True
+
+        registry = await client.character_registry()
+        await registry.write_active_quest_id(quest_id)
+        await registry.write_active_goal_id(goal_id)
+        logger.info(f'Client {client.title} switched active quest to local side quest "{quest_name}" in {destination_zone}.')
+        await asyncio.sleep(0.5)
+        return True
+
+    async def prioritize_mainline_quest(self, client: Client) -> bool:
+        candidates = await self.mainline_quest_candidates(client)
+        if not candidates:
+            return False
+
+        _, quest_id, goal_id, quest_name, destination_zone = candidates[0]
+        registry = await client.character_registry()
+        await registry.write_active_quest_id(quest_id)
+        await registry.write_active_goal_id(goal_id)
+        logger.info(f'Client {client.title} switched back to main quest "{quest_name}" in {destination_zone}.')
+        await asyncio.sleep(0.5)
+        return True
+
+    async def active_side_quest_info(self, client: Client):
+        record = await self.active_quest_record(client)
+        if record is None:
+            return None
+
+        quest_id, goal_id, quest, goal = record
+        try:
+            if await quest.mainline():
+                return None
+
+            quest_name = await self.quest_text(client, await quest.name_lang_key())
+            destination_zone = await goal.goal_destination_zone() if goal is not None else ""
+            return quest_id, goal_id, quest_name, destination_zone
+        except (ValueError, MemoryReadError, AttributeError):
+            return None
+
+    async def skip_active_side_quest(self, client: Client, reason: str) -> bool:
+        active_side_quest = await self.active_side_quest_info(client)
+        if active_side_quest is None:
+            return False
+
+        quest_id, goal_id, quest_name, destination_zone = active_side_quest
+        self.side_quest_skip_cache(client)[(quest_id, goal_id)] = time.time() + SIDE_QUEST_SKIP_SECONDS
+        logger.info(f'Client {client.title} skipping side quest "{quest_name}" for {round(SIDE_QUEST_SKIP_SECONDS / 60)} minutes: {reason}.')
+
+        if await self.prioritize_local_side_quest(client):
+            return True
+
+        if await self.prioritize_mainline_quest(client):
+            return True
+
+        logger.info(f'Client {client.title} has no other local side quest or main quest fallback available.')
+        return False
+
+    async def maybe_skip_stuck_side_quest(self, client: Client, failed_iterations: int, no_marker: bool = False) -> bool:
+        if not self.profile_side_quest_scan_enabled(client):
+            return False
+
+        threshold = SIDE_QUEST_NO_MARKER_STUCK_ITERATIONS if no_marker else SIDE_QUEST_STUCK_ITERATIONS
+        if failed_iterations < threshold:
+            return False
+
+        active_side_quest = await self.active_side_quest_info(client)
+        if active_side_quest is None:
+            return False
+
+        reason = "no quest helper marker" if no_marker else f"no progress after {failed_iterations} questing loops"
+        return await self.skip_active_side_quest(client, reason)
+
+    async def scan_accept_and_prioritize_side_quests(self, client: Client, present_clients: list[Client] = None, force: bool = False) -> bool:
+        if not force and not self.profile_side_quest_scan_enabled(client):
+            return False
+
+        if present_clients is None:
+            present_clients = [client]
+
+        previous_active_ids = await self.active_quest_goal_ids(client)
+        before_quests = await self.accepted_quest_ids(client)
+        radius = SIDE_QUEST_SWEEP_RADIUS if force or getattr(client, "side_questing_status", False) else PROFILE_SIDE_QUEST_SCAN_RADIUS
+        max_npcs = SIDE_QUEST_SWEEP_MAX_NPCS if force or getattr(client, "side_questing_status", False) else PROFILE_SIDE_QUEST_MAX_NPCS
+
+        interacted = await self.maybe_scan_nearby_side_quests(
+            client,
+            present_clients,
+            force=force,
+            radius=radius,
+            max_npcs=max_npcs
+        )
+        after_quests = await self.accepted_quest_ids(client)
+        accepted_now = after_quests - before_quests
+        prioritized = await self.prioritize_local_side_quest(client, accepted_now)
+        if prioritized:
+            logger.debug(f'Client {client.title} prioritized a local side quest after scan; accepted_now={accepted_now}.')
+
+        if accepted_now and not prioritized:
+            if await self.restore_active_quest_goal(client, previous_active_ids):
+                logger.debug(f'Client {client.title} restored previous active quest after accepting side quest(s) without a local helper goal.')
+
+        if not prioritized and not accepted_now:
+            active_side_quest = await self.active_side_quest_info(client)
+            if active_side_quest is not None:
+                _, _, active_side_name, active_side_zone = active_side_quest
+                if active_side_zone and active_side_zone != await client.zone_name():
+                    if await self.prioritize_mainline_quest(client):
+                        logger.debug(
+                            f'Client {client.title} switched back to mainline because active side quest '
+                            f'"{active_side_name}" targets non-local zone {active_side_zone}.'
+                        )
+
+        if accepted_now:
+            logger.info(f'Client {client.title} accepted {len(accepted_now)} new nearby side quest(s).')
+        elif interacted:
+            logger.debug(f'Client {client.title} checked nearby NPCs but did not detect new accepted side quests.')
+
+        return interacted or prioritized
+
+    async def sweep_area_side_quests_after_progress(self, client: Client, reason: str) -> bool:
+        if not self.profile_side_quest_scan_enabled(client):
+            logger.debug(f'Client {client.title} skipping post-progress side quest sweep ({reason}): side quest scanning is disabled.')
+            return False
+
+        if not await is_free_leader_questing(client) or client.entity_detect_combat_status:
+            logger.debug(f'Client {client.title} skipping post-progress side quest sweep ({reason}): client is not free.')
+            return False
+
+        zone_name = await client.zone_name()
+        scan_key = (client.process_id, zone_name)
+        now = time.time()
+        if now - self.side_quest_area_sweep_times.get(scan_key, 0.0) < SIDE_QUEST_AREA_SWEEP_COOLDOWN:
+            logger.debug(f'Client {client.title} skipping post-progress side quest sweep ({reason}): sweep cooldown active.')
+            return False
+
+        self.side_quest_area_sweep_times[scan_key] = now
+        logger.info(f'Client {client.title} performing post-progress side quest sweep in {zone_name}: {reason}.')
+        return await self.scan_accept_and_prioritize_side_quests(client, [client], force=True)
 
     async def guarantee_use_potion(self, p: Client):
         if await is_free(p):
@@ -712,7 +1960,7 @@ class Quester():
             if can_Teleport:
                 safe_location = await self.client.body.position()
                 try:
-                    await navmap_tp(self.client, xyz)  # teleports to the xyz
+                    await self.move_to(self.client, xyz)
                 except:
                     print(traceback.format_exc())
 
@@ -726,7 +1974,10 @@ class Quester():
                         await asyncio.sleep(.1)
 
                     # return client to their previous safe location before grabbing the entity
-                    await self.client.teleport(safe_location)
+                    if self.movement_mode == "walk":
+                        await self.move_to(self.client, safe_location)
+                    else:
+                        await self.client.teleport(safe_location)
                     return True
         return False
 
@@ -890,7 +2141,10 @@ class Quester():
 
                 location_before_sendback = await proxy_leader_client.body.position()
                 zone_before_teleport = await proxy_leader_client.zone_name()
-                await proxy_leader_client.teleport(leader_client_objective_xyz)
+                if self.movement_mode == "walk":
+                    await self.move_to(proxy_leader_client, leader_client_objective_xyz, leader_client=self.current_leader_client)
+                else:
+                    await proxy_leader_client.teleport(leader_client_objective_xyz)
                 await asyncio.sleep(1.0)
 
                 # we collided and were sent back - we likely aren't in the right zone for our defeat quest
@@ -899,7 +2153,7 @@ class Quester():
                 # leader client collided and got sent back
                 if distance < 20:
                     logger.debug('client ' + proxy_leader_client.title + ' collided on initial teleport')
-                    await navmap_tp(client=proxy_leader_client, xyz=leader_client_objective_xyz, leader_client=self.current_leader_client)
+                    await self.move_to(proxy_leader_client, leader_client_objective_xyz, leader_client=self.current_leader_client)
 
                 await asyncio.sleep(1.0)
                 while await proxy_leader_client.is_loading():
@@ -912,7 +2166,7 @@ class Quester():
                 if await proxy_leader_client.zone_name() != zone_before_teleport or detected_dungeon:
                     logger.debug('leader zone changed or interactible reached - syncing all clients')
                     try:
-                        await asyncio.gather(*[navmap_tp(client=c, xyz=leader_client_objective_xyz, leader_client=self.current_leader_client) for c in followup_teleport_clients])
+                        await asyncio.gather(*[self.move_to(c, leader_client_objective_xyz, leader_client=self.current_leader_client) for c in followup_teleport_clients])
                     except:
                         print(traceback.print_exc())
 
@@ -928,7 +2182,12 @@ class Quester():
                     sprinter = SprintyClient(proxy_leader_client)
                     while not proxy_leader_client.entity_detect_combat_status:
                         try:
-                            await sprinter.tp_to_closest_mob()
+                            if self.movement_mode == "walk":
+                                closest_mob = await sprinter.find_closest_mob()
+                                if closest_mob is not None:
+                                    await self.move_to(proxy_leader_client, await closest_mob.location(), leader_client=self.current_leader_client)
+                            else:
+                                await sprinter.tp_to_closest_mob()
                         # wizwalker throws should update bool even with wait_on_inuse on
                         except ValueError:
                             await asyncio.sleep(1.0)
@@ -941,7 +2200,7 @@ class Quester():
             # if we aren't doing a mob / boss fight, we have no need to stagger teleports
             # furthermore staggered teleports can break certain quests in dungeons for certain clients
             else:
-                await asyncio.gather(*[navmap_tp(p, leader_client_objective_xyz, leader_client=self.current_leader_client) for p in self.clients])
+                await asyncio.gather(*[self.move_to(p, leader_client_objective_xyz, leader_client=self.current_leader_client) for p in self.clients])
 
     async def handle_normal_quests(self, follower_clients: list[Client], questing_friend_tp: bool):
         # Handles chest reroll menu, will always cancel
@@ -1116,7 +2375,7 @@ class Quester():
                 follower_obj = await self.get_truncated_quest_objectives(c)
 
                 if leader_obj == follower_obj:
-                    collect_quester = Quester(c, self.clients, None)
+                    collect_quester = Quester(c, self.clients, None, movement_mode=self.movement_mode)
                     await collect_quester.auto_collect_rewrite(c)
 
         # check if all clients have finished the entire quest
@@ -1252,7 +2511,12 @@ class Quester():
             # keep in mind, the previous leader client may now be a follower client since we have just called determine_new_leader_and_followers()
             await self.handle_zone_correction(maybe_solo_zone, questing_friend_tp, gear_switching_in_solo_zones)
 
+            await self.scan_accept_and_prioritize_side_quests(self.current_leader_client, [self.current_leader_client])
+
             if await is_free_leader_questing(self.current_leader_client):
+                if await self.handle_collect_object_fallback():
+                    continue
+
                 quest_xyz = await self.current_leader_client.quest_position.position()
                 distance = calc_Distance(quest_xyz, XYZ(0.0, 0.0, 0.0))
 
@@ -1271,6 +2535,23 @@ class Quester():
                     distance = calc_Distance(quest_xyz, XYZ(0.0, 0.0, 0.0))
 
                     if distance < 1:
+                        if await self.sweep_area_side_quests_after_progress(self.current_leader_client, "no quest helper marker after progress"):
+                            leader_last_full_quest = await get_quest_name(self.current_leader_client)
+                            last_leader_pid = self.current_leader_client.process_id
+                            last_leader_zone = await self.current_leader_client.zone_name()
+                            iterations_since_last_quest_change = 0
+                            continue
+
+                        if await self.maybe_skip_stuck_side_quest(self.current_leader_client, iterations_since_last_quest_change, no_marker=True):
+                            leader_last_full_quest = await get_quest_name(self.current_leader_client)
+                            last_leader_pid = self.current_leader_client.process_id
+                            last_leader_zone = await self.current_leader_client.zone_name()
+                            iterations_since_last_quest_change = 0
+                            continue
+
+                        if await self.handle_collect_object_fallback():
+                            continue
+
                         quest_objective = await get_quest_name(self.current_leader_client)
 
                         truncated_quest_obj = (await self.get_truncated_quest_objectives(self.current_leader_client)).lower()
@@ -1303,11 +2584,28 @@ class Quester():
             # this means we have failed to complete the last single quest objective
             if leader_full_current_quest == leader_last_full_quest and last_leader_pid == self.current_leader_client.process_id and last_leader_zone == await self.current_leader_client.zone_name():
                 iterations_since_last_quest_change += 1
+                if await self.maybe_skip_stuck_side_quest(self.current_leader_client, iterations_since_last_quest_change):
+                    leader_last_full_quest = await get_quest_name(self.current_leader_client)
+                    last_leader_pid = self.current_leader_client.process_id
+                    last_leader_zone = await self.current_leader_client.zone_name()
+                    iterations_since_last_quest_change = 0
+                    continue
             else:
+                previous_quest_name = leader_last_full_quest
+                previous_zone_name = last_leader_zone
                 leader_last_full_quest = await get_quest_name(self.current_leader_client)
                 last_leader_pid = self.current_leader_client.process_id
                 last_leader_zone = await self.current_leader_client.zone_name()
                 iterations_since_last_quest_change = 0
+                sweep_reason = (
+                    f'quest/zone changed from "{previous_quest_name}" in {previous_zone_name} '
+                    f'to "{leader_last_full_quest}" in {last_leader_zone}'
+                )
+                if await self.sweep_area_side_quests_after_progress(self.current_leader_client, sweep_reason):
+                    leader_last_full_quest = await get_quest_name(self.current_leader_client)
+                    last_leader_pid = self.current_leader_client.process_id
+                    last_leader_zone = await self.current_leader_client.zone_name()
+                    continue
 
     async def handle_questing_zone_change(self):
         if await is_visible_by_path(self.client, exit_dungeon_path):
@@ -1322,11 +2620,18 @@ class Quester():
 
     async def auto_quest_solo(self, auto_pet_disabled=False, ignore_pet_level_up=False, play_dance_game=False):
         if await is_free(self.client):
+            await self.maybe_collect_profile_health_wisp(self.client)
+
             if await is_potion_needed(self.client) and await self.client.stats.current_mana() > 1 and await self.client.stats.current_hitpoints() > 1:
                 await collect_wisps(self.client)
 
             if self.client.use_potions:
                 await auto_potions(self.client, True, buy=self.client.buy_potions)
+
+            await self.scan_accept_and_prioritize_side_quests(self.client)
+
+            if await self.collect_object_fallback(self.client):
+                return
 
             quest_xyz = await self.client.quest_position.position()
 
@@ -1341,7 +2646,7 @@ class Quester():
                 while self.client.entity_detect_combat_status:
                     await asyncio.sleep(.1)
 
-                await navmap_tp(self.client, quest_xyz)
+                await self.move_to(self.client, quest_xyz)
 
                 # confirm exit dungeon early button or wait for client to exit loading
                 await self.handle_questing_zone_change()
@@ -1401,12 +2706,38 @@ class Quester():
                 distance = calc_Distance(quest_xyz, XYZ(0.0, 0.0, 0.0))
 
                 if distance < 1:
+                    if await self.collect_object_fallback(self.client):
+                        return
+
                     await self.auto_collect_rewrite(self.client)
 
     async def auto_quest(self, ignore_pet_level_up: bool, play_dance_game: bool):
+        iterations_since_last_quest_change = 0
+        last_full_quest = await get_quest_name(self.client)
+        last_zone = await self.client.zone_name()
+
         while self.client.questing_status:
             await asyncio.sleep(1)
             await self.auto_quest_solo(ignore_pet_level_up=ignore_pet_level_up, play_dance_game=play_dance_game)
+
+            current_full_quest = await get_quest_name(self.client)
+            current_zone = await self.client.zone_name()
+            if current_full_quest == last_full_quest and current_zone == last_zone:
+                iterations_since_last_quest_change += 1
+                try:
+                    quest_xyz = await self.client.quest_position.position()
+                    no_marker = calc_Distance(quest_xyz, XYZ(0.0, 0.0, 0.0)) < 1
+                except (ValueError, MemoryReadError):
+                    no_marker = False
+
+                if await self.maybe_skip_stuck_side_quest(self.client, iterations_since_last_quest_change, no_marker=no_marker):
+                    last_full_quest = await get_quest_name(self.client)
+                    last_zone = await self.client.zone_name()
+                    iterations_since_last_quest_change = 0
+            else:
+                last_full_quest = current_full_quest
+                last_zone = current_zone
+                iterations_since_last_quest_change = 0
 
 
 

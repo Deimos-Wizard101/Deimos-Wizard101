@@ -1,0 +1,16 @@
+# Storm Level 130 Rusher
+# deimos_profile: Storm Level 130 Rusher
+# Level 130 Storm carry/rusher profile for quickly clearing fights for a lower-level bot.
+# Keep this profile isolated from default combat and the Myth questing profiles.
+# Intended deck: Tempest, Epic, Storm Lord, and wand hits.
+# Deimos uses profile-specific Python combat logic for this profile only:
+# - Prefer Epic-enchanted Tempest whenever Tempest and Epic are available.
+# - Cast already-enchanted Tempest immediately.
+# - Use Epic Storm Lord only when Tempest is unavailable and enough effective pips exist.
+# - Use wand hits while building pips instead of passing.
+# - Fall back to unenchanted Tempest or any damage spell rather than timing out.
+# Tempest estimate: 80 damage per effective pip, plus +300 once if Epic is applied.
+# Storm Lord estimate: 690 base damage, plus +300 once if Epic is applied.
+# The line below is only a conservative fallback for the normal playstyle parser.
+
+"Tempest" ["Epic"] @ enemies | "Tempest" @ enemies | "Storm Lord" ["Epic"] @ enemies | "Storm Lord" @ enemies | any<damage&aoe> [any<mod_damage>] @ enemies | any<damage> @ enemy | pass

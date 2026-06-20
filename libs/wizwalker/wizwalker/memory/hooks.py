@@ -267,7 +267,7 @@ class QuestHook(SimpleHook):
 
 class ClientHook(SimpleHook):
     pattern = (
-        rb"\x18\x48......\x48\x8B\x7C\x24.\x48\x85\xFF\x74\x29\x8B\xC6\xF0\x0F\xC1\x47\x08\x83\xF8\x01\x75\x1D"
+        rb"\x18\x48......\x48\x8B\x7C\x24\x38\x48\x85\xFF\x74\x29\x8B\xC6\xF0\x0F\xC1\x47\x08\x83\xF8\x01\x75\x1D"
         rb"\x48\x8B\x07\x48\x8B\xCF\xFF\x50\x08\xF0\x0F\xC1\x77\x0C"
     )
     exports = [("current_client_addr", 8)]
@@ -307,10 +307,10 @@ class RootWindowHook(SimpleHook):
         # fmt: off
         bytecode = (
             b"\x50"  # push rax
-            b"\x49\x8B\x87\xD8\x00\x00\x00"  # mov rax,[r15+D8]
+            b"\x49\x8B\x85\xD8\x00\x00\x00"  # mov rax,[r13+D8]
             b"\x48\xA3" + packed_exports[0][1] +  # mov [current_root_window_addr], rax
             b"\x58"  # pop rax
-            b"\x49\x8B\x8F\xD8\x00\x00\x00"  # original instruction
+            b"\x49\x8B\x8D\xD8\x00\x00\x00"  # original instruction
         )
         # fmt: on
 
@@ -338,14 +338,14 @@ class RenderContextHook(SimpleHook):
 
 
 class MovementTeleportHook(SimpleHook):
-    pattern = rb"\x40\x57\x48\x83\xEC\x30\x48\xC7\x44\x24\x20\xFE" \
-              rb"\xFF\xFF\xFF\x48\x89\x5C\x24\x40\x48\x8B\x99\xB8" \
-              rb"\x01\x00\x00\x48\x85\xDB\x74\x13\x4C\x8B\x43\x70" \
-              rb"\x48\x8B\x5B\x78\x48\x85\xDB\x74\x0C\xF0\xFF\x43" \
-              rb"\x08\xEB\x06\x45\x33\xC0\x41\x8B\xD8\x4D\x85\xC0\x74\x19"
+    pattern = rb"\x57\x48\x83\xEC.\x48\x8B\x99...." \
+              rb"\x48\x85\xDB\x74.\x4C\x8B\x43.\x48\x8B\x5B"\
+              rb".\x48\x85\xDB\x74.\xF0\xFF\x43.\x4D\x85" \
+              rb"\xC0\x74.\xF2\x0F\x10\x02\xF2\x41\x0F\x11\x40" \
+              rb".\x8B\x42.\x41\x89\x40.\x41\xC6\x80."
 
-    instruction_length = 6
-    noops = 1
+    instruction_length = 5
+    noops = 0
     # position vector = 12 + 1 for update bool + 8 for target object address
     exports = [("teleport_helper", 21)]
 
@@ -390,12 +390,12 @@ class MovementTeleportHook(SimpleHook):
         target_address = jes[0]
 
         inside_event_je_addr = await self.pattern_scan(
-            rb"\x74.\xF3\x0F\x10\x55\x90",
+            rb"\x74.\xF3\x0F\x10\x55\xA8",
             module="WizardGraphicalClient.exe",
         )
         
         event_dispatch_je_addr = await self.pattern_scan(
-            rb"\x74.\xF3\x0F\x10\x44\x24\x58\xF3\x0F",
+            rb"\x74.\xF3\x0F\x10\x44\x24\x54\xF3\x0F",
             module="WizardGraphicalClient.exe",
         )
 
@@ -459,8 +459,8 @@ class MovementTeleportHook(SimpleHook):
             b"\x48\xB8" + jes_cmp_bytes +
             b"\x48\xA3" + packed_jes_cmp +
             b"\x58" # pop rax
-            b"\x40\x57" # push rdi (original bytes)
-            b"\x48\x83\xEC\x30" # sub rsp,20 (original bytes)
+            b"\x57" # push rdi (original bytes)
+            b"\x48\x83\xEC\x20" # sub rsp,20 (original bytes)
         )
         # fmt: on
 

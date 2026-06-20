@@ -325,7 +325,7 @@ def show_settings_dialog(ctx):
     pet_form.setSpacing(4)
 
     _add_checkbox(pet_form, 'ignore_pet_level_up', 'setting_ignore_pet_level_up')
-    _add_checkbox(pet_form, 'only_play_dance_game', 'setting_only_dance_game')
+    _add_checkbox(pet_form, 'skip_pet_games', 'setting_skip_pet_games')
 
     layout.addWidget(pet_group)
 

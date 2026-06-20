@@ -25,7 +25,7 @@ from src.dance_game_hook import attempt_activate_dance_hook
 from src.utils import is_visible_by_path, is_free, get_window_from_path, refill_potions, refill_potions_if_needed \
                     , logout_and_in, click_window_by_path, get_quest_name
 from src.command_parser import teleport_to_friend_from_list
-from src.config_combat import delegate_combat_configs, default_config
+from src.config_combat import delegate_combat_configs, default_config, apply_combat_profile_options
 
 from loguru import logger
 
@@ -1814,6 +1814,7 @@ class VM:
                 logger.debug(delegated)
                 for i, client in enumerate(self._clients):
                     client.combat_config = delegated.get(i, default_config)
+                    apply_combat_profile_options(client, client.combat_config)
                 self.current_task.ip += 1
 
             case InstructionKind.deimos_call:

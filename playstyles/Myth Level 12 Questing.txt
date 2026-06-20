@@ -1,0 +1,24 @@
+# Myth Level 12 Questing
+# deimos_profile: Myth Level 12 Questing
+# scan_nearby_side_quests: true
+# health_wisp_threshold: 0.80
+# collect_object_fallback_enabled: true
+# collect_object_scan_radius: 2200
+# collect_object_scan_timeout_seconds: 45
+# collect_object_interact_key: X
+# collect_object_max_failed_attempts: 6
+# collect_object_scan_step_size: 550
+# Early Myth questing profile for before Humongofrog and Orthrus.
+# Keep the in-game deck small: Mythblade, Myth Trap, Myth Prism, Golem Minion,
+# Troll, Cyclops, Blood Bat, and a wand hit.
+# Sun damage enchants are optional; this profile does not require treasure cards, pets,
+# gear cards, off-school spells, or minion-heavy automation.
+# The optional questing settings above are scoped to this profile when it is loaded.
+# Deimos adds profile-specific combat logic for this profile only:
+# - Myth Prism is only used against Myth enemies, and discarded against non-Myth enemies.
+# - Mythblade and Myth Trap are not recast when matching effects are already detected.
+# - Blood Bat is only used as a finisher when the selected enemy is at or below 150 HP.
+# - High-health enemies use Mythblade, Myth Trap, optional Golem Minion, Troll, Cyclops, then pass.
+# The line below is a conservative fallback for the normal playstyle parser.
+
+?(enemy.health > 150) "Mythblade" @ self | ?(enemy.health > 150) "Myth Trap" @ enemy | ?(enemy.health > 150) "Golem Minion" @ self | ?(enemy.health > 150) "Troll" [any<mod_damage>] @ enemy | ?(enemy.health > 150) "Cyclops" [any<mod_damage>] @ enemy | ?(enemy.health <= 150) "Blood Bat" [any<mod_damage>] @ enemy | ?(enemy.health <= 150) "Troll" [any<mod_damage>] @ enemy | ?(enemy.health <= 150) "Cyclops" [any<mod_damage>] @ enemy | ?(enemy.health <= 150) any<damage> @ enemy | pass

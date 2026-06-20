@@ -140,6 +140,7 @@ def get_sprinty_grammar():
             
             
             %ignore WS_INLINE
+            %ignore /#[^\r\n]*/
         """
 
 

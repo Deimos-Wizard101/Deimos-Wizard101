@@ -27,9 +27,11 @@ play_button_path = ['WorldView', 'mainWindow', 'btnPlay']
 dungeon_warning_path = ['MessageBoxModalWindow', 'messageBoxBG', 'messageBoxLayout', 'AdjustmentWindow', 'Layout', 'centerButton']
 
 # Dialogue Paths
+dialog_window_path = ['WorldView', 'wndDialogMain']
 advance_dialog_path = ['WorldView', 'wndDialogMain', 'btnRight']
 decline_quest_path = ['WorldView', 'wndDialogMain', 'btnLeft']
 dialog_text_path = ['WorldView', 'wndDialogMain', 'txtArea', 'txtMessage']
+game_settings_page_path = ['WorldView', 'DeckConfiguration', 'SettingPage']
 
 # Quest Objective Path
 quest_name_path = ["WorldView", "windowHUD", "QuestHelperHud", "ElementWindow", "", "txtGoalName"]
@@ -154,6 +156,10 @@ avalon_badge_exit_button_path = ['WorldView', 'HelpHousingTips2', 'toolbar', 'ex
 pet_feed_window_visible_path = ['WorldView', 'PetGameTracks']
 pet_feed_window_cancel_button_path = ['WorldView', 'PetGameTracks', 'btnBack']
 wizard_city_dance_game_path = ['WorldView', 'PetGameTracks', 'wndBkgTracks', 'wndTracks', 'btnTrack0']
+dance_game_level_paths = [
+    ['WorldView', 'PetGameTracks', 'wndBkgTracks', 'wndTracks', f'btnTrack{index}']
+    for index in range(5)
+]
 play_dance_game_button_path = ['WorldView', 'PetGameTracks', 'btnNext']
 skip_pet_game_button_path = ['WorldView', 'PetGameTracks', 'SkipGameButton']
 won_pet_game_rewards_window_path = ['WorldView', 'PetGameSplash', '', 'PetGameRewards']

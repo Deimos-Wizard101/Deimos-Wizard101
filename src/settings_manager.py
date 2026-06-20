@@ -36,7 +36,7 @@ DEFAULT_SETTINGS = {
     "hitter_client": None,
     # [auto pet]
     "ignore_pet_level_up": False,
-    "only_play_dance_game": False,
+    "skip_pet_games": False,
     # [combat]
     "kill_minions_first": False,
     "automatic_team_based_combat": False,
@@ -69,7 +69,7 @@ _INI_SETTINGS_MAP = {
     ("questing", "gear_switching_in_solo_zones"): ("gear_switching_in_solo_zones", bool),
     ("questing", "hitter_client"): ("hitter_client", str),
     ("auto pet", "ignore_pet_level_up"): ("ignore_pet_level_up", bool),
-    ("auto pet", "only_play_dance_game"): ("only_play_dance_game", bool),
+    ("auto pet", "skip_pet_games"): ("skip_pet_games", bool),
     ("combat", "kill_minions_first"): ("kill_minions_first", bool),
     ("combat", "automatic_team_based_combat"): ("automatic_team_based_combat", bool),
     ("combat", "discard_duplicate_cards"): ("discard_duplicate_cards", bool),
@@ -83,6 +83,9 @@ DEFAULT_HOTKEYS = {
     "toggle_dialogue_side_quests": {"key": "F4", "modifiers": ["SHIFT"]},
     "toggle_sigil": {"key": "F2", "modifiers": []},
     "toggle_questing": {"key": "F3", "modifiers": []},
+    "toggle_questing_walk": {"key": "F3", "modifiers": ["SHIFT"]},
+    "toggle_side_questing": {"key": "F5", "modifiers": ["SHIFT"]},
+    "toggle_carry_follow": {"key": "F6", "modifiers": ["SHIFT"]},
     "toggle_freecam": {"key": "F1", "modifiers": []},
     "freecam_tp": {"key": "F1", "modifiers": ["SHIFT"]},
     "quest_tp": {"key": "F7", "modifiers": []},
@@ -139,6 +142,15 @@ class DeimosSettings:
         if "hotkeys" not in self._data:
             self._data["hotkeys"] = dict(DEFAULT_HOTKEYS)
             self._save()
+        else:
+            hotkeys = self._data["hotkeys"]
+            changed = False
+            for action_id, binding in DEFAULT_HOTKEYS.items():
+                if action_id not in hotkeys:
+                    hotkeys[action_id] = binding
+                    changed = True
+            if changed:
+                self._save()
 
     def _save(self):
         self._path.write_text(json.dumps(self._data, indent=2), encoding="utf-8")

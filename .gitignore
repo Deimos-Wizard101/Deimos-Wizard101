@@ -1,6 +1,9 @@
 __pycache__/
 *.pyc
 logs/
+build-logs/
+libs/wizwalker.old/
+Deimos-config.ini
 Deimos-Testconfig.ini
 venv
 *.exe
