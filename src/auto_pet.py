@@ -80,8 +80,12 @@ async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game
             if (only_play_dance_game or not await is_visible_by_path(client, skip_pet_game_button_path)) and not dance_hook_activated:
                 logger.debug('Client ' + client.title + ': Activating dance game hook.')
                 # dance hook seems to need time to activate fully - without a sleep, it will miss turns in the game
-                await attempt_activate_dance_hook(client, sleep_time=5.0)
-                dance_hook_activated = True
+                if await attempt_activate_dance_hook(client, sleep_time=5.0):
+                    dance_hook_activated = True
+                else:
+                    logger.error('Client ' + client.title + ': Dance game hook failed - cannot auto-play dance game.')
+                    finished_feeding = True
+                    continue
 
 
             # skip game if it is an option and the user's config for always playing the game is off

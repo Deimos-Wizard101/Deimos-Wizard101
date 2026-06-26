@@ -9,12 +9,16 @@ import traceback
 
 _dance_moves_transtable = str.maketrans("abcd", "WDSA")
 
-# Thanks to peechez for this class
 class DanceGameMovesHook(SimpleHook):
-    pattern = rb"\x48\x8B\xF8\x48\x39\x70\x10"
+    pattern = rb"\x48\x8B\xF8\x48\x39\x70."
     instruction_length = 7
     exports = [("dance_game_moves", 8)]
     noops = 2
+    _original_tail = b"\x48\x39\x70\x10"
+
+    async def get_hook_bytecode(self):
+        self._original_tail = await self.read_bytes(self.jump_address + 3, 4)
+        return await super().get_hook_bytecode()
 
     async def bytecode_generator(self, packed_exports):
         return (
@@ -22,7 +26,7 @@ class DanceGameMovesHook(SimpleHook):
                 b"\x48\x8B\x00"
                 b"\x48\xA3" + packed_exports[0][1] +
                 b"\x48\x8B\xC7"
-                b"\x48\x39\x70\x10"
+                + self._original_tail
         )
 
 
@@ -39,7 +43,6 @@ async def activate_dance_game_moves_hook(
     await hook.hook()
 
     self._active_hooks[DanceGameMovesHook] = hook
-    #self._active_hooks.append(hook)
     self._base_addrs["dance_game_moves"] = hook.dance_game_moves
 
     if wait_for_ready:
@@ -54,7 +57,6 @@ async def deactivate_dance_game_moves_hook(self):
         raise HookNotActive("DanceGameMovesHook")
 
     hook = self._get_hook_by_type(DanceGameMovesHook)
-    #self._active_hooks.remove(hook)
     del self._active_hooks[DanceGameMovesHook]
     await hook.unhook()
 
@@ -64,20 +66,18 @@ async def deactivate_dance_game_moves_hook(self):
 HookHandler.deactivate_dance_game_moves_hook = deactivate_dance_game_moves_hook
 
 async def attempt_activate_dance_hook(client: Client, sleep_time: float = 0.1):
-    # Attempts to activate dance hook, in a try block in case it's already off for this client
     if not client.dance_hook_status:
         try:
             await client.hook_handler.activate_dance_game_moves_hook()
-        except:
-            logger.debug("failed to activate dance hook")
-            logger.debug(traceback.print_exc())
-            pass
-
-        client.dance_hook_status = True
+            client.dance_hook_status = True
+        except Exception as e:
+            logger.error(f"Failed to activate dance game hook: {e}")
+            logger.error("The game may have updated - the dance game byte pattern may need updating.")
+            client.dance_hook_status = False
     await asyncio.sleep(sleep_time)
+    return client.dance_hook_status
 
 async def attempt_deactivate_dance_hook(client: Client, sleep_time: float = 0.1):
-    # Attempts to deactivate dance hook, in a try block in case it's already off for this client
     if client.dance_hook_status:
         try:
             await client.hook_handler.deactivate_dance_game_moves_hook()
