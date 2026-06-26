@@ -751,12 +751,14 @@ async def wait_and_return_window_by_path(parent, *path):
     return window
 
 
-async def post_keys(client, keys):
+async def post_keys(client, keys, delay=0.0):
     user32_dance = ctypes.windll.user32
 
     for key in keys:
         user32_dance.PostMessageW(client.window_handle, 0x100, ord(key), 0)
         user32_dance.PostMessageW(client.window_handle, 0x101, ord(key), 0)
+        if delay > 0:
+            await asyncio.sleep(delay)
 
 
 async def logout_and_in(client: Client):

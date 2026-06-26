@@ -34,22 +34,24 @@ async def navigate_to_dance_game(cl: Client):
 async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game: bool):
     finished_feeding = False
     dance_hook_activated = False
+    game_selection_open = False
 
     while not finished_feeding:
-        popup_title = await get_popup_title(client)
-        while not popup_title == 'Dance Game':
-            await asyncio.sleep(.125)
+        if not game_selection_open:
             popup_title = await get_popup_title(client)
+            while not popup_title == 'Dance Game':
+                await asyncio.sleep(.125)
+                popup_title = await get_popup_title(client)
 
-        # wait for dance game popup, and click until the popup goes away and the pet window opens
-        while not await is_visible_by_path(client, pet_feed_window_visible_path):
-            while popup_title == 'Dance Game':
-                await client.send_key(Keycode.X, 0.1)
+            while not await is_visible_by_path(client, pet_feed_window_visible_path):
+                while popup_title == 'Dance Game':
+                    await client.send_key(Keycode.X, 0.1)
+                    popup_title = await get_popup_title(client)
+                    await asyncio.sleep(.125)
                 popup_title = await get_popup_title(client)
                 await asyncio.sleep(.125)
-            popup_title = await get_popup_title(client)
-            await asyncio.sleep(.125)
 
+        game_selection_open = False
         client.feeding_pet_status = True
         # click until feeder opens
         # while await client.is_in_npc_range():
@@ -195,19 +197,25 @@ async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game
                         # otherwise, leave it up and force user to close it themselves
                         await won_game_leveled_up(client, ignore_pet_level_up)
 
-                        # wait for reward screen
-                        while not await is_visible_by_path(client, won_finish_pet_button):
+                        # wait for feeding reward screen
+                        while not (await is_visible_by_path(client, won_pet_game_play_again_button_path) or await is_visible_by_path(client, won_finish_pet_button)):
                             await asyncio.sleep(.1)
 
-                        # click 'Finish'
-                        while await is_visible_by_path(client, won_finish_pet_button):
+                        # click 'Play Again' for faster cycling back to game selection
+                        if await is_visible_by_path(client, won_pet_game_play_again_button_path):
                             async with client.mouse_handler:
-                                await click_window_by_path(client, won_finish_pet_button)
-                            await asyncio.sleep(.2)
-
-                        # wait for reward screen to close
-                        while await is_visible_by_path(client, won_pet_game_rewards_window_path):
-                            await asyncio.sleep(.1)
+                                await click_window_by_path(client, won_pet_game_play_again_button_path)
+                            await asyncio.sleep(.5)
+                            while not await is_visible_by_path(client, pet_feed_window_visible_path):
+                                await asyncio.sleep(.1)
+                            game_selection_open = True
+                        else:
+                            while await is_visible_by_path(client, won_finish_pet_button):
+                                async with client.mouse_handler:
+                                    await click_window_by_path(client, won_finish_pet_button)
+                                await asyncio.sleep(.2)
+                            while await is_visible_by_path(client, won_pet_game_rewards_window_path):
+                                await asyncio.sleep(.1)
                 else:
                     logger.info('Auto Pet - Client ' + client.title + ' is out of snacks.')
                     finished_feeding = True
@@ -238,9 +246,7 @@ async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game
         await asyncio.sleep(.125)
 
 
-# Thanks to Peechez for this code from wizdancer
 async def dancedance(client: Client):
-    # wait for the dance game text box to appear
     while not await is_visible_by_path(client, dance_game_action_textbox_path):
         await asyncio.sleep(.1)
 
@@ -248,12 +254,12 @@ async def dancedance(client: Client):
 
     for _ in range(5):
         while await action_window.maybe_text() == "<center>Go!":
-            await asyncio.sleep(0.125)
+            await asyncio.sleep(0.05)
         while await action_window.maybe_text() != "<center>Go!":
-            await asyncio.sleep(0.125)
+            await asyncio.sleep(0.05)
 
-        await asyncio.sleep(1.5)
-        await post_keys(client, await client.hook_handler.read_current_dance_game_moves())
+        await asyncio.sleep(0.4)
+        await post_keys(client, await client.hook_handler.read_current_dance_game_moves(), delay=0.15)
     await asyncio.sleep(3)
 
 
