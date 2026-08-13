@@ -218,9 +218,52 @@ class CombatCard:
     async def is_castable(self) -> bool:
         """
         If this card can be casted
+
+        Note: computed from the player's current pips vs this card's pip
+        cost, rather than the game's own "grayed" UI flag. Re-derived
+        2026-08-12 (client revision r799379.Wizard_1_590): live A/B memory
+        diffing (same hand, same cards, contrasting an affordable-everything
+        state against a 4-pip state where only the 6-pip card should be
+        unaffordable) found no memory offset whose value tracked pip
+        affordability at all - the previous hardcoded offset (1208) just
+        read stale/unrelated data. See SESSION_NOTES_2026-08-12.md.
         """
-        spell_window = self._spell_window
-        return not await spell_window.maybe_spell_grayed()
+        graphical_spell = await self.wait_for_graphical_spell()
+        pip_cost = await graphical_spell.pip_cost()
+        if pip_cost is None:
+            spell_window = self._spell_window
+            return not await spell_window.maybe_spell_grayed()
+
+        member = await self.combat_handler.get_client_member()
+        participant = await member.get_participant()
+        pip_count = await participant.pip_count()
+
+        # Power pips (gold) AND school-colored pips (Balance/Fire/Ice/...)
+        # are each worth 2 toward casting cost - only white/generic pips are
+        # worth 1. Only shadow pips are a fully separate resource.
+        # Re-derived 2026-08-12: first pass summed all pip counts at weight
+        # 1, which undercounted (confirmed live: "1 balance + 1 power" pip
+        # is actually 4 pips worth, not 2). See SESSION_NOTES_2026-08-12.md.
+        colored_pips = (
+            await pip_count.power_pips()
+            + await pip_count.balance_pips()
+            + await pip_count.death_pips()
+            + await pip_count.fire_pips()
+            + await pip_count.ice_pips()
+            + await pip_count.life_pips()
+            + await pip_count.myth_pips()
+            + await pip_count.storm_pips()
+        )
+        available_pips = await pip_count.generic_pips() + colored_pips * 2
+
+        if await pip_cost.is_xpip_spell():
+            return available_pips >= 1
+
+        needed_pips = await pip_cost.spell_rank()
+        needed_shadow = await pip_cost.shadow_pips()
+        available_shadow = await pip_count.shadow_pips()
+
+        return available_pips >= needed_pips and available_shadow >= needed_shadow
 
     async def is_enchanted(self) -> bool:
         """

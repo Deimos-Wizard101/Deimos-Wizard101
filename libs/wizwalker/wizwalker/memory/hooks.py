@@ -11,6 +11,83 @@ from loguru import logger
 from .memory_reader import MemoryReader
 from wizwalker.constants import kernel32
 
+_TH32CS_SNAPTHREAD = 0x00000004
+_THREAD_SUSPEND_RESUME = 0x0002
+
+# ctypes.windll functions default to a 32-bit c_int return type unless told
+# otherwise, which would silently truncate HANDLE (pointer-sized) values on
+# 64-bit - explicit signatures avoid that.
+kernel32.CreateToolhelp32Snapshot.argtypes = [ctypes.wintypes.DWORD, ctypes.wintypes.DWORD]
+kernel32.CreateToolhelp32Snapshot.restype = ctypes.wintypes.HANDLE
+kernel32.Thread32First.argtypes = [ctypes.wintypes.HANDLE, ctypes.c_void_p]
+kernel32.Thread32First.restype = ctypes.wintypes.BOOL
+kernel32.Thread32Next.argtypes = [ctypes.wintypes.HANDLE, ctypes.c_void_p]
+kernel32.Thread32Next.restype = ctypes.wintypes.BOOL
+kernel32.CloseHandle.argtypes = [ctypes.wintypes.HANDLE]
+kernel32.CloseHandle.restype = ctypes.wintypes.BOOL
+kernel32.OpenThread.argtypes = [ctypes.wintypes.DWORD, ctypes.wintypes.BOOL, ctypes.wintypes.DWORD]
+kernel32.OpenThread.restype = ctypes.wintypes.HANDLE
+kernel32.SuspendThread.argtypes = [ctypes.wintypes.HANDLE]
+kernel32.SuspendThread.restype = ctypes.wintypes.DWORD
+kernel32.ResumeThread.argtypes = [ctypes.wintypes.HANDLE]
+kernel32.ResumeThread.restype = ctypes.wintypes.DWORD
+
+
+def _list_process_thread_ids(pid: int):
+    class THREADENTRY32(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", ctypes.wintypes.DWORD),
+            ("cntUsage", ctypes.wintypes.DWORD),
+            ("th32ThreadID", ctypes.wintypes.DWORD),
+            ("th32OwnerProcessID", ctypes.wintypes.DWORD),
+            ("tpBasePri", ctypes.c_long),
+            ("tpDeltaPri", ctypes.c_long),
+            ("dwFlags", ctypes.wintypes.DWORD),
+        ]
+
+    snap = kernel32.CreateToolhelp32Snapshot(_TH32CS_SNAPTHREAD, 0)
+    if not snap or snap == 0xFFFFFFFFFFFFFFFF:
+        return []
+
+    ids = []
+    te = THREADENTRY32()
+    te.dwSize = ctypes.sizeof(THREADENTRY32)
+    ok = kernel32.Thread32First(snap, ctypes.byref(te))
+    while ok:
+        if te.th32OwnerProcessID == pid:
+            ids.append(te.th32ThreadID)
+        ok = kernel32.Thread32Next(snap, ctypes.byref(te))
+    kernel32.CloseHandle(snap)
+    return ids
+
+
+class _suspended_process:
+    """
+    Suspends every thread of `pid` for the duration of the `with` block.
+    Used around live code patches to frequently-executing functions, so a
+    patch is never applied while another thread is mid-instruction there
+    (a real, observed cause of crashes when hooking hot code paths - see
+    SESSION_NOTES_2026-08-12.md, root_window).
+    """
+
+    def __init__(self, pid: int):
+        self.pid = pid
+        self._handles = []
+
+    def __enter__(self):
+        for tid in _list_process_thread_ids(self.pid):
+            h = kernel32.OpenThread(_THREAD_SUSPEND_RESUME, False, tid)
+            if h:
+                kernel32.SuspendThread(h)
+                self._handles.append(h)
+        return self
+
+    def __exit__(self, *exc_info):
+        for h in self._handles:
+            kernel32.ResumeThread(h)
+            kernel32.CloseHandle(h)
+        self._handles = []
+
 
 class MemoryHook(MemoryReader):
     def __init__(self, hook_handler, hook_cache = {}):
@@ -101,24 +178,35 @@ class MemoryHook(MemoryReader):
         logger.debug(f"Got hook address {self.hook_address} in {type(self)}")
         logger.debug(f"Got jump address {self.jump_address} in {type(self)}")
 
+        # Read the real, currently-live bytes at the jump site *before*
+        # generating any bytecode, so a bytecode_generator() override can
+        # replay the actual original instruction (self.jump_original_bytecode)
+        # instead of a hardcoded copy from whenever the pattern was written.
+        # Register allocation / immediates can differ between client builds
+        # even when the surrounding pattern still matches.
+        self.jump_original_bytecode = await self.read_bytes(
+            self.jump_address, 5 + self.noops
+        )
+        logger.debug(
+            f"Got jump original bytecode {self.jump_original_bytecode} in {type(self)}"
+        )
+
         self.hook_bytecode = await self.get_hook_bytecode()
         self.jump_bytecode = await self.get_jump_bytecode()
 
         logger.debug(f"Got hook bytecode {self.hook_bytecode} in {type(self)}")
         logger.debug(f"Got jump bytecode {self.jump_bytecode} in {type(self)}")
 
-        self.jump_original_bytecode = await self.read_bytes(
-            self.jump_address, len(self.jump_bytecode)
-        )
-
-        logger.debug(
-            f"Got jump original bytecode {self.jump_original_bytecode} in {type(self)}"
-        )
-
         await self.prehook()
 
-        await self.write_bytes(self.hook_address, self.hook_bytecode)
-        await self.write_bytes(self.jump_address, self.jump_bytecode)
+        # Suspend every other thread of the target while patching in the
+        # jump - jump_address can be inside a function that runs many times
+        # per second, and writing over it while another thread is mid
+        # instruction there is a real crash cause (confirmed 2026-08-12 on
+        # root_window, see SESSION_NOTES_2026-08-12.md).
+        with _suspended_process(self.hook_handler.process.process_id):
+            await self.write_bytes(self.hook_address, self.hook_bytecode)
+            await self.write_bytes(self.jump_address, self.jump_bytecode)
 
         await self.posthook()
 
@@ -219,8 +307,7 @@ class PlayerHook(SimpleHook):
             b"\x0F\x85\x0A\x00\x00\x00"  # jne 10 down
             # mov(abs) [addr], rax
             b"\x48\xA3" + packed_exports[0][1] +
-            # original code
-            b"\xF2\x0F\x10\x40\x58"  # movsd xxmo,[rax+58]
+            self.jump_original_bytecode  # original code: movsd xmm0,[rax+58]
         )
         return bytecode
 
@@ -238,9 +325,7 @@ class PlayerStatHook(SimpleHook):
                 b"\x48\x89\xC8"  # mov rax, rcx
                 b"\x48\xA3" + packed_exports[0][1] +  # mov qword ptr [stat_export], rax
                 b"\x58"  # pop rax
-                # original code
-                b"\x2B\xD8"  # sub ebx, eax
-                b"\xB8\x00\x00\x00\x00"  # mov eax, 0
+                + self.jump_original_bytecode  # original code: sub ebx,eax; mov eax,0
         )
         # fmt: on
         return bytecode
@@ -259,7 +344,7 @@ class QuestHook(SimpleHook):
 
                 b"\x48\xA3" + packed_exports[0][1] +  # mov [export],rax
                 b"\x58"  # pop rax
-                b"\xF3\x41\x0F\x10\x87\xFC\x0C\x00\x00"  # original code 
+                + self.jump_original_bytecode  # original code
         )
         # fmt: on
         return bytecode
@@ -267,7 +352,7 @@ class QuestHook(SimpleHook):
 
 class ClientHook(SimpleHook):
     pattern = (
-        rb"\x18\x48......\x48\x8B\x7C\x24\x38\x48\x85\xFF\x74\x29\x8B\xC6\xF0\x0F\xC1\x47\x08\x83\xF8\x01\x75\x1D"
+        rb"\x18\x48......\x48\x8B\x7C\x24.\x48\x85\xFF\x74\x29\x8B\xC6\xF0\x0F\xC1\x47\x08\x83\xF8\x01\x75\x1D"
         rb"\x48\x8B\x07\x48\x8B\xCF\xFF\x50\x08\xF0\x0F\xC1\x77\x0C"
     )
     exports = [("current_client_addr", 8)]
@@ -290,7 +375,7 @@ class ClientHook(SimpleHook):
                 b"\x48\x8B\xC7"  # mov rax,rdi
                 b"\x48\xA3" + packed_exports[0][1] +  # mov [current_client], rax
                 b"\x58"  # pop rax
-                b"\x48\x8B\x9B\xC0\x01\x00\x00"  # original instruction
+                + self.jump_original_bytecode  # original instruction
         )
         # fmt: on
 
@@ -304,13 +389,26 @@ class RootWindowHook(SimpleHook):
     exports = [("current_root_window_addr", 8)]
 
     async def bytecode_generator(self, packed_exports):
+        # Re-derived 2026-08-12 (client revision r799379.Wizard_1_590): the
+        # original bytecode hardcoded "mov rax,[r15+0xD8]" to read the same
+        # value the real instruction was about to load - but on this build
+        # the real instruction (captured live below via
+        # jump_original_bytecode) is "mov rcx,[r13+0xD8]" instead: both the
+        # base register (r15->r13) AND the destination register (rax->rcx)
+        # changed. Confirmed via a hardware execute-watchpoint with full
+        # register capture (see SESSION_NOTES_2026-08-12.md) - this address
+        # runs constantly with r13 stable, but the export slot never
+        # populated until this was fixed. We no longer hardcode the read at
+        # all (jump_original_bytecode replays whatever the real instruction
+        # is), only the "which register did the value land in" part, which
+        # still needs updating if a future patch changes it again.
         # fmt: off
         bytecode = (
             b"\x50"  # push rax
-            b"\x49\x8B\x85\xD8\x00\x00\x00"  # mov rax,[r13+D8]
-            b"\x48\xA3" + packed_exports[0][1] +  # mov [current_root_window_addr], rax
+            + self.jump_original_bytecode +  # mov rcx,[r13+0xD8] (captured live, may differ per build)
+            b"\x48\xB8" + packed_exports[0][1] +  # mov rax, <current_root_window_addr>
+            b"\x48\x89\x08"  # mov [rax], rcx
             b"\x58"  # pop rax
-            b"\x49\x8B\x8D\xD8\x00\x00\x00"  # original instruction
         )
         # fmt: on
 
@@ -330,7 +428,7 @@ class RenderContextHook(SimpleHook):
             b"\x48\x89\xd8"  # mov rax,rbx
             b"\x48\xA3" + packed_exports[0][1] +  # mov [current_ui_scale_addr],rax
             b"\x58"  # pop rax
-            b"\xF3\x44\x0F\x10\x8B\x98\x00\x00\x00"  # original instruction
+            + self.jump_original_bytecode  # original instruction
         )
         # fmt: on
 
@@ -338,14 +436,20 @@ class RenderContextHook(SimpleHook):
 
 
 class MovementTeleportHook(SimpleHook):
-    pattern = rb"\x57\x48\x83\xEC.\x48\x8B\x99...." \
-              rb"\x48\x85\xDB\x74.\x4C\x8B\x43.\x48\x8B\x5B"\
-              rb".\x48\x85\xDB\x74.\xF0\xFF\x43.\x4D\x85" \
-              rb"\xC0\x74.\xF2\x0F\x10\x02\xF2\x41\x0F\x11\x40" \
-              rb".\x8B\x42.\x41\x89\x40.\x41\xC6\x80."
+    # Re-derived 2026-08-12 (client revision r799379.Wizard_1_590): the
+    # function's own logic is unchanged (same 0x1B8/0x70/0x78/+8 offsets,
+    # found live via a hardware watchpoint on the position field while
+    # actually moving), but the compiler dropped the old stack-sentinel
+    # write and reordered the prologue, so the previous byte pattern (which
+    # anchored partly on that sentinel) stopped matching entirely. New
+    # prologue: mov [rsp+8],rbx; push rdi; sub rsp,0x20 (10 bytes, vs the
+    # old 6-byte push rdi; sub rsp,0x30).
+    pattern = rb"\x48\x89\x5C\x24\x08\x57\x48\x83\xEC\x20\x48\x8B\x99\xB8" \
+              rb"\x01\x00\x00\x48\x85\xDB\x74.\x4C\x8B\x43\x70" \
+              rb"\x48\x8B\x5B\x78\x48\x85\xDB\x74.\xF0\xFF\x43\x08"
 
-    instruction_length = 5
-    noops = 0
+    instruction_length = 10
+    noops = 5
     # position vector = 12 + 1 for update bool + 8 for target object address
     exports = [("teleport_helper", 21)]
 
@@ -389,24 +493,35 @@ class MovementTeleportHook(SimpleHook):
 
         target_address = jes[0]
 
-        inside_event_je_addr = await self.pattern_scan(
-            rb"\x74.\xF3\x0F\x10\x55\xA8",
-            module="WizardGraphicalClient.exe",
-        )
-        
-        event_dispatch_je_addr = await self.pattern_scan(
-            rb"\x74.\xF3\x0F\x10\x44\x24\x54\xF3\x0F",
-            module="WizardGraphicalClient.exe",
-        )
+        # Collision-bypass patches (lets a teleport land somewhere that would
+        # normally be blocked, e.g. through a closed door mid-transition).
+        # Best-effort only: if these two patterns don't match (they're
+        # separate functions from the main teleport one and can go stale
+        # independently), skip the bypass instead of failing the whole
+        # teleport hook - most teleports (walking to a quest marker) don't
+        # need it.
+        try:
+            inside_event_je_addr = await self.pattern_scan(
+                rb"\x74.\xF3\x0F\x10\x55\x90",
+                module="WizardGraphicalClient.exe",
+            )
+            event_dispatch_je_addr = await self.pattern_scan(
+                rb"\x74.\xF3\x0F\x10\x44\x24\x58\xF3\x0F",
+                module="WizardGraphicalClient.exe",
+            )
 
-        old_inside_event_je_bytes = await self.read_bytes(inside_event_je_addr, 2)
-        old_event_dispatch_je_addr = await self.read_bytes(event_dispatch_je_addr, 2)
+            old_inside_event_je_bytes = await self.read_bytes(inside_event_je_addr, 2)
+            old_event_dispatch_je_addr = await self.read_bytes(event_dispatch_je_addr, 2)
 
-        self._collision_je_addrs = (inside_event_je_addr, event_dispatch_je_addr)
-        self._old_collision_jes_bytes = (old_inside_event_je_bytes, old_event_dispatch_je_addr)
+            self._collision_je_addrs = (inside_event_je_addr, event_dispatch_je_addr)
+            self._old_collision_jes_bytes = (old_inside_event_je_bytes, old_event_dispatch_je_addr)
 
-        for addr in self._collision_je_addrs:
-            await self.write_bytes(addr, b"\x90\x90")
+            for addr in self._collision_je_addrs:
+                await self.write_bytes(addr, b"\x90\x90")
+        except Exception as e:
+            logger.warning(f"Collision-bypass patterns unavailable, teleporting without bypass: {e}")
+            self._collision_je_addrs = None
+            self._old_collision_jes_bytes = None
 
         # 0x40 is read, write, execute
         self._old_je_page_protection = self._set_page_protection(target_address, 0x40)
@@ -459,8 +574,7 @@ class MovementTeleportHook(SimpleHook):
             b"\x48\xB8" + jes_cmp_bytes +
             b"\x48\xA3" + packed_jes_cmp +
             b"\x58" # pop rax
-            b"\x57" # push rdi (original bytes)
-            b"\x48\x83\xEC\x20" # sub rsp,20 (original bytes)
+            + self.jump_original_bytecode # original bytes: mov [rsp+8],rbx; push rdi; sub rsp,20
         )
         # fmt: on
 
@@ -478,24 +592,24 @@ class MovementTeleportHook(SimpleHook):
         logger.debug(f"Got hook address {self.hook_address} in {type(self)}")
         logger.debug(f"Got jump address {self.jump_address} in {type(self)}")
 
+        self.jump_original_bytecode = await self.read_bytes(
+            self.jump_address, 5 + self.noops
+        )
+        logger.debug(
+            f"Got jump original bytecode {self.jump_original_bytecode} in {type(self)}"
+        )
+
         self.hook_bytecode = await self.get_hook_bytecode()
         self.jump_bytecode = await self.get_jump_bytecode()
 
         logger.debug(f"Got hook bytecode {self.hook_bytecode} in {type(self)}")
         logger.debug(f"Got jump bytecode {self.jump_bytecode} in {type(self)}")
 
-        self.jump_original_bytecode = await self.read_bytes(
-            self.jump_address, len(self.jump_bytecode)
-        )
-
-        logger.debug(
-            f"Got jump original bytecode {self.jump_original_bytecode} in {type(self)}"
-        )
-
         await self.prehook()
 
-        await self.write_bytes(self.hook_address, self.hook_bytecode)
-        await self.write_bytes(self.jump_address, self.jump_bytecode)
+        with _suspended_process(self.hook_handler.process.process_id):
+            await self.write_bytes(self.hook_address, self.hook_bytecode)
+            await self.write_bytes(self.jump_address, self.jump_bytecode)
 
         await self.posthook()
 
@@ -525,8 +639,9 @@ class MovementTeleportHook(SimpleHook):
         for je, je_bytes in zip(jes, self._old_jes_bytes):
             await self.hook_handler.write_bytes(je, je_bytes)
 
-        for addr, old_bytes in zip(self._collision_je_addrs, self._old_collision_jes_bytes):
-            await self.write_bytes(addr, old_bytes)
+        if self._collision_je_addrs is not None:
+            for addr, old_bytes in zip(self._collision_je_addrs, self._old_collision_jes_bytes):
+                await self.write_bytes(addr, old_bytes)
 
         self._set_page_protection(jes[0], self._old_je_page_protection)
 
@@ -548,8 +663,7 @@ class DropsToggleHook(SimpleHook):
             b"\x0F\x84\x04\x00\x00\x00" # je down 4
             b"\x48\x31\xC0" # xor rax,rax
             b"\xC3" # ret
-            b"\x4C\x8B\xDC" # mov r11,rsp (original bytes)
-            b"\x48\x83\xEC\x68" # sub rsp,68 (original bytes)
+            + self.jump_original_bytecode # original bytes: mov r11,rsp; sub rsp,68
         )
 
 

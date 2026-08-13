@@ -5,6 +5,10 @@ import warnings
 
 import pymem
 import pymem.exception
+import pymem.memory
+import pymem.process
+import pymem.ressources.kernel32
+import pymem.ressources.structure
 from loguru import logger
 
 from wizwalker import HookAlreadyActivated, HookNotActive, HookNotReady
@@ -24,6 +28,46 @@ from .hooks import (
 )
 from .memory_reader import MemoryReader, Primitive
 
+_MEM_RESERVE = pymem.ressources.structure.MEMORY_STATE.MEM_RESERVE.value
+_MEM_COMMIT = pymem.ressources.structure.MEMORY_STATE.MEM_COMMIT.value
+_MEM_FREE = pymem.ressources.structure.MEMORY_STATE.MEM_FREE.value
+_PAGE_EXECUTE_READWRITE = pymem.ressources.structure.MEMORY_PROTECTION.PAGE_EXECUTE_READWRITE.value
+_ALLOCATION_GRANULARITY = 0x10000
+
+
+def _find_free_region_near(handle, anchor: int, size: int, max_range: int = 0x70000000):
+    """
+    Find a free memory region within max_range bytes of anchor, so that a
+    32-bit relative jmp/call from anywhere near anchor can reach it.
+    """
+
+    def _align_up(value: int) -> int:
+        return (value + _ALLOCATION_GRANULARITY - 1) & ~(_ALLOCATION_GRANULARITY - 1)
+
+    # walk upward, following the real region chain
+    addr = anchor
+    end = anchor + max_range
+    while addr < end:
+        mbi = pymem.memory.virtual_query(handle, addr)
+        if mbi.state == _MEM_FREE and mbi.RegionSize >= size:
+            candidate = _align_up(max(addr, mbi.BaseAddress))
+            if candidate + size <= mbi.BaseAddress + mbi.RegionSize:
+                return candidate
+        addr = mbi.BaseAddress + mbi.RegionSize
+
+    # walk downward, following the real region chain in reverse
+    addr = anchor - _ALLOCATION_GRANULARITY
+    start = max(anchor - max_range, _ALLOCATION_GRANULARITY)
+    while addr > start:
+        mbi = pymem.memory.virtual_query(handle, addr)
+        if mbi.state == _MEM_FREE and mbi.RegionSize >= size:
+            candidate = _align_up(mbi.BaseAddress)
+            if candidate + size <= mbi.BaseAddress + mbi.RegionSize:
+                return candidate
+        addr = mbi.BaseAddress - _ALLOCATION_GRANULARITY
+
+    return None
+
 
 # noinspection PyUnresolvedReferences
 class HookHandler(MemoryReader):
@@ -31,15 +75,15 @@ class HookHandler(MemoryReader):
     Manages hooks
     """
 
-    AUTOBOT_PATTERN = (
-        rb"\x48\x89\x5C\x24.\x48\x89\x74\x24.\x48\x89\x7C\x24."
-        rb"\x55\x41\x54\x41\x55\x41\x56\x41\x57"
-        rb"\x48\x8D\xAC\x24....\x48\x81\xEC...."
-        rb"\x48\x8B\x05....\x48\x33\xC4\x48\x89\x85...."
-        rb"\x4C\x8B\xF1.......\x80......\x0F\x84...."
-    )
-    # rounded down
-    AUTOBOT_SIZE = 4100
+    # Scratch space for hook trampolines. Previously this was carved out of a
+    # large dead function inside WizardGraphicalClient.exe (found via
+    # AUTOBOT_PATTERN, a hardcoded byte signature) and restored on close.
+    # That signature stopped matching after a client update, and patching an
+    # existing function's bytes is fragile across patches anyway - so this
+    # now allocates its own RWX memory in the target process instead
+    # (VirtualAllocEx via pymem), which needs no game-binary signature at all
+    # and never touches the module's own bytes.
+    AUTOBOT_SIZE = 3900
 
     def __init__(self, process: pymem.Pymem, client):
         super().__init__(process)
@@ -48,7 +92,6 @@ class HookHandler(MemoryReader):
 
         self._autobot_address = None
         self._autobot_lock = None
-        self._original_autobot_bytes = b""
         self._autobot_pos = 0
 
         # TODO: Is this signature correct?
@@ -70,11 +113,32 @@ class HookHandler(MemoryReader):
         return addr
 
     async def _get_autobot_address(self):
-        addr = await self.pattern_scan(
-            self.AUTOBOT_PATTERN, module="WizardGraphicalClient.exe"
+        # Hooks patch in near (rel32) jumps back and forth to this scratch
+        # space, so it must land within +/-2GB of WizardGraphicalClient.exe -
+        # a plain VirtualAllocEx(NULL) can land anywhere in the address space
+        # and silently break bytecode packing later on.
+        module = pymem.process.module_from_name(
+            self.process.process_handle, "WizardGraphicalClient.exe"
         )
-        if addr is None:
-            raise RuntimeError("Pattern scan failed for autobot pattern")
+        anchor = module.lpBaseOfDll + module.SizeOfImage // 2
+
+        near_addr = _find_free_region_near(
+            self.process.process_handle, anchor, self.AUTOBOT_SIZE
+        )
+        if near_addr is None:
+            raise RuntimeError(
+                "Could not find free memory near WizardGraphicalClient.exe for autobot scratch space"
+            )
+
+        addr = pymem.ressources.kernel32.VirtualAllocEx(
+            self.process.process_handle,
+            near_addr,
+            self.AUTOBOT_SIZE,
+            _MEM_RESERVE | _MEM_COMMIT,
+            _PAGE_EXECUTE_READWRITE,
+        )
+        if not addr:
+            raise RuntimeError("Failed to allocate autobot scratch memory")
 
         self._autobot_address = addr
 
@@ -82,32 +146,15 @@ class HookHandler(MemoryReader):
     async def _prepare_autobot(self):
         if self._autobot_address is None:
             await self._get_autobot_address()
-
-            # we only need to write back the pattern
-            self._original_autobot_bytes = await self.read_bytes(
-                self._autobot_address, len(self.AUTOBOT_PATTERN)
-            )
-            logger.debug(
-                f"Got original bytes {self._original_autobot_bytes} from autobot"
-            )
-            await self.write_bytes(self._autobot_address, b"\x00" * self.AUTOBOT_SIZE)
+            logger.debug(f"Allocated autobot scratch memory at {self._autobot_address}")
+            # VirtualAllocEx memory is already zero-initialized; nothing to save/clear.
 
     async def _rewrite_autobot(self):
         if self._autobot_address is not None:
-            compare_bytes = await self.read_bytes(
-                self._autobot_address, len(self.AUTOBOT_PATTERN)
-            )
-            # Give some time for execution point to leave hooks
+            # Give some time for execution point to leave hooks before freeing
             await asyncio.sleep(0.5)
-
-            # Only write if the pattern isn't there
-            if compare_bytes != self._original_autobot_bytes:
-                logger.debug(
-                    f"Rewriting bytes {self._original_autobot_bytes} to autobot"
-                )
-                await self.write_bytes(
-                    self._autobot_address, self._original_autobot_bytes
-                )
+            logger.debug(f"Freeing autobot scratch memory at {self._autobot_address}")
+            self.process.free(self._autobot_address)
 
     async def _allocate_autobot_bytes(self, size: int) -> int:
         address = await self._get_open_autobot_address(size)
@@ -544,7 +591,7 @@ class HookHandler(MemoryReader):
     async def activate_drops_toggle_hook(
         self, *, wait_for_ready: bool = False, timeout: float = None
     ):
-        
+
         if self._check_if_hook_active(DropsToggleHook):
             raise HookAlreadyActivated("Drops toggle")
 

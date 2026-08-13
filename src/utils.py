@@ -481,9 +481,21 @@ async def buy_potions(client: Client, recall: bool = True, original_zone=None):
                     await click_window_by_path(client, potion_usage_path, True)
                     await asyncio.sleep(3.0)
 
-    except:
-        print(traceback.print_exc())
-        raise KeyboardInterrupt
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        # Re-derived 2026-08-13: this used to swallow every exception here
+        # (including transient/recoverable ones like a momentary memory
+        # read glitch) and re-raise as KeyboardInterrupt, which isn't
+        # caught by try_task_coro's `except Exception` handling and kills
+        # the entire Deimos process, not just this task. Let the real
+        # exception propagate instead so try_task_coro's existing
+        # retry/logging logic (already used everywhere else) handles it -
+        # the questing_loop task stops and logs clearly, without taking
+        # down the whole app. See SESSION_NOTES_2026-08-12.md.
+        logger.error(f"Client {client.title} - buy_potions failed:")
+        logger.error(traceback.format_exc())
+        raise
 
 # Put an extra check here in case Starrfox becomes a time traveller or someone is using cheat engine at 100x speed, causing this logic to somehow fail
     if recall:
@@ -501,6 +513,13 @@ async def buy_potions(client: Client, recall: bool = True, original_zone=None):
                 # if we timed out, loop and try again
                 except LoadingScreenNotFound:
                     pass
+                # recall destination isn't reachable right now (friend busy,
+                # instance closed) - give up on this recall instead of
+                # crashing the whole questing loop; potions get retried
+                # next time auto_potions runs
+                except FriendBusyOrInstanceClosed:
+                    logger.debug(f"Client {client.title} - Recall failed (friend busy/instance closed), skipping potion recall for now")
+                    break
 
 async def to_world(clients, destinationWorld):
     world_hub_zones = ['WizardCity/WC_Hub', 'Krokotopia/KT_Hub', 'Marleybone/MB_Hub', 'MooShu/MS_Hub', 'DragonSpire/DS_Hub_Cathedral', 'Grizzleheim/GH_MainHub', 'Celestia/CL_Hub', 'Wysteria/PA_Hub', 'Zafaria/ZF_Z00_Hub', 'Avalon/AV_Z00_Hub', 'Azteca/AZ_Z00_Zocalo', 'Khrysalis/KR_Z00_Hub', 'Polaris/PL_Z00_Walruskberg', 'Mirage/MR_Z00_Hub', 'Empyrea/EM_Z00_Aeriel_HUB', 'Karamelle/KM_Z00_HUB', 'Lemuria/LM_Z00_Hub']
@@ -784,7 +803,10 @@ async def get_quest_name(client: Client):
     quest_name_window = await get_window_from_path(client.root_window, quest_name_path)
     while not await is_visible_by_path(client, quest_name_path):
         await asyncio.sleep(0.1)
-    quest_objective = await quest_name_window.maybe_text()
+    try:
+        quest_objective = await quest_name_window.maybe_text()
+    except Exception:
+        quest_objective = ''
     quest_objective = quest_objective.replace('<center>', '')
     quest_objective = quest_objective.replace('</center>', '')
     return quest_objective
@@ -1266,6 +1288,11 @@ async def try_task_coro(coro: Coroutine, clients: List[Client], deactive_mousele
                 await asyncio.sleep(1)
             else:
                 logger.error(f'Task {task_coro} exceeded max retries ({max_retries}), giving up.')
+
+        except Exception as e:
+            logger.error(f'Task {task_coro} crashed with an unhandled error:')
+            logger.error(traceback.format_exc())
+            raise
 
 
 def index_with_str(input_str, desired_str: str) -> int:

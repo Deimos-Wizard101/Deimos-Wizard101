@@ -126,7 +126,14 @@ class Window(PropertyClass):
             if type_name != "SpellCheckBox":
                 raise ValueError(f"This object is a {type_name} not a SpellCheckBox.")
 
-        addr = await self.read_value_from_offset(1104, Primitive.int64)
+        # Re-derived 2026-08-12 (client revision r799379.Wizard_1_590): this
+        # was 1104, pointing into the module's own code/vtable range instead
+        # of a real heap-allocated GraphicalSpell - confirmed broken via live
+        # combat testing. Found 960 by scanning for a pointer whose target
+        # looks like a real object (vtable-style first qword) and that
+        # resolves through spell_template()/name() to a real, readable spell
+        # name (see SESSION_NOTES_2026-08-12.md in the Wizard101 repo).
+        addr = await self.read_value_from_offset(960, Primitive.int64)
 
         if addr == 0:
             return None
@@ -155,7 +162,13 @@ class Window(PropertyClass):
                     f"This object is a {type_name} not a CombatantDataControl."
                 )
 
-        addr = await self.read_value_from_offset(1888, Primitive.int64)
+        # Re-derived 2026-08-12 (client revision r799379.Wizard_1_590): this
+        # was 1888, always reading 0 - confirmed broken via live combat
+        # testing. Found 1680 by scanning for a pointer whose target reads a
+        # sane CombatParticipant object (owner_id_full() matching the local
+        # client's global_id_full(), consistent template_id_full() ranges
+        # across other combatants) - see SESSION_NOTES_2026-08-12.md.
+        addr = await self.read_value_from_offset(1680, Primitive.int64)
 
         if addr == 0:
             return None
@@ -168,8 +181,18 @@ class Window(PropertyClass):
         #  and if so check that they have it
         offset = 736
 
+        # Re-derived 2026-08-12 (client revision r799379.Wizard_1_590): this
+        # was 712, always returning string_len=0 (empty text) for every
+        # ControlText window - confirmed by scanning a real, on-screen,
+        # non-empty quest-text ControlText window's memory for a
+        # {pointer, length} pair that decoded to readable text; found at
+        # +584 instead. The struct shifted by a clean 128 bytes, consistent
+        # with the rest of this client build's changes (see
+        # SESSION_NOTES_2026-08-12.md in the Wizard101 repo). The
+        # ControlList and non-Control default (736) offsets are unverified -
+        # only ControlText was directly confirmed.
         if await self.maybe_read_type_name() in ("ControlText", "ControlList"):
-            offset = 712
+            offset = 584
 
         base_address = await self.read_base_address() + offset
         string_len = await self.read_typed(base_address + 16, Primitive.int32)
