@@ -1,2 +1,5 @@
 /target
-Cargo.lock
+# Cargo.lock is committed: deimos-updater ships as a binary that rewrites the
+# user's executable, so its dependencies are pinned for reproducible builds.
+# The negation is needed because the repo root ignores *.lock.
+!Cargo.lock

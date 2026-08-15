@@ -17,10 +17,3 @@ dist/
 !.gitignore
 .*
 target/
-/target
-/result
-.*
-!.gitignore
-Cargo.lock
-flake.lock
-wizard101/

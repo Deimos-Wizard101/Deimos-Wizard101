@@ -341,27 +341,38 @@ async def _all_cam_views(client):
 
 
 NATIVE_ASPECT = 16.0 / 9.0   # the engine's design aspect (its native frustum is 16:9)
-# Native vertical half-extent (the frustum's vertical FOV, which is constant — zoom
-# is camera distance, not FOV) captured per frustum so we can rebuild both extents
-# for any window aspect. Nested: hwnd -> {cam_view_address: v_ref}. Keyed per
-# frustum because each camera controller has its own (and possibly its own FOV).
-_native_vert: dict[int, dict[int, float]] = {}
+# Per frustum: ``(v_ref, left, right, top, bottom)`` as first seen — the native vertical
+# half-extent (the frustum's vertical FOV, which is constant — zoom is camera distance,
+# not FOV) plus the untouched extents, so a teardown can put the frustum back exactly as
+# the game had it. Nested: hwnd -> {cam_view_address: tuple}. Keyed per frustum because
+# each camera controller has its own (and possibly its own FOV).
+#
+# Restoring on teardown is not cosmetic. The capture below assumes first-seen == native,
+# so leaving a corrected frustum behind makes the NEXT capture read our own corrected
+# value as "native". For a window narrower than 16:9 the correction grows the vertical
+# extent, so each hook/unhook cycle multiplies it by (16/9)/aspect again and the POV
+# creeps further back every time.
+_native_views: dict[int, dict[int, tuple]] = {}
 
 
 async def _correct_view(view, aspect: float, refs: dict) -> bool:
     """Apply the window aspect to a single frustum, anchored on its native FOV."""
     try:
-        v_ref = refs.get(view.base_address)
-        if v_ref is None:
-            # First time we see this frustum: capture its native vertical half-extent.
-            # The engine leaves inactive controllers at native 16:9, so first-seen is
-            # native (that is exactly why an unfixed controller looks distorted).
+        ref = refs.get(view.base_address)
+        if ref is None:
+            # First time we see this frustum: capture its native extents. The engine
+            # leaves inactive controllers at native 16:9, so first-seen is native (that
+            # is exactly why an unfixed controller looks distorted).
             top = await view.viewport_top()
             bottom = await view.viewport_bottom()
+            left = await view.viewport_left()
+            right = await view.viewport_right()
             v_ref = (top - bottom) / 2.0
             if v_ref <= 0:
                 return False
-            refs[view.base_address] = v_ref
+            ref = (v_ref, left, right, top, bottom)
+            refs[view.base_address] = ref
+        v_ref = ref[0]
 
         if aspect >= NATIVE_ASPECT:          # wider than native -> grow horizontal
             v = v_ref
@@ -395,10 +406,45 @@ async def correct_aspect(client, hwnd: int) -> bool:
     views = await _all_cam_views(client)
     if not views:
         return False
-    refs = _native_vert.setdefault(hwnd, {})
+    refs = _native_views.setdefault(hwnd, {})
     ok = False
     for view in views.values():
         ok = await _correct_view(view, aspect, refs) or ok
+    return ok
+
+
+async def restore_aspect(client, hwnd: int) -> bool:
+    """Put every frustum we corrected back to the extents captured when we first saw it.
+
+    Must run before the captured extents are dropped, and while the client is still
+    alive — otherwise the corrected frustum is what the next hook reads as native and
+    the POV compounds (see ``_native_views``). Best-effort: a controller that isn't
+    reachable right now keeps its corrected frustum, so we only restore what we can
+    still see. Returns True if anything was written back.
+    """
+    refs = _native_views.get(hwnd)
+    if not refs or client is None:
+        return False
+    try:
+        views = await _all_cam_views(client)
+    except Exception:
+        return False
+    ok = False
+    for addr, view in views.items():
+        ref = refs.get(addr)
+        if ref is None:
+            continue
+        _v_ref, left, right, top, bottom = ref
+        try:
+            await view.write_viewport_top(top)
+            await view.write_viewport_bottom(bottom)
+            await view.write_viewport_left(left)
+            await view.write_viewport_right(right)
+            ok = True
+        except Exception:
+            continue
+    if ok:
+        logger.debug(f"[client_resizing] camera frustum restored {hwnd:#x}")
     return ok
 
 
@@ -414,6 +460,10 @@ class ClientResizingManager:
         self._forcers: dict[int, object] = {}     # hwnd -> ResolutionForcer
         self._borders: dict[int, object] = {}      # hwnd -> WindowResizeBorder
         self._pending: dict[int, tuple] = {}       # hwnd -> (size, stable_count)
+        # hwnd -> the client we last serviced, kept only so _teardown can write the
+        # camera frustum back (that needs memory access, and teardown is keyed by hwnd).
+        # Dropped in _teardown, so it never outlives the hooks it belongs to.
+        self._clients: dict[int, object] = {}
         # Handles whose window/resolution/border config was applied at launch
         # (before activate_hooks). The tick loop must NOT tear these down just
         # because they aren't hooked yet (not in walker.clients); they're kept
@@ -479,7 +529,9 @@ class ClientResizingManager:
             if not user32.IsWindow(hwnd):
                 self._keep_alive.discard(hwnd)
 
-        for hwnd in set(self._forcers) | set(self._borders) | set(_armed):
+        # _native_views is in the union so a client whose only change was the camera
+        # correction (no forcer/border installed) still gets its frustum restored.
+        for hwnd in set(self._forcers) | set(self._borders) | set(_armed) | set(_native_views):
             if hwnd not in live and hwnd not in self._keep_alive:
                 await self._teardown(hwnd)
 
@@ -489,6 +541,7 @@ class ClientResizingManager:
         concurrently for several clients; a failure is logged and isolated so it never
         aborts the other clients' servicing."""
         try:
+            self._clients[hwnd] = client   # for the frustum restore in _teardown
             await self._ensure_forcer(client, hwnd)
             await self._ensure_border(client, hwnd)
             if hwnd in _borderless:
@@ -539,6 +592,7 @@ class ClientResizingManager:
         if not hwnd or not user32.IsWindow(hwnd):
             return False
         borderless = bool(borderless)
+        self._clients[hwnd] = client   # so a teardown before the first tick can restore
         # Strip the caption first so the client-area sizing below accounts for it.
         set_borderless(hwnd, borderless)
         await self._ensure_forcer(client, hwnd)
@@ -647,6 +701,17 @@ class ClientResizingManager:
                 self._pending.pop(hwnd, None)
 
     async def _teardown(self, hwnd: int):
+        # Undo the camera correction FIRST, while the window and client are still in the
+        # state we corrected them from. Leaving it applied would make the next hook read
+        # our corrected frustum as the native one and push the POV back again.
+        client = self._clients.pop(hwnd, None)
+        if client is not None and user32.IsWindow(hwnd):
+            try:
+                await restore_aspect(client, hwnd)
+            except Exception as e:
+                logger.opt(exception=e).debug(
+                    f"[client_resizing] frustum restore failed {hwnd:#x}"
+                )
         for store in (self._forcers, self._borders):
             hook = store.pop(hwnd, None)
             if hook is not None:
@@ -659,14 +724,15 @@ class ClientResizingManager:
             set_borderless(hwnd, False)     # restore decorations
         _borderless.pop(hwnd, None)         # guard against a leak if window is gone
         self._pending.pop(hwnd, None)
-        _native_vert.pop(hwnd, None)
+        _native_views.pop(hwnd, None)
         # Drop the per-client install lock unless an install is mid-flight holding it.
         lk = self._install_locks.get(hwnd)
         if lk is not None and not lk.locked():
             self._install_locks.pop(hwnd, None)
 
     async def _teardown_all(self):
-        for hwnd in set(self._forcers) | set(self._borders) | set(_armed) | set(_borderless):
+        for hwnd in (set(self._forcers) | set(self._borders) | set(_armed)
+                     | set(_borderless) | set(_native_views)):
             await self._teardown(hwnd)
 
     async def teardown_client(self, hwnd: int):

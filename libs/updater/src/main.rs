@@ -6,7 +6,10 @@
 //! image, it cannot overwrite itself. Deimos extracts this helper, then spawns
 //! it detached and exits. The helper:
 //!
-//!   1. Waits for the parent Deimos process (by PID) to fully exit.
+//!   1. Waits for every Deimos process (by PID) to fully exit. A one-file
+//!      bundle has two — the bootloader and its Python child — and both hold a
+//!      lock on the image, so `--pid` is repeatable and all of them are waited
+//!      on before the swap is attempted.
 //!   2. Copies the freshly downloaded executable over the old one (with retries
 //!      to tolerate lingering file locks, which are common under Wine/Proton).
 //!   3. Optionally relaunches the updated executable.
@@ -15,7 +18,7 @@
 //! directory) are recoverable post-mortem rather than silent.
 //!
 //! Usage:
-//!   deimos-updater --pid <parent_pid> --new <downloaded.exe> --target <Deimos.exe> [--relaunch] [--log <path>]
+//!   deimos-updater --pid <pid> [--pid <pid>...] --new <downloaded.exe> --target <Deimos.exe> [--relaunch] [--log <path>]
 
 #![windows_subsystem = "windows"]
 
@@ -42,7 +45,9 @@ const SWAP_DEADLINE: Duration = Duration::from_secs(30);
 const SWAP_RETRY: Duration = Duration::from_millis(500);
 
 struct Args {
-    pid: Option<u32>,
+    /// Every process that must exit before the swap. A one-file PyInstaller
+    /// bundle contributes two: the bootloader and its Python child.
+    pids: Vec<u32>,
     new: Option<PathBuf>,
     target: Option<PathBuf>,
     relaunch: bool,
@@ -51,7 +56,7 @@ struct Args {
 
 fn parse_args() -> Args {
     let mut args = Args {
-        pid: None,
+        pids: Vec::new(),
         new: None,
         target: None,
         relaunch: false,
@@ -60,7 +65,11 @@ fn parse_args() -> Args {
     let mut it = env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--pid" => args.pid = it.next().and_then(|v| v.parse().ok()),
+            "--pid" => {
+                if let Some(pid) = it.next().and_then(|v| v.parse().ok()) {
+                    args.pids.push(pid);
+                }
+            }
             "--new" => args.new = it.next().map(PathBuf::from),
             "--target" => args.target = it.next().map(PathBuf::from),
             "--relaunch" => args.relaunch = true,
@@ -110,13 +119,13 @@ fn wait_for_pid(pid: u32, timeout: Duration, log: &Logger) {
     unsafe {
         let handle = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
         if handle.is_null() {
-            log.line("Parent process not found (already exited).");
+            log.line(&format!("Process {pid} not found (already exited)."));
             return;
         }
         let res = WaitForSingleObject(handle, timeout.as_millis() as u32);
         CloseHandle(handle);
         if res == WAIT_OBJECT_0 {
-            log.line("Parent process exited.");
+            log.line(&format!("Process {pid} exited."));
         } else {
             log.line(&format!(
                 "WARN: wait returned {res} (timeout or error); proceeding anyway."
@@ -170,11 +179,15 @@ fn main() {
         std::process::exit(3);
     }
 
-    if let Some(pid) = args.pid {
-        log.line(&format!("Waiting for parent pid {pid} to exit..."));
-        wait_for_pid(pid, PARENT_WAIT, &log);
-    } else {
+    if args.pids.is_empty() {
         log.line("No --pid provided; skipping wait.");
+    } else {
+        // PARENT_WAIT is the budget for the whole set, not per process.
+        let deadline = Instant::now() + PARENT_WAIT;
+        for pid in &args.pids {
+            log.line(&format!("Waiting for pid {pid} to exit..."));
+            wait_for_pid(*pid, deadline.saturating_duration_since(Instant::now()), &log);
+        }
     }
 
     sleep(GRACE);
@@ -190,7 +203,15 @@ fn main() {
 
     if args.relaunch {
         log.line(&format!("Relaunching {}", target.display()));
-        match Command::new(&target).spawn() {
+        let mut cmd = Command::new(&target);
+        // Spawn in the install directory rather than inheriting our own cwd
+        // (Deimos hands us the update scratch dir). Deimos resolves some paths
+        // relative to the cwd — its log sink among them — so inheriting would
+        // scatter them under %APPDATA%\Deimos\update after every self-update.
+        if let Some(dir) = target.parent() {
+            cmd.current_dir(dir);
+        }
+        match cmd.spawn() {
             Ok(_) => log.line("Relaunch spawned."),
             Err(e) => log.line(&format!("WARN: relaunch failed: {e}")),
         }

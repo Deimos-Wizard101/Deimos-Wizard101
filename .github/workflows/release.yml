@@ -4,90 +4,117 @@ on:
   push:
     branches:
       - main  # Only trigger on main branch pushes
-  
+
   # Optional: Allow manual release creation
   workflow_dispatch:
 
 jobs:
-  release:
-    runs-on: windows-latest
-    
-    permissions:
-      contents: write  # Required to create releases
-      
+  # Releases are driven by the version in Deimos.py: a push to main that carries
+  # a version we have not published yet becomes a release, and every other push
+  # is a no-op. This gate is a separate job so "nothing to release" shows up as a
+  # skipped release job rather than a failed one -- otherwise every merge to main
+  # that is not a version bump reports a red X.
+  check:
+    name: Check for a new version
+    runs-on: ubuntu-latest
+
+    outputs:
+      version_tag: ${{ steps.version.outputs.VERSION_TAG }}
+      version_number: ${{ steps.version.outputs.VERSION_NUMBER }}
+      should_release: ${{ steps.check_release.outputs.should_release }}
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Full history for changelog
-    
+        fetch-depth: 0  # Full history so existing tags are visible
+
     - name: Extract version from Deimos.py
       id: version
       shell: bash
       run: |
         echo "Extracting version from Deimos.py..."
-        
+
         # Check if Deimos.py exists
         if [ ! -f "Deimos.py" ]; then
           echo "ERROR: Deimos.py not found in repository root"
           exit 1
         fi
-        
+
         # Extract version using grep and sed
         VERSION_LINE=$(grep -n "tool_version: str = " Deimos.py | head -1)
-        
+
         if [ -z "$VERSION_LINE" ]; then
           echo "ERROR: Could not find 'tool_version: str = ' in Deimos.py"
           echo "Make sure the version is defined as: tool_version: str = 'x.x.x'"
           exit 1
         fi
-        
+
         # Extract the version number from the line
         VERSION_NUMBER=$(echo "$VERSION_LINE" | sed -n "s/.*tool_version: str = ['\"]\\([^'\"]*\\)['\"].*/\\1/p")
-        
+
         if [ -z "$VERSION_NUMBER" ]; then
           echo "ERROR: Could not parse version number from: $VERSION_LINE"
           echo "Make sure the version format is: tool_version: str = 'x.x.x'"
           exit 1
         fi
-        
+
         # Validate version format (basic semver check)
         if ! echo "$VERSION_NUMBER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'; then
           echo "ERROR: Invalid version format: $VERSION_NUMBER"
           echo "Expected format: x.x.x or x.x.x-suffix (e.g., 1.2.3 or 1.2.3-beta)"
           exit 1
         fi
-        
+
         VERSION_TAG="v${VERSION_NUMBER}"
-        
+
         echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_OUTPUT
         echo "VERSION_NUMBER=${VERSION_NUMBER}" >> $GITHUB_OUTPUT
         echo "Found version: ${VERSION_NUMBER} (tag: ${VERSION_TAG})"
-    
+
+    # Already published is the normal case, not an error: most pushes to main are
+    # not version bumps. Report it and let the release job skip.
     - name: Check if release already exists
       id: check_release
       shell: bash
       run: |
-        echo "Checking if release ${{ steps.version.outputs.VERSION_TAG }} already exists..."
-        
-        # Check if tag exists
-        if git rev-parse "${{ steps.version.outputs.VERSION_TAG }}" >/dev/null 2>&1; then
-          echo "ERROR: Git tag ${{ steps.version.outputs.VERSION_TAG }} already exists"
-          echo "This version has already been released. Please increment the version in Deimos.py"
-          exit 1
+        TAG="${{ steps.version.outputs.VERSION_TAG }}"
+        echo "Checking if release ${TAG} already exists..."
+
+        if git rev-parse "${TAG}" >/dev/null 2>&1; then
+          echo "Git tag ${TAG} already exists -- nothing to release."
+          echo "Bump tool_version in Deimos.py to publish a new version."
+          echo "should_release=false" >> $GITHUB_OUTPUT
+          exit 0
         fi
-        
-        # Check if GitHub release exists using GitHub CLI
-        if gh release view "${{ steps.version.outputs.VERSION_TAG }}" >/dev/null 2>&1; then
-          echo "ERROR: GitHub release ${{ steps.version.outputs.VERSION_TAG }} already exists"
-          echo "This version has already been released. Please increment the version in Deimos.py"
-          exit 1
+
+        if gh release view "${TAG}" >/dev/null 2>&1; then
+          echo "GitHub release ${TAG} already exists -- nothing to release."
+          echo "Bump tool_version in Deimos.py to publish a new version."
+          echo "should_release=false" >> $GITHUB_OUTPUT
+          exit 0
         fi
-        
-        echo "✓ Release ${{ steps.version.outputs.VERSION_TAG }} does not exist yet"
+
+        echo "Release ${TAG} does not exist yet -- proceeding."
+        echo "should_release=true" >> $GITHUB_OUTPUT
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
+
+  release:
+    name: Build and publish release
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: windows-latest
+
+    permissions:
+      contents: write  # Required to create releases
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for changelog
+
     - name: Install uv
       uses: astral-sh/setup-uv@v5
 
@@ -96,6 +123,10 @@ jobs:
 
     - name: Install dependencies
       run: uv sync --group dev
+
+    - name: Compile check
+      shell: bash
+      run: uv run --group dev python -m compileall -q Deimos.py src
 
     - name: Build update helper (Rust)
       shell: bash
@@ -130,6 +161,25 @@ jobs:
         echo "All required files found ✓"
         echo "Deimos.exe size: $(stat -c%s dist/Deimos.exe) bytes"
 
+    # Fail loudly if the helpers did not make it into the bundle. Deimos.spec
+    # omits a missing helper with only a warning, which is invisible in CI logs;
+    # shipping without them silently disables self-update and game-file patching.
+    - name: Verify bundled helpers
+      shell: bash
+      run: |
+        uv run --group dev python - <<'PY'
+        import sys
+        from PyInstaller.archive.readers import CArchiveReader
+
+        required = {"deimos-updater.exe", "wizpatch.exe"}
+        bundled = set(CArchiveReader("dist/Deimos.exe").toc)
+        missing = sorted(required - bundled)
+        if missing:
+            print(f"ERROR: helper(s) missing from bundle: {', '.join(missing)}")
+            sys.exit(1)
+        print(f"All helpers embedded in Deimos.exe: {', '.join(sorted(required))}")
+        PY
+
     - name: Generate checksum
       shell: powershell
       run: |
@@ -143,27 +193,29 @@ jobs:
         Write-Host "Creating release package..."
         New-Item -ItemType Directory -Path "release" -Force
 
-        # Copy files to release directory
+        # Copy files to release directory. The checksum goes in the zip too, so the
+        # packaged download matches the loose assets and can be verified offline.
         Copy-Item "dist/Deimos.exe" -Destination "release/"
+        Copy-Item "dist/Deimos.exe.sha256" -Destination "release/"
         Copy-Item "LICENSE" -Destination "release/"
 
         # Create zip file with version in name using PowerShell
-        $zipName = "Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip"
+        $zipName = "Deimos-${{ needs.check.outputs.version_tag }}.zip"
         Compress-Archive -Path "release/*" -DestinationPath $zipName -Force
 
         Write-Host "Release package created: $zipName"
         Write-Host "Package contents:"
         Get-ChildItem "release" | Format-Table Name, Length
-    
+
     - name: Generate changelog
       id: changelog
       shell: bash
       run: |
         echo "Generating changelog..."
-        
+
         # Get the last tag (excluding current)
         LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-        
+
         if [ -z "$LAST_TAG" ]; then
           echo "No previous tag found, generating changelog from recent commits"
           CHANGELOG=$(git log --pretty=format:"- %s" --no-merges | head -20)
@@ -171,31 +223,31 @@ jobs:
           echo "Generating changelog since last tag: $LAST_TAG"
           CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s" --no-merges)
         fi
-        
+
         # Handle empty changelog
         if [ -z "$CHANGELOG" ]; then
           CHANGELOG="- Initial release"
         fi
-        
+
         echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
         echo "$CHANGELOG" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
-        
+
         echo "LAST_TAG=$LAST_TAG" >> $GITHUB_OUTPUT
-    
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ steps.version.outputs.VERSION_TAG }}
-        name: Deimos ${{ steps.version.outputs.VERSION_TAG }}
+        tag_name: ${{ needs.check.outputs.version_tag }}
+        name: Deimos ${{ needs.check.outputs.version_tag }}
         body: |
-          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.changelog.outputs.LAST_TAG }}...${{ steps.version.outputs.VERSION_TAG }}
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.changelog.outputs.LAST_TAG }}...${{ needs.check.outputs.version_tag }}
         files: |
-          Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip
+          Deimos-${{ needs.check.outputs.version_tag }}.zip
           dist/Deimos.exe
           dist/Deimos.exe.sha256
         draft: false
-        prerelease: ${{ contains(steps.version.outputs.VERSION_NUMBER, 'alpha') || contains(steps.version.outputs.VERSION_NUMBER, 'beta') || contains(steps.version.outputs.VERSION_NUMBER, 'rc') }}
+        prerelease: ${{ contains(needs.check.outputs.version_number, 'alpha') || contains(needs.check.outputs.version_number, 'beta') || contains(needs.check.outputs.version_number, 'rc') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -229,17 +281,17 @@ jobs:
           -ChangelogUrl $changelogUrl `
       env:
         DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        VERSION: ${{ steps.version.outputs.VERSION_NUMBER }}
-        VERSION_TAG: ${{ steps.version.outputs.VERSION_TAG }}
+        VERSION: ${{ needs.check.outputs.version_number }}
+        VERSION_TAG: ${{ needs.check.outputs.version_tag }}
         REPOSITORY: https://github.com/${{ github.repository }}
-        ZIP_FILE: Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip
-        CHANGELOG_URL: https://github.com/${{ github.repository }}/compare/${{ steps.changelog.outputs.LAST_TAG }}...${{ steps.version.outputs.VERSION_TAG }}
+        ZIP_FILE: Deimos-${{ needs.check.outputs.version_tag }}.zip
+        CHANGELOG_URL: https://github.com/${{ github.repository }}/compare/${{ steps.changelog.outputs.LAST_TAG }}...${{ needs.check.outputs.version_tag }}
 
 
     - name: Release Summary
       shell: bash
       run: |
-        echo "🎉 Release ${{ steps.version.outputs.VERSION_TAG }} completed successfully!"
-        echo "📦 Package: Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip"
-        echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.VERSION_TAG }}"
-        echo "📁 Package size: $(stat -c%s "Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip") bytes"
+        echo "🎉 Release ${{ needs.check.outputs.version_tag }} completed successfully!"
+        echo "📦 Package: Deimos-${{ needs.check.outputs.version_tag }}.zip"
+        echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ needs.check.outputs.version_tag }}"
+        echo "📁 Package size: $(stat -c%s "Deimos-${{ needs.check.outputs.version_tag }}.zip") bytes"

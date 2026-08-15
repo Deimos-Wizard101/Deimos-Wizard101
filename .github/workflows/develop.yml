@@ -4,63 +4,63 @@ on:
   push:
     branches:
       - dev-main  # Only trigger on dev-main branch pushes
-  
+
   # Optional: Allow manual builds
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Full history for changelog
-    
+
     - name: Extract version from Deimos.py
       id: version
       shell: bash
       run: |
         echo "Extracting version from Deimos.py..."
-        
+
         # Check if Deimos.py exists
         if [ ! -f "Deimos.py" ]; then
           echo "ERROR: Deimos.py not found in repository root"
           exit 1
         fi
-        
+
         # Extract version using grep and sed
         VERSION_LINE=$(grep -n "tool_version: str = " Deimos.py | head -1)
-        
+
         if [ -z "$VERSION_LINE" ]; then
           echo "ERROR: Could not find 'tool_version: str = ' in Deimos.py"
           echo "Make sure the version is defined as: tool_version: str = 'x.x.x'"
           exit 1
         fi
-        
+
         # Extract the version number from the line
         VERSION_NUMBER=$(echo "$VERSION_LINE" | sed -n "s/.*tool_version: str = ['\"]\\([^'\"]*\\)['\"].*/\\1/p")
-        
+
         if [ -z "$VERSION_NUMBER" ]; then
           echo "ERROR: Could not parse version number from: $VERSION_LINE"
           echo "Make sure the version format is: tool_version: str = 'x.x.x'"
           exit 1
         fi
-        
+
         # Validate version format (basic semver check)
         if ! echo "$VERSION_NUMBER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'; then
           echo "ERROR: Invalid version format: $VERSION_NUMBER"
           echo "Expected format: x.x.x or x.x.x-suffix (e.g., 1.2.3 or 1.2.3-beta)"
           exit 1
         fi
-        
+
         VERSION_TAG="v${VERSION_NUMBER}"
-        
+
         echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_OUTPUT
         echo "VERSION_NUMBER=${VERSION_NUMBER}" >> $GITHUB_OUTPUT
         echo "Found version: ${VERSION_NUMBER} (tag: ${VERSION_TAG})"
-    
+
     - name: Install uv
       uses: astral-sh/setup-uv@v5
 
@@ -70,12 +70,35 @@ jobs:
     - name: Install dependencies
       run: uv sync --group dev
 
+
+    - name: Compile check
+      shell: bash
+      run: uv run --group dev python -m compileall -q Deimos.py src
+
+    # The Rust helpers are built explicitly, mirroring release.yml. Deimos.spec
+    # also invokes cargo, but tolerates a failure so local builds still work --
+    # so without these steps a broken crate only shows up as a silently
+    # incomplete exe (no self-updater, no game-file patching) rather than a
+    # failed job. That is precisely how a moved manifest path went unnoticed
+    # here while every release build was failing.
+    - name: Build update helper (Rust)
+      shell: bash
+      run: |
+        cargo build --release --manifest-path libs/updater/Cargo.toml
+        ls -la libs/updater/target/release/deimos-updater.exe
+
+    - name: Build wizpatch patcher (Rust)
+      shell: bash
+      run: |
+        cargo build --release --manifest-path libs/wizpatch/Cargo.toml
+        ls -la libs/wizpatch/target/release/wizpatch.exe
+
     - name: Build with PyInstaller
       run: |
         uv run --group dev pyinstaller --noconfirm --clean Deimos.spec
         echo "Build completed successfully"
         dir dist
-    
+
     - name: Verify required files exist
       shell: bash
       run: |
@@ -90,36 +113,69 @@ jobs:
         fi
         echo "All required files found ✓"
         echo "Deimos.exe size: $(stat -c%s dist/Deimos.exe) bytes"
-    
-    - name: Create build package
+
+    # Fail loudly if the helpers did not make it into the bundle. Deimos.spec
+    # omits a missing helper with only a warning, which is invisible in CI logs.
+    - name: Verify bundled helpers
+      shell: bash
+      run: |
+        uv run --group dev python - <<'PY'
+        import sys
+        from PyInstaller.archive.readers import CArchiveReader
+
+        required = {"deimos-updater.exe", "wizpatch.exe"}
+        bundled = set(CArchiveReader("dist/Deimos.exe").toc)
+        missing = sorted(required - bundled)
+        if missing:
+            print(f"ERROR: helper(s) missing from bundle: {', '.join(missing)}")
+            sys.exit(1)
+        print(f"All helpers embedded in Deimos.exe: {', '.join(sorted(required))}")
+        PY
+
+    # Same checksum the release publishes. The self-updater fetches
+    # Deimos.exe.sha256 and refuses a download whose hash does not match, so the
+    # format here has to stay in step with src/updater.py.
+    - name: Generate checksum
       shell: powershell
       run: |
-        Write-Host "Creating build package..."
-        New-Item -ItemType Directory -Path "release" -Force
-        
-        # Copy files to release directory
+        $hash = (Get-FileHash "dist/Deimos.exe" -Algorithm SHA256).Hash.ToLower()
+        "$hash  Deimos.exe" | Out-File -FilePath "dist/Deimos.exe.sha256" -Encoding ascii -NoNewline
+        Write-Host "SHA256: $hash"
+
+    # Stage the exact payload into one flat folder. It is NOT zipped here: GitHub
+    # already serves an artifact as a zip, so building our own inside it made you
+    # unpack twice. Uploading the files from their build locations instead would keep
+    # the "dist/" prefix, because artifact paths are relative to the common ancestor
+    # of everything listed -- mixing dist/Deimos.exe with a root-level LICENSE makes
+    # that ancestor the repo root. Staging first makes the folder the ancestor, so the
+    # three files land at the root of the downloaded zip.
+    - name: Stage build package
+      shell: powershell
+      run: |
+        Write-Host "Staging build package..."
+        New-Item -ItemType Directory -Path "release" -Force | Out-Null
+
         Copy-Item "dist/Deimos.exe" -Destination "release/"
+        Copy-Item "dist/Deimos.exe.sha256" -Destination "release/"
         Copy-Item "LICENSE" -Destination "release/"
-        
-        # Create zip file with version in name using PowerShell
-        $zipName = "Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip"
-        Compress-Archive -Path "release/*" -DestinationPath $zipName -Force
-        
-        Write-Host "Build package created: $zipName"
+
         Write-Host "Package contents:"
         Get-ChildItem "release" | Format-Table Name, Length
-    
+
+    # Same payload a release ships (Deimos.exe + its checksum + LICENSE), so a dev
+    # build can be dropped in place of a release to rehearse the self-update path
+    # before tagging.
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: Deimos-${{ steps.version.outputs.VERSION_TAG }}
-        path: Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip
+        path: release/
         retention-days: 90
 
     - name: Build Summary
       shell: bash
       run: |
         echo "✅ Build ${{ steps.version.outputs.VERSION_TAG }} completed successfully!"
-        echo "📦 Package: Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip"
-        echo "📁 Package size: $(stat -c%s "Deimos-${{ steps.version.outputs.VERSION_TAG }}.zip") bytes"
+        echo "📦 Artifact: Deimos-${{ steps.version.outputs.VERSION_TAG }} (Deimos.exe, Deimos.exe.sha256, LICENSE)"
+        echo "📁 Deimos.exe size: $(stat -c%s release/Deimos.exe) bytes"
         echo "⬇️ Download from Actions artifacts tab"

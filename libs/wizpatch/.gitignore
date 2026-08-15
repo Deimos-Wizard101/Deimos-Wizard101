@@ -1,0 +1,11 @@
+/target
+# Nix build symlink
+/result
+# Cargo.lock is committed: wizpatch ships as a binary, so a pinned lockfile
+# gives reproducible builds (and the Nix flake needs it tracked).
+.*
+!.gitignore
+# Re-include Cargo.lock: the repo root ignores *.lock, but see the note above.
+!Cargo.lock
+flake.lock
+wizard101/

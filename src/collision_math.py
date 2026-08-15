@@ -558,10 +558,19 @@ class _ZoneWalkGrid:
         q = x / self.spacing - r / 2.0
         return _hex_round(q, r)
 
-    def ground_z_at(self, x, y, prefer_z=None):
+    def ground_z_at(self, x, y, prefer_z=None, strict=False):
         """Teleport-valid ground height at world ``(x, y)``, or None. On walkable navmesh,
         not inside a bcd collider's vertical band (height-aware), and clear of static
         entity colliders.
+
+        ``strict`` drops the ``prefer_z`` shell exemption described below, so every covering
+        volume is honoured as a wall. That is *too* strict for general use — the exemption is
+        load-bearing for a large share of walkable ground (a scan of nine zones found ~5400
+        sampled surfaces that are only teleport-valid because of it, including whole zone
+        floors that sit inside a giant bounding BOX) — so it is not a stricter-is-better
+        toggle. It exists for one purpose: re-solving after the *game* has rejected a landing,
+        where we know something solid is there that the exemption excused. See
+        ``teleport_math.collision_tp``.
 
         With ``prefer_z`` (the goal's own feet height) the surface returned is the clear
         walkable level *closest to the goal's height* — i.e. the floor the goal is actually
@@ -586,7 +595,7 @@ class _ZoneWalkGrid:
         pt = Point(x, y)
         covering = [self.bcd_buf[i] for i in self.bcd_tree.query(pt)] if self.bcd_tree is not None else []
         covering = [(zlo, zhi, box) for fp, zlo, zhi, box in covering if fp.contains(pt)]
-        if prefer_z is not None:
+        if prefer_z is not None and not strict:
             # A volume the target itself stands inside is a shell, not a wall for this floor.
             covering = [(zlo, zhi, box) for (zlo, zhi, box) in covering
                         if not (zlo <= prefer_z <= zhi)]
@@ -611,7 +620,7 @@ class _ZoneWalkGrid:
     def neighbours(self, q, r):
         return [(q + dq, r + dr) for dq, dr in _HEX_DIRS]
 
-    def closest_walkable(self, target, max_rings=300):
+    def closest_walkable(self, target, max_rings=300, strict=False):
         """Nearest walkable node to ``target`` as ``(x, y, z)``, by expanding-ring search
         (evaluate on demand, stop once no farther ring could beat the best). None if the
         whole searched area is blocked.
@@ -637,7 +646,7 @@ class _ZoneWalkGrid:
                 break  # no node this far out can beat the best cost (cost >= dxy)
             for (q, r) in _hex_ring(q0, r0, k):
                 x, y = self.to_world(q, r)
-                z = self.ground_z_at(x, y, prefer_z=target.z)  # goal-appropriate surface here
+                z = self.ground_z_at(x, y, prefer_z=target.z, strict=strict)  # goal's surface
                 if z is not None:
                     cost = math.hypot(x - target.x, y - target.y) + Z_RANK_WEIGHT * abs(z - target.z)
                     if best_cost is None or cost < best_cost:
@@ -735,9 +744,30 @@ def get_walk_grid(world: CollisionWorld, zone_name: str | None, extra_shapes=Non
     return g
 
 
+def blocking_volumes_at(world: CollisionWorld, zone_name: str | None, target: XYZ,
+                        player_radius: float = 45.0, extra_shapes=None) -> list:
+    """Footprints of the bcd volumes that wall off ``target``'s own surface but are excused
+    by the ``prefer_z`` shell rule — i.e. exactly what a rejected teleport ran into.
+
+    Used to keep the post-teleport walk from pathing *through* the thing that just bounced
+    us. Empty when nothing covers the target, which is the usual case."""
+    grid = get_walk_grid(world, zone_name, extra_shapes, player_radius)
+    if grid.bcd_tree is None:
+        return []
+    pt = Point(target.x, target.y)
+    out = []
+    for i in grid.bcd_tree.query(pt):
+        fp, zlo, zhi, box = grid.bcd_buf[i]
+        if not fp.contains(pt):
+            continue
+        if zlo <= target.z <= zhi and _collider_blocks_foot(target.z, zlo, zhi, box):
+            out.append(fp)
+    return out
+
+
 def find_walkable_teleport_point(world: CollisionWorld, zone_name: str | None, target: XYZ,
                                  extra_shapes=None, player_radius: float = 45.0,
-                                 spacing: float = GRID_SPACING):
+                                 spacing: float = GRID_SPACING, strict: bool = False):
     """Closest teleport-valid point to ``target``: the target itself when it's walkable (at its
     true ground height), else the nearest walkable hex node found by lazy expanding-ring search.
     Returns ``(XYZ, reason)`` or ``(None, reason)``.
@@ -751,15 +781,16 @@ def find_walkable_teleport_point(world: CollisionWorld, zone_name: str | None, t
     grid = get_walk_grid(world, zone_name, extra_shapes, player_radius)
     if not grid.has_mesh:
         return None, "no_mesh"
+    suffix = "_strict" if strict else ""
 
-    tz = grid.ground_z_at(target.x, target.y, prefer_z=target.z)
+    tz = grid.ground_z_at(target.x, target.y, prefer_z=target.z, strict=strict)
     if tz is not None and abs(tz - target.z) <= FLOOR_MATCH_TOL:
-        return XYZ(target.x, target.y, tz), "target_clear"
+        return XYZ(target.x, target.y, tz), "target_clear" + suffix
 
-    best = grid.closest_walkable(target)
+    best = grid.closest_walkable(target, strict=strict)
     if best is None:
-        return None, "no_walkable"
-    return XYZ(best[0], best[1], best[2]), "grid_node"
+        return None, "no_walkable" + suffix
+    return XYZ(best[0], best[1], best[2]), "grid_node" + suffix
 
 
 # Unioned walkable navmesh per zone. Building it from the raw triangles (~15k in a

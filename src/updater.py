@@ -277,6 +277,60 @@ def _updater_source_path() -> Optional[Path]:
     return p if p.exists() else None
 
 
+def _bootloader_parent_pid() -> Optional[int]:
+    """PID of the PyInstaller bootloader parent, when there is one.
+
+    A one-file bundle runs *two* processes off the same image: the bootloader
+    that unpacks ``_MEIPASS`` and the Python child that runs this code. Both
+    hold a lock on Deimos.exe, so the helper has to wait for both — waiting only
+    on ``os.getpid()`` returns while the parent is still cleaning up, and the
+    swap then burns half its retry budget on sharing violations.
+
+    Returns ``None`` unless the parent is running our own image, so a one-dir
+    build (or a run from a shell) never leaves the helper waiting on
+    explorer.exe until its timeout.
+    """
+    if sys.platform != "win32" or not is_frozen():
+        return None
+    try:
+        ppid = os.getppid()
+    except (AttributeError, OSError):
+        return None
+    if ppid <= 0:
+        return None
+
+    try:
+        import ctypes
+        import ctypes.wintypes
+
+        _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        k32 = ctypes.windll.kernel32
+
+        def image_of(pid: int) -> Optional[str]:
+            handle = k32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if not handle:
+                return None
+            try:
+                buf = ctypes.create_unicode_buffer(1024)
+                size = ctypes.wintypes.DWORD(len(buf))
+                if not k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                    return None
+                return os.path.normcase(buf.value)
+            finally:
+                k32.CloseHandle(handle)
+
+        # Compare against our *running image* rather than sys.executable: the
+        # two diverge under a venv (where sys.executable is the shim), and this
+        # keeps the check honest in every environment.
+        ours = image_of(os.getpid())
+        theirs = image_of(ppid)
+    except Exception as e:
+        logger.debug(f"Could not inspect parent process: {e}")
+        return None
+
+    return ppid if ours is not None and ours == theirs else None
+
+
 def apply_and_relaunch(new_exe: Path, *, relaunch: bool = True) -> bool:
     """Spawn the detached helper to swap ``new_exe`` over the running exe.
 
@@ -302,10 +356,13 @@ def apply_and_relaunch(new_exe: Path, *, relaunch: bool = True) -> bool:
         logger.error(f"Could not stage update helper: {e}")
         return False
 
-    args = [
-        str(helper),
-        "--pid",
-        str(os.getpid()),
+    # --pid is repeatable; the helper waits on every PID before swapping. Pass
+    # the bootloader parent as well as ourselves — both hold the image lock.
+    args = [str(helper), "--pid", str(os.getpid())]
+    parent_pid = _bootloader_parent_pid()
+    if parent_pid is not None:
+        args += ["--pid", str(parent_pid)]
+    args += [
         "--new",
         str(new_exe),
         "--target",
