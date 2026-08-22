@@ -7,7 +7,7 @@ import pyperclip
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QListWidget, QListWidgetItem, QWidget, QMenu, QProgressBar,
-    QComboBox, QPlainTextEdit, QFormLayout,
+    QComboBox, QPlainTextEdit, QFormLayout, QCheckBox,
 )
 from PyQt6.QtCore import Qt, QSize
 
@@ -226,6 +226,31 @@ def show_bot_publish_popup(ctx, bot_text):
     name_input.setPlaceholderText(tl('bot_publish_name_hint'))
     zone_input = QLineEdit((metadata.get('zone') or '').strip())
     zone_input.setPlaceholderText(tl('bot_publish_zone_hint'))
+
+    zone_label_widget = QWidget()
+    zone_label_layout = QHBoxLayout(zone_label_widget)
+    zone_label_layout.setContentsMargins(0, 0, 0, 0)
+    zone_label_layout.setSpacing(0)
+    zone_label = QLabel(tl('bot_publish_zone') + ' *')
+    zone_label_layout.addWidget(zone_label)
+    if 'info' in getattr(ctx, 'svgs', {}):
+        zone_label_layout.addSpacing(6)
+        _info_svg = ctx.svgs['info']
+        zone_info_btn = QPushButton()
+        zone_info_btn.setIcon(ctx.titlebar_svg_icon(_info_svg, 14))
+        zone_info_btn.setFixedSize(18, 18)
+        zone_info_btn.setStyleSheet(ctx.icon_btn_style)
+        zone_info_btn.setToolTip(tl('bot_publish_zone_tip'))
+        zone_info_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        if hasattr(ctx, 'tracked_icon_buttons'):
+            ctx.tracked_icon_buttons.append((zone_info_btn, _info_svg, 14))
+        zone_label_layout.addWidget(zone_info_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
+    zone_label_layout.addStretch()
+
+    sub_zone_toggle = QCheckBox(tl('bot_publish_sub_zone_toggle'))
+    sub_zone_input = QLineEdit((metadata.get('sub_zone') or '').strip())
+    sub_zone_input.setPlaceholderText(tl('bot_publish_sub_zone_hint'))
+    sub_zone_toggle.setChecked(bool(sub_zone_input.text().strip()))
     author_input = QLineEdit((metadata.get('author') or '').strip())
     format_input = QComboBox()
     format_input.addItems(['bot', 'expertmode'])
@@ -239,7 +264,10 @@ def show_bot_publish_popup(ctx, bot_text):
     description_input.setFixedHeight(72)
 
     form.addRow(tl('bot_publish_name') + ' *', name_input)
-    form.addRow(tl('bot_publish_zone') + ' *', zone_input)
+    form.addRow(zone_label_widget, zone_input)
+    form.addRow(sub_zone_toggle)
+    sub_zone_row_label = tl('bot_publish_sub_zone')
+    form.addRow(sub_zone_row_label, sub_zone_input)
     form.addRow(tl('bot_publish_author') + ' *', author_input)
     form.addRow(tl('bot_publish_format'), format_input)
     form.addRow(tl('bot_publish_clients'), clients_input)
@@ -281,6 +309,17 @@ def show_bot_publish_popup(ctx, bot_text):
         w.textChanged.connect(_validate)
     _validate()
 
+    def _toggle_sub_zone(checked):
+        sub_zone_input.setVisible(checked)
+        label_widget = form.labelForField(sub_zone_input)
+        if label_widget:
+            label_widget.setVisible(checked)
+        if not checked:
+            sub_zone_input.clear()
+
+    sub_zone_toggle.toggled.connect(_toggle_sub_zone)
+    _toggle_sub_zone(sub_zone_toggle.isChecked())
+
     def set_context(data):
         # Only fill values we couldn't already derive from the bot's own header or
         # the remembered author — these arrive async and must not clobber user input.
@@ -298,6 +337,7 @@ def show_bot_publish_popup(ctx, bot_text):
         meta = {
             'name': name_input.text().strip(),
             'zone': zone_input.text().strip(),
+            'sub_zone': sub_zone_input.text().strip() if sub_zone_toggle.isChecked() else '',
             'author': author_input.text().strip(),
             'format': format_input.currentText(),
             'clients': clients_input.text().strip(),
