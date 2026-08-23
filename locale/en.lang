@@ -133,7 +133,7 @@ bot_publish_format=Format
 bot_publish_clients=Clients
 bot_publish_description=Description
 bot_publish_name_hint=Display name for your bot
-bot_publish_zone_hint=e.g. WizardCity/WC_OldeTown, Celestia/CL_Hub (comma-separated for extra zones)
+bot_publish_zone_hint=e.g. WizardCity/WC_Ravenwood, Celestia/CL_Hub
 bot_publish_zone_tip=First zone stores the bot file; comma-separated entries add extra discovery. A parent zone (e.g. WizardCity) covers all areas within it. "General" is global.
 bot_publish_clients_hint=Optional, e.g. == 4 (blank = any client count)
 bot_publish_description_hint=Optional. Markdown supported.
