@@ -96,9 +96,8 @@ def search_compatible_bots(zone: str, client_count) -> list[dict]:
     # If any ancestor zone was missing a per-zone registry.json, fall back to index.json for it
     seen_candidate_paths = {b.get('path') for b in candidates if b.get('path')}
     for b in index.get('bots', []):
-        b_zone = b.get('zone', '')
-        b_subs = [s.strip() for s in b.get('sub_zone', '').split(',') if s.strip()]
-        if (b_zone in ancestors or any(sub in ancestors for sub in b_subs)) and b.get('path') not in seen_candidate_paths:
+        b_zones = [z.strip() for z in str(b.get('zone', '')).split(',') if z.strip()]
+        if any(z in ancestors for z in b_zones) and b.get('path') not in seen_candidate_paths:
             candidates.append(b)
             seen_candidate_paths.add(b.get('path'))
 
@@ -142,7 +141,7 @@ def fetch_bot_text(path: str) -> str:
 
 
 # Metadata header fields, in the order they are emitted into a published bot.
-metadata_field_order = ('name', 'zone', 'sub_zone', 'author', 'format', 'clients', 'description')
+metadata_field_order = ('name', 'zone', 'author', 'format', 'clients', 'description')
 _metadata_line_pattern = re.compile(r'^#\s*@(\w+)\s*:\s*(.*)$')
 
 
@@ -212,10 +211,8 @@ def build_bot_text(metadata: dict, body: str) -> str:
     if fmt == 'expertmode':
         header.append(expertmode_marker)
     header.append(f"# @name: {(metadata.get('name') or '').strip()}")
-    header.append(f"# @zone: {(metadata.get('zone') or '').strip()}")
-    sub_zone = (metadata.get('sub_zone') or '').strip()
-    if sub_zone:
-        header.append(f"# @sub_zone: {sub_zone}")
+    clean_zones = [z.strip() for z in (metadata.get('zone') or '').split(',') if z.strip()]
+    header.append(f"# @zone: {', '.join(clean_zones)}")
     header.append(f"# @author: {(metadata.get('author') or '').strip()}")
     header.append(f"# @format: {fmt}")
     clients = (metadata.get('clients') or '').strip()
@@ -245,8 +242,9 @@ def sanitize_bot_filename(name: str) -> str:
 
 def bot_repo_path(zone: str, name: str) -> str:
     """Repo-relative path a published bot should live at, e.g. bots/<zone>/<Name>.txt."""
-    zone = (zone or '').strip().strip('/')
-    return f"bots/{zone}/{sanitize_bot_filename(name)}"
+    clean_zones = [z.strip() for z in (zone or '').split(',') if z.strip()]
+    primary_zone = clean_zones[0].strip('/') if clean_zones else ''
+    return f"bots/{primary_zone}/{sanitize_bot_filename(name)}"
 
 
 def build_publish_url(zone: str, name: str, content: str) -> str:
