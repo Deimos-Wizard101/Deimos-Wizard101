@@ -1,13 +1,13 @@
-# Deimos English language file
+# Deimos Chinese language file / Deimos 中文语言文件
 
-# License
+# License / 许可证
 license_title=许可协议
 license_text=使用 Deimos 即表示你同意 GPL v3 许可协议。
 
-# Main banner
+# Main banner / 主横幅
 free_tool=Deimos 永远是免费工具。如果你为此付费，那你被骗了！
 
-# Tab names
+# Tab names / 标签页名称
 hotkeys=快捷键
 camera=镜头
 dev_utils=开发者工具
@@ -19,7 +19,7 @@ combat=战斗
 misc=杂项
 console=控制台
 
-# Toggles
+# Toggles / 开关
 toggles=开关
 speedhack=加速
 combat_toggle=自动战斗
@@ -29,9 +29,8 @@ questing=自动任务
 auto_pet=自动宠物
 auto_potion=自动药水
 no_drops=无掉落
-no_drops=禁用掉落
 
-# Hotkeys
+# Hotkeys / 快捷键
 hotkeys_label=快捷键
 quest_tp=任务传送
 freecam=自由视角
@@ -44,7 +43,7 @@ friend_tp=好友传送
 dialogue_side_quests=支线任务(+)
 kill_tool=关闭工具
 
-# Hotkey Manager
+# Hotkey Manager / 快捷键管理器
 hotkey_manager=快捷键管理器
 bind_hotkey=绑定快捷键
 unbind_hotkey=解绑
@@ -58,7 +57,7 @@ cat_multi_client=多开
 cat_camera=镜头
 cat_system=系统
 
-# Camera
+# Camera / 镜头
 set_camera_position=设置位置
 yaw=偏航
 roll=横滚
@@ -71,7 +70,7 @@ dist_max=最大距离
 copy_camera_position=复制镜头坐标
 populate_camera=填充
 
-# Dev Utils
+# Dev Utils / 开发者工具
 advanced_warning=以下工具仅适用于高级用户，官方不提供支持。
 tp_utils=传送工具
 custom_tp=自定义传送
@@ -89,7 +88,7 @@ mass_go_to_bazaar=群体前往集市
 refill_potions=补充药水
 mass_refill_potions=群体补充药水
 
-# Stats
+# Stats / 状态
 caster_target_indices=施法者/目标索引
 dmg=伤害
 base_dmg=基础伤害
@@ -102,13 +101,13 @@ swap_members=交换成员
 swap_sides=交换阵营
 not_in_combat=当前选择的客户端未处于战斗中
 
-# Flythrough
+# Flythrough / 飞行路径
 import_flythrough=导入飞行路径
 export_flythrough=导出飞行路径
 execute_flythrough=执行飞行路径
 kill_flythrough=停止飞行路径
 
-# Bot
+# Bot / 脚本
 import_bot=导入脚本
 export_bot=导出脚本
 run_bot=运行脚本
@@ -127,20 +126,6 @@ bot_search_run=运行
 publish_bot=发布脚本
 bot_publish_title=发布脚本
 bot_publish_intro=发布你的脚本供其他用户使用。
-search_bots=搜索可用脚本
-bot_search_title=可用脚本
-bot_search_searching=正在搜索可用脚本...
-bot_search_results_header={0}（{1} 个客户端）的可用脚本：
-bot_search_no_results=未找到适用于 {0}（{1} 个客户端）的脚本。
-bot_search_no_clients=没有已挂钩的客户端。请先挂钩客户端再试。
-bot_search_no_zone=无法读取当前区域。请等客户端加载完成后再试。
-bot_search_error=无法连接脚本仓库。请检查网络后重试。
-bot_search_general=通用
-bot_search_import=载入编辑器
-bot_search_run=导入并运行
-publish_bot=发布脚本
-bot_publish_title=发布脚本
-bot_publish_intro=填写以下信息，然后发布以打开 GitHub，在那里你可以将脚本作为拉取请求提交到仓库。
 bot_publish_name=名称
 bot_publish_zone=区域
 bot_publish_author=作者
@@ -156,32 +141,23 @@ bot_publish_done=发布完成
 bot_publish_bad_clients=无效客户端
 bot_publish_opened=已打开
 bot_publish_opened_clipboard=已复制到剪贴板
-bot_publish_name_hint=脚本的显示名称
-bot_publish_zone_hint=游戏区域路径，例如 WizardCity/WC_Streets/WC_OldeTown
-bot_publish_clients_hint=可选，例如 == 4（留空 = 任意客户端数量）
-bot_publish_description_hint=可选。支持 Markdown。
-bot_publish_action=发布
-bot_publish_done=已在浏览器中打开
-bot_publish_bad_clients=客户端必须是比较式，如 '== 4'、'>= 1'，或留空。
-bot_publish_opened=已在浏览器中打开 GitHub。请检查并提交文件以完成发布。
-bot_publish_opened_clipboard=脚本过大无法预填充。已复制到剪贴板——请粘贴到 GitHub 编辑器中。
 
-# Combat
+# Combat / 战斗
 import_playstyle=导入战斗风格
 export_playstyle=导出战斗风格
 set_playstyles=设置战斗风格
 
-# Misc
+# Misc / 杂项
 scale=缩放
 set_scale=设置缩放
 select_pet_world=选择宠物世界：
 
-# Console
+# Console / 控制台
 console_support=请求帮助时请附带日志。
 collapse_expand_logs=折叠 / 展开日志
 copy_logs=复制日志
 
-# Tooltips
+# Tooltips / 工具提示
 tooltip_license=许可协议
 tooltip_wiki_hotkeys=维基：快捷键
 tooltip_source_code=源代码
@@ -194,13 +170,13 @@ tooltip_wiki_flythroughs=维基：飞行路径
 tooltip_wiki_bots=维基：脚本
 tooltip_wiki_playstyles=维基：战斗风格
 
-# Section tooltips
+# Section tooltips / 区域工具提示
 tooltip_section_camera=设置镜头位置、朝向、锚点和距离
 tooltip_section_utils=使用当前镜头数值填充字段、复制位置或切换碰撞
 tooltip_section_tp_utils=传送到坐标或指定实体
 tooltip_section_navigation=前往区域、世界、集市，或补充药水
 
-# Launcher
+# Launcher / 启动器
 launcher=启动器
 saved_accounts=账号管理
 hooked_clients=客户端管理
@@ -223,14 +199,6 @@ preset=预设
 custom=自定义
 borderless=无边框
 lock_res_to_window=锁定窗口分辨率
-window_config_tooltip=窗口尺寸 / 分辨率
-window_config_title=窗口 — {}
-window_size=窗口尺寸
-resolution=分辨率
-preset=预设
-custom=自定义
-borderless=无边框（无标题栏 / 边框）
-lock_res_to_window=将渲染分辨率锁定为窗口尺寸（清晰 1:1）
 clear=清除
 launch_login=启动并登录
 game_path=游戏路径
@@ -240,7 +208,6 @@ password=密码
 save_account=保存
 update_account=更新账号
 steam_mode=Steam模式
-steam_mode=以 Steam 模式启动
 no_accounts_selected=未选择账号。
 account_added=账号保存成功。
 account_removed=账号已移除。
@@ -248,7 +215,7 @@ launching_instances=正在启动实例...
 tooltip_wiki_launcher=维基：启动器
 settings=设置
 
-# Status labels
+# Status labels / 状态标签
 status_dead=死亡
 status_stunned=眩晕
 status_friendly=友方
@@ -258,11 +225,11 @@ already_active=已激活
 recent_imports=最近导入
 no_recent_imports=暂无最近导入
 
-# Client info
+# Client info / 客户端信息
 client=客户端
 zone=区域
 
-# Settings dialog
+# Settings dialog / 设置窗口
 settings_title=设置
 settings_general=通用
 settings_appearance=外观
@@ -273,9 +240,6 @@ settings_combat=战斗
 settings_client=客户端设置
 settings_launcher=启动器
 settings_updates=更新设置
-settings_client=客户端
-settings_launcher=启动器
-settings_updates=更新
 settings_restart_note=* 需要重启后生效
 settings_save=保存
 settings_cancel=取消
@@ -310,16 +274,12 @@ setting_client_resizing=客户端调整大小
 setting_remember_chosen_clients=记住已选择客户端
 setting_verify_patch_files=验证补丁文件
 setting_check_for_updates=检查更新
-setting_client_resizing=客户端窗口缩放
-setting_remember_chosen_clients=记住已选择客户端
-setting_verify_patch_files=启动前验证/修补游戏文件
-setting_check_for_updates=启动时检查更新
 setting_auto_install_updates=自动安装更新
 setting_kill_minions_first=优先击杀小怪
 setting_auto_team_combat=自动团队战斗
 setting_discard_duplicates=丢弃重复卡牌
 
-# Common
+# Common / 通用
 ok=确定
 cancel=取消
 close=关闭
@@ -336,7 +296,7 @@ cat_other=其他
 fetch_player_gid=获取玩家 GID
 copy_text=复制文本：{0}
 
-# Popups
+# Popups / 弹窗
 ui_tree=UI 树
 ui_tree_hint=点击需要的路径即可复制到剪贴板。
 entity_list=实体列表
@@ -344,14 +304,16 @@ entity_list_hint=点击复制。右键打开传送 / 镜头选项。
 tp_to_entity=传送到实体
 anchor_cam_to_entity=将镜头锚定到实体
 
-# Settings extras
+# Settings extras / 设置扩展
 import_lang_file=导入 .lang 文件
 import_lang_title=导入语言文件
 overwrite_binding={0} 已经绑定到“{1}”。\n是否覆盖？
 
-# Footer
+# Footer / 底部信息
 position_xyz=位置（XYZ）：
 orientation_pry=朝向（PRY）：
 
-# Stats popup
+# Stats popup / 战斗统计弹窗
 combat_stats=战斗统计
+
+
