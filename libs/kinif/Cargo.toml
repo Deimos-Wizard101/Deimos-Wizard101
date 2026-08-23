@@ -1,0 +1,21 @@
+[package]
+name = "kinif"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal reader for Wizard101's Gamebryo NIF model geometry (vertex extraction)."
+license = "GPL-3.0-only"
+repository = "https://github.com/Deimos-Wizard101/kinif"
+readme = "README.md"
+keywords = ["wizard101", "nif", "gamebryo", "geometry", "kingsisle"]
+categories = ["parsing", "game-development"]
+
+[lib]
+name = "kinif"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"], optional = true }
+
+[features]
+default = ["pyo3"]
+python = ["pyo3"]

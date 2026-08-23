@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::process;
 
-use wizlaunch::{credential_store, credui, launcher, login, metadata};
+use wizlaunch::{credential_store, credui, launcher, login, metadata, steam};
 
 const DEFAULT_LOGIN_SERVER: &str = "login.us.wizard101.com:12000";
 
@@ -25,7 +25,9 @@ fn usage() {
          \n\
            --path <game_path>                     Path to Wizard101 install\n\
            --server <host:port>                   Login server (default: {DEFAULT_LOGIN_SERVER})\n\
-           --timeout <secs>                       Window detection timeout (default: 30)"
+           --timeout <secs>                       Window detection timeout (default: 30)\n\
+           --steam                                Launch in Steam mode (-ST; ensures Steam is\n\
+                                                  running, signed in, and steam_appid.txt exists)"
     );
 }
 
@@ -97,10 +99,14 @@ fn cmd_launch(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let mut game_path: Option<String> = None;
     let mut login_server = DEFAULT_LOGIN_SERVER.to_string();
     let mut timeout_secs: u64 = 30;
+    let mut steam = false;
 
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
+            "--steam" => {
+                steam = true;
+            }
             "--path" => {
                 i += 1;
                 game_path = Some(args.get(i).ok_or("--path requires a value")?.clone());
@@ -123,16 +129,22 @@ fn cmd_launch(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if nicknames.is_empty() {
-        return Err("Usage: wizlaunch launch <nick> [nicks...] [--path <path>] [--server <host:port>]".into());
+        return Err("Usage: wizlaunch launch <nick> [nicks...] [--path <path>] [--server <host:port>] [--steam]".into());
     }
 
     let game_path = game_path.unwrap_or_else(|| detect_game_path());
+
+    if steam {
+        println!("Ensuring Steam is running and signed in...");
+        steam::ensure_steam_ready(steam::STEAM_LOGIN_TIMEOUT_SECS)?;
+        steam::ensure_steam_appid(&game_path)?;
+    }
 
     let mut known: HashSet<isize> = launcher::get_wizard_handles().into_iter().collect();
 
     for nickname in &nicknames {
         println!("Launching '{nickname}'...");
-        launcher::launch_game(&game_path, &login_server)?;
+        launcher::launch_game(&game_path, &login_server, steam)?;
 
         match launcher::wait_for_new_handle(&known, timeout_secs) {
             Ok(handle) => {

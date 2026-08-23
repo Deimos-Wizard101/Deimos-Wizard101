@@ -41,8 +41,19 @@ DEFAULT_SETTINGS = {
     "kill_minions_first": False,
     "automatic_team_based_combat": False,
     "discard_duplicate_cards": True,
+    # [client]
+    # Arms freeform window resizing on game clients: a draggable resize border plus
+    # automatic camera-aspect correction so the 3D view fills any window size
+    # undistorted. Disable to leave game windows untouched.
+    "client_resizing": True,
     # [launcher]
     "remember_chosen_clients": False,
+    # Verify/patch game files (via the bundled wizpatch binary) before launching.
+    # Opt-in: adds a CRC check + downloads over the network to each launch.
+    "verify_patch_files": False,
+    # [updates]
+    "check_for_updates": True,
+    "auto_install_updates": False,
 }
 
 RESTART_REQUIRED_KEYS = {"locale"}
@@ -93,6 +104,7 @@ DEFAULT_HOTKEYS = {
     "kill_tool": {"key": "F9", "modifiers": []},
     "toggle_auto_pet": None,
     "toggle_auto_potion": None,
+    "toggle_drops": None,
 }
 
 # Maps ini key names -> action_id

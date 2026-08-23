@@ -1,0 +1,26 @@
+[package]
+name = "wizpatch"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "High performance Wizard101 patcher, downloader."
+
+[lib]
+name = "wizpatch"
+
+[[bin]]
+name = "wizpatch"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+cli = []
+
+[dependencies]
+smol = "2"
+async-net = "2"
+async-channel = "2"
+ureq = { version = "2", default-features = false, features = ["tls"] }
+quick-xml = "0.36"
+thiserror = "1"

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field
-from enum import Enum, Flag
+from enum import Enum, Flag, KEEP
 from io import BytesIO
 from pathlib import Path
 from typing import TypeAlias
@@ -66,7 +66,11 @@ class ProxyType(Enum):
         return str(self).split(".")[1].lower()
 
 
-class CollisionFlag(Flag):
+class CollisionFlag(Flag, boundary=KEEP):
+    # boundary=KEEP: real collision.bcd files carry flag bits beyond the ones named
+    # here (engine-internal categories). Without KEEP, CollisionFlag(<raw bits>)
+    # raises ValueError and the whole zone fails to parse, silently disabling
+    # collision TP. KEEP preserves unknown bits instead of rejecting them.
     OBJECT = 1 << 0
     WALKABLE = 1 << 1
     HITSCAN = 1 << 3

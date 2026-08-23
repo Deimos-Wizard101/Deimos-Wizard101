@@ -11,3 +11,15 @@ requires-python = ">=3.10"
 features = ["pyo3/extension-module"]
 profile = "release"
 bindings = "pyo3"
+
+# uv caches the built native wheel and, for path/workspace sources, only
+# invalidates it when pyproject.toml changes by default — so edits to the Rust
+# source were silently ignored. These keys make `uv sync`/`uv run` rebuild the
+# extension whenever the Rust sources or Cargo manifests change.
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "src/**/*.rs" },
+]

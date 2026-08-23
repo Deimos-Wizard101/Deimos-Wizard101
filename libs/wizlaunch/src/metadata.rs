@@ -4,11 +4,38 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+/// Per-account window placement / resolution config (set via the launcher's
+/// "proportions" editor). `x`/`y` are the window's top-left in virtual-desktop
+/// screen coordinates (encodes which monitor); `w`/`h` is the window CLIENT size;
+/// `res_w`/`res_h` is the forced render resolution. When `locked`, res == client
+/// size (crisp 1:1).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowConfig {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+    pub res_w: u32,
+    pub res_h: u32,
+    pub locked: bool,
+    /// Strip the window's title bar / borders (borderless mode). Defaults to
+    /// false for configs saved before this field existed.
+    #[serde(default)]
+    pub borderless: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AccountMetadata {
     pub version: u32,
     pub nicknames_order: Vec<String>,
     pub gid_map: HashMap<String, u64>,
+    /// Per-account Steam-mode flag. An account *missing* from this map predates
+    /// Steam support and is considered unconfigured (see `validate_account`).
+    #[serde(default)]
+    pub steam_map: HashMap<String, bool>,
+    /// Per-account window placement / resolution config.
+    #[serde(default)]
+    pub window_map: HashMap<String, WindowConfig>,
 }
 
 impl Default for AccountMetadata {
@@ -17,6 +44,8 @@ impl Default for AccountMetadata {
             version: 1,
             nicknames_order: Vec::new(),
             gid_map: HashMap::new(),
+            steam_map: HashMap::new(),
+            window_map: HashMap::new(),
         }
     }
 }
@@ -56,11 +85,13 @@ pub fn ensure_nickname(nickname: &str) -> Result<(), VaultError> {
     Ok(())
 }
 
-/// Remove a nickname from the order list and GID map.
+/// Remove a nickname from the order list, GID map, and Steam map.
 pub fn remove_nickname(nickname: &str) -> Result<(), VaultError> {
     let mut meta = load()?;
     meta.nicknames_order.retain(|n| n != nickname);
     meta.gid_map.remove(nickname);
+    meta.steam_map.remove(nickname);
+    meta.window_map.remove(nickname);
     save(&meta)?;
     Ok(())
 }
@@ -114,4 +145,42 @@ pub fn get_nickname_by_gid(gid: u64) -> Result<Option<String>, VaultError> {
         }
     }
     Ok(None)
+}
+
+/// Set whether an account launches in Steam mode.
+pub fn set_steam(nickname: &str, steam: bool) -> Result<(), VaultError> {
+    let mut meta = load()?;
+    meta.steam_map.insert(nickname.to_string(), steam);
+    save(&meta)?;
+    Ok(())
+}
+
+/// Get an account's Steam-mode flag. `None` means it's unconfigured (an older
+/// entry saved before Steam support existed).
+pub fn get_steam(nickname: &str) -> Result<Option<bool>, VaultError> {
+    let meta = load()?;
+    Ok(meta.steam_map.get(nickname).copied())
+}
+
+/// Set an account's window placement / resolution config.
+pub fn set_window(nickname: &str, cfg: WindowConfig) -> Result<(), VaultError> {
+    let mut meta = load()?;
+    meta.window_map.insert(nickname.to_string(), cfg);
+    save(&meta)?;
+    Ok(())
+}
+
+/// Get an account's window config, or `None` if it has none.
+pub fn get_window(nickname: &str) -> Result<Option<WindowConfig>, VaultError> {
+    let meta = load()?;
+    Ok(meta.window_map.get(nickname).cloned())
+}
+
+/// Clear an account's window config (revert to default behavior).
+pub fn clear_window(nickname: &str) -> Result<(), VaultError> {
+    let mut meta = load()?;
+    if meta.window_map.remove(nickname).is_some() {
+        save(&meta)?;
+    }
+    Ok(())
 }

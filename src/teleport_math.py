@@ -5,6 +5,7 @@ import math
 import struct
 from io import BytesIO
 from typing import Tuple, Union
+from loguru import logger
 from src.utils import is_free
 from copy import copy
 
@@ -110,6 +111,15 @@ def get_neighbors(vertex: XYZ, vertices: list[XYZ], edges: list[(int, int)]):
         if edge[0] == vert_idx:
             result.append(vertices[edge[1]])
     return result
+
+
+# NB: the zone.nav navigation *graph* (A* over vertices/edges) is deliberately NOT used
+# for teleporting — it's inaccurate in many zones (sparse, vertices on the wrong island /
+# inside walls). Teleporting is driven purely by the zone's collision geometry: the
+# walkable collision mesh + every collideable object (see ``collision_tp`` /
+# ``collision_math.find_safe_collision_point``). ``parse_nav_data`` / ``get_neighbors``
+# survive only for ``navmap_tp``, the last-resort fallback used when a zone ships no
+# collision.bcd at all.
 
 
 def calc_PointOn3DLine(xyz_1 : XYZ, xyz_2 : XYZ, additional_distance):
@@ -244,6 +254,7 @@ async def navmap_tp(client: Client, xyz: XYZ = None, leader_client: Client = Non
     if not await is_free(client):
         return
 
+    logger.debug(f"[navmap_tp] {client.title}: using navmap teleport (direct -> nav data -> spiral)")
     starting_zone = await client.zone_name() # for loading the correct wad and to walk to target as a last resort
     starting_xyz = await client.body.position()
     target_xyz = xyz if xyz is not None else await client.quest_position.position()
@@ -323,6 +334,411 @@ async def navmap_tp(client: Client, xyz: XYZ = None, leader_client: Client = Non
             await client.goto(target_xyz.x, target_xyz.y)
         return
     await fallback_spiral_tp(client, target_xyz)
+
+
+# The player's wall-clearance radius, clamped to a small collision-capsule range.
+# The model footprint (and half-height) reflect the *visual* extent — staff, cape,
+# nameplate — which is several times the body's real collision radius. Using that
+# large value as wall clearance erodes narrow walkable corridors and throws the
+# teleport far past the target, so we clamp it to a sane capsule size.
+_PLAYER_RADIUS_MIN = 25.0
+_PLAYER_RADIUS_MAX = 55.0
+
+
+async def _resolve_player_radius(client: Client, zone_name: str) -> float:
+    """Horizontal wall-clearance radius of the player's body, in world units.
+
+    Pulls the player object's footprint radius (scaled by body scale) when it
+    resolves, else the vertical half-height proxy, then a constant — and clamps the
+    result to ``[_PLAYER_RADIUS_MIN, _PLAYER_RADIUS_MAX]`` so an over-large visual
+    footprint can't make the collision solve overshoot.
+    """
+    try:
+        scale = await client.body.scale()
+    except Exception:
+        scale = 1.0
+    radius = None
+    try:
+        from src import entity_collision
+
+        tid = await client.client_object.template_id_full()
+        r = await asyncio.to_thread(
+            entity_collision.get_object_collider_radius, tid, zone_name
+        )
+        if r and r > 0:
+            radius = r * scale
+    except Exception:
+        radius = None
+    if radius is None:
+        try:
+            radius = (await client.body.height()) * scale * 0.5
+        except Exception:
+            radius = 45.0
+    return max(_PLAYER_RADIUS_MIN, min(radius, _PLAYER_RADIUS_MAX))
+
+
+# Retreat offsets (world units) from a blocked destination back toward the approach
+# anchor, tried in order until a teleport sticks. The collision solver only knows the
+# *modeled* geometry (collision.bcd walls + gamedata.bin solid colliders); warp /
+# teleporter trigger volumes (e.g. AZ-TELEPORT-…) carry no solid-collision file yet
+# still rubber-band you, so a geometrically-clear landing can be rejected. When that
+# happens we step back along the approach line until we're clear of the object.
+_RETREAT_STEPS = (70.0, 140.0, 230.0, 350.0, 520.0)
+
+
+# navmap_tp's check_sigma default: "still within this many units of where we started"
+# is proof the game sent us back. Same constant, same 3D distance, same meaning.
+_TP_ORIGIN_SIGMA = 5.0
+
+
+def _sent_back(pos: XYZ, origin: XYZ) -> bool:
+    """navmap_tp's landing test, verbatim: it is a rejected teleport iff we have not
+    moved away from where we started (``not check_success()`` there)."""
+    return calc_Distance(pos, origin) <= _TP_ORIGIN_SIGMA
+
+
+async def _arrived(client: Client, dest: XYZ, origin: XYZ = None, zone_before: str = None,
+                   settle: float = 1.0, tol: float = 60.0) -> bool:
+    """True if, after letting the server settle, the teleport to ``dest`` actually took.
+
+    Two independent signals, because either one alone has a blind spot:
+
+    * **Proximity** — did we end up near ``dest``? Horizontal plane only: a rubber-band
+      off a collider throws you far in x/y, while ``z`` always terrain-snaps and would
+      otherwise cause false misses.
+    * **Did the game send us back** — ``_sent_back``, navmap_tp's check, and the one that
+      catches a *silently* rejected teleport. If we're still sitting on ``origin``,
+      nothing moved us, however close ``dest`` happens to be to that spot. Without it a
+      retreat step that walks back toward the start eventually lands "within tolerance"
+      of a player who never moved, and a failed teleport is reported as a success.
+
+    Also like navmap_tp: a zone change or a client that is no longer free ends the check
+    as done — we can't verify or usefully retry through a loading screen or a battle, and
+    retreating would only fight whatever moved us. Unreadable position -> assume success
+    rather than thrash on a transient read error.
+    """
+    await asyncio.sleep(settle)
+    try:
+        if zone_before is not None and await client.zone_name() != zone_before:
+            logger.debug(f"[collision_tp] {client.title}: zone changed during teleport; done")
+            return True
+        if not await is_free(client):
+            logger.debug(f"[collision_tp] {client.title}: no longer free during teleport; done")
+            return True
+        pos = await client.body.position()
+    except Exception:
+        return True
+    if origin is not None and not _sent_back(dest, origin):
+        # dest is somewhere we'd have to move to reach, so staying put means rejection
+        if _sent_back(pos, origin):
+            logger.debug(
+                f"[collision_tp] {client.title}: never left the starting position; "
+                f"teleport to {dest} was rejected"
+            )
+            return False
+    return math.hypot(pos.x - dest.x, pos.y - dest.y) <= tol
+
+
+async def _teleport_once_verified(client: Client, dest: XYZ, anchor: XYZ,
+                                  zone_before: str = None) -> bool:
+    """One teleport to ``dest``, confirmed by ``_arrived``. No retreating."""
+    if not await is_free(client):
+        return False
+    await client.teleport(dest)
+    return await _arrived(client, dest, anchor, zone_before)
+
+
+async def _retreat_toward(client: Client, dest: XYZ, anchor: XYZ,
+                          zone_before: str = None) -> bool:
+    """Back off from a bounced ``dest`` toward ``anchor`` in increasing steps until a
+    landing sticks. Each retreat is verified, so one that clips a modeled wall just rolls
+    to the next. True once a teleport sticks, False if every step bounced."""
+    for back in _RETREAT_STEPS:
+        point = calc_PointOn3DLine(anchor, dest, back)  # 'back' units from dest toward anchor
+        if calc_Distance(point, dest) < 1.0:
+            break  # anchor too close to retreat any further
+        if not await is_free(client):
+            return False
+        logger.debug(
+            f"[collision_tp] {client.title}: destination bounced; retreating {back:.0f}u "
+            f"toward start -> {point}"
+        )
+        await client.teleport(point)
+        if await _arrived(client, point, anchor, zone_before):
+            return True
+    return False
+
+
+async def teleport_collision_verified(client: Client, dest: XYZ, anchor: XYZ,
+                                      zone_before: str = None) -> bool:
+    """Teleport to ``dest`` and confirm the server accepted it; on a rubber-band,
+    retreat toward ``anchor`` in increasing steps until a landing sticks.
+
+    The decisive collision teleport assumes the destination clears every obstacle, but
+    unmodeled warp volumes still bounce you. Returns True once a teleport sticks, False
+    if every attempt bounced (caller should fall back to navmap_tp).
+
+    ``anchor`` doubles as the origin for the did-we-move check in ``_arrived``, so a
+    retreat that lands back at the player's feet is counted as the failure it is instead
+    of passing the proximity test.
+    """
+    if zone_before is None:
+        try:
+            zone_before = await client.zone_name()
+        except Exception:
+            zone_before = None
+    if await _teleport_once_verified(client, dest, anchor, zone_before):
+        return True
+    return await _retreat_toward(client, dest, anchor, zone_before)
+
+
+# Don't bother walking gaps smaller than this — the teleport already put us in range.
+_WALK_GAP_MIN = 120.0
+
+
+async def _walk_remaining_to_target(client: Client, target_xyz: XYZ, world, zone_name: str,
+                                    player_radius: float, avoid=None) -> None:
+    """Walk the final stretch on foot when the teleport had to stop short of a target that
+    is itself walk-reachable.
+
+    Some objects block a *teleport* landing (the server rubber-bands you) while the navmesh
+    runs continuously through them — the WC Drains chamber cylinders are exactly this: the
+    collision solve correctly lands at the nearest teleport-valid point, but that's hundreds
+    of units out, past activation range. We close the rest on foot by **A* over the zone's
+    walk-valid hex nodes** (lazy, cached) — a node-to-node path that routes around obstacles,
+    not a single straight `goto`. Walk-valid nodes are more permissive than teleport-valid
+    (the cylinder interior is walkable) but still clear of static entity colliders, so we
+    never path onto a teleporter pad. We only refine onto the exact target if the target's own
+    node is walkable. No path / read error -> stay put. Best-effort.
+
+    ``avoid`` is the set of solid footprints that just bounced a teleport (see
+    ``blocking_volumes_at``). Walk nodes deliberately ignore bcd-collider interiors, which is
+    right for the Drains cylinders but wrong for a statue the target is standing against: the
+    A* path runs straight through it and the final ``goto`` drives into it. When ``avoid`` is
+    given we stop at the last waypoint outside those footprints and skip the exact-target
+    refinement. It is only ever passed after the game has rejected a landing, so ordinary
+    teleports keep the full walk."""
+    try:
+        pos = await client.body.position()
+        gap = ((pos.x - target_xyz.x) ** 2 + (pos.y - target_xyz.y) ** 2) ** 0.5
+        if gap <= _WALK_GAP_MIN:
+            return
+        from src.collision_math import get_walk_grid
+        from src import entity_collision
+
+        extra = entity_collision.build_zone_static_shapes(zone_name, None)
+
+        def _plan():
+            grid = get_walk_grid(world, zone_name, extra, player_radius)
+            tq = grid.to_hex(target_xyz.x, target_xyz.y)
+            if grid.walk_z(*tq) is None:
+                return None, False  # target itself isn't walk-reachable (on a pad/boat)
+            return grid.find_walk_path(pos, target_xyz), True
+
+        path, target_walkable = await asyncio.to_thread(_plan)
+        if not target_walkable:
+            # The target sits on a static collider (teleporter pad/boat). The teleport landing is
+            # already the closest we can stand; walking toward it would only loop around the pad.
+            logger.debug(
+                f"[collision_tp] {client.title}: target not walk-reachable (static collider); "
+                f"staying at the teleport landing {gap:.0f}u out"
+            )
+            return
+        if not path:
+            logger.debug(
+                f"[collision_tp] {client.title}: {gap:.0f}u short of target but no on-foot path; "
+                f"staying at the teleport point"
+            )
+            return
+        walk = path[1:]  # skip the start node (≈ current position)
+        refine = True
+        if avoid:
+            from shapely.geometry import Point as _Point
+
+            kept = []
+            for wp in walk:
+                if any(fp.contains(_Point(wp[0], wp[1])) for fp in avoid):
+                    break  # stop at the edge of the solid instead of walking into it
+                kept.append(wp)
+            if len(kept) != len(walk) or any(
+                fp.contains(_Point(target_xyz.x, target_xyz.y)) for fp in avoid
+            ):
+                logger.debug(
+                    f"[collision_tp] {client.title}: walk truncated at {len(kept)}/{len(walk)} "
+                    f"waypoints — the rest runs into the collider that bounced the teleport"
+                )
+                refine = False
+            walk = kept
+        logger.debug(
+            f"[collision_tp] {client.title}: walking the final {gap:.0f}u via {len(walk)} "
+            f"A* waypoints to the target"
+        )
+        for (wx, wy, _wz) in walk:
+            if not await is_free(client):
+                return
+            await client.goto(wx, wy)
+        if refine and await is_free(client):  # refine onto the exact (walk-reachable) target
+            await client.goto(target_xyz.x, target_xyz.y)
+    except Exception as e:
+        logger.debug(f"[collision_tp] {client.title}: final walk skipped ({e!r})")
+
+
+# Zones whose collision/walkability caches are built or being built, so the background
+# pre-warm and an actual teleport don't both rebuild the same zone.
+_prewarmed_zones: set = set()
+
+
+async def prewarm_zone(client: Client, zone_name: str = None) -> None:
+    """Build the zone's collision + walkability caches in the BACKGROUND so the first teleport
+    there is instant. Idempotent per zone, best-effort — call it on client hook and on zone
+    change (during the loading screen) so the work is finished before the player teleports.
+
+    The heavy one-time costs all run here off the event loop and are memoized per zone: the
+    precise resolver init (~0.8s, only on the very first call of a session), the navmesh
+    triangle index, the static-collision shapes, and the hex grid. Afterwards a teleport in the
+    zone is just cache hits plus a few node probes (~ms)."""
+    zone = None
+    try:
+        zone = zone_name or await client.zone_name()
+        if not zone or zone in _prewarmed_zones:
+            return
+        _prewarmed_zones.add(zone)
+        from src.collision import CollisionWorld, get_collision_data
+        from src.collision_math import get_walk_grid
+        from src import entity_collision
+
+        collision_data = await get_collision_data(client, zone)
+
+        def _build():
+            world = CollisionWorld()
+            world.load(collision_data)
+            extra = entity_collision.build_zone_static_shapes(zone, None)
+            get_walk_grid(world, zone, extra, 45.0)
+
+        await asyncio.to_thread(_build)
+        logger.debug(f"[prewarm] collision caches ready for '{zone}'")
+    except Exception as e:
+        if zone:
+            _prewarmed_zones.discard(zone)  # allow a later attempt to retry
+        logger.debug(f"[prewarm] skipped ({e!r})")
+
+
+async def collision_tp(client: Client, xyz: XYZ = None, leader_client: Client = None):
+    """Teleport by solving the zone's collision geometry — a single, decisive teleport.
+
+    Loads the zone collision data, computes (in a 2D slice at the target's height)
+    the nearest point that lies on walkable mesh and clears every collision object,
+    and teleports there exactly once. Because that point is geometrically guaranteed
+    to be outside all walls, there's no trial-and-error: it's first-time-every-time.
+
+    Only when the geometry can't be solved — no collision data for the zone, a target
+    outside the loaded area of interest, or a solve/teleport error — does it fall back
+    to the proven navmap_tp. Debug logs report exactly which path ran.
+    """
+    if not await is_free(client):
+        return
+
+    target_xyz = xyz if xyz is not None else await client.quest_position.position()
+    starting_xyz = await client.body.position()
+    logger.debug(
+        f"[collision_tp] {client.title}: target {target_xyz} in '{await client.zone_name()}' "
+        f"(from {'arg' if xyz is not None else 'quest_position'}); "
+        f"start {starting_xyz} ({calc_Distance(starting_xyz, target_xyz):.0f}u away)"
+    )
+    if calc_Distance(starting_xyz, target_xyz) <= 5.0:
+        return  # already there
+
+    safe_xyz = None
+    reason = "unavailable"
+    try:
+        # Imported lazily so shapely/numpy load only when collision TP is actually
+        # used, and any import error degrades to navmap rather than breaking import.
+        from src.collision import CollisionWorld, get_collision_data
+        from src.collision_math import find_walkable_teleport_point
+        from src import entity_collision
+
+        zone_name = await client.zone_name()
+        player_radius = await _resolve_player_radius(client, zone_name)
+
+        collision_data = await get_collision_data(client, zone_name)
+        world = CollisionWorld()
+        world.load(collision_data)
+
+        # Rasterize the zone's walkability into a node grid (collision.bcd navmesh, height-aware
+        # bcd colliders, and the WHOLE-zone static entity colliders — teleporter pads, boats — from
+        # gamedata.bin, all known from files before we move) and pick the closest teleport-valid
+        # point to the target. All file/CPU work, cached per zone, so it runs off the event loop.
+        def _solve(strict=False):
+            extra_shapes = entity_collision.build_zone_static_shapes(zone_name, None)
+            return find_walkable_teleport_point(
+                world, zone_name, target_xyz, extra_shapes=extra_shapes,
+                player_radius=player_radius, strict=strict,
+            )
+
+        safe_xyz, reason = await asyncio.to_thread(_solve)
+    except Exception as e:
+        logger.debug(f"[collision_tp] {client.title}: collision solve errored ({e!r}); using navmap TP")
+        safe_xyz = None
+
+    if safe_xyz is not None:
+        moved = ((safe_xyz.x - target_xyz.x) ** 2 + (safe_xyz.y - target_xyz.y) ** 2) ** 0.5
+        logger.debug(
+            f"[collision_tp] {client.title}: collision TP ({reason}, r={player_radius:.0f}) -> "
+            f"{safe_xyz} (moved {moved:.0f}u from target)"
+        )
+        if await _teleport_once_verified(client, safe_xyz, starting_xyz, zone_name):
+            await _walk_remaining_to_target(client, target_xyz, world, zone_name, player_radius)
+            return
+
+        # The game refused a point the geometry called clear, so something solid is there
+        # that the solve excused: ``ground_z_at`` ignores a volume whose vertical band contains
+        # the target's own height, on the theory that a target standing inside a volume means
+        # it's a structural shell rather than a wall. That's right for a tower's bounding box
+        # and wrong for a statue you're standing against (AZ_Z11_TwinGiants: a 429u-tall
+        # collision BOX whose base is level with the floor, target 1.5u off its face). We can't
+        # tell those apart from the files — the exemption is load-bearing for a large share of
+        # ordinary walkable ground — but a rejection is the game telling us which one this is,
+        # so re-solve with every covering volume honoured and try that point.
+        strict_xyz = None
+        try:
+            strict_xyz, strict_reason = await asyncio.to_thread(_solve, True)
+        except Exception as e:
+            logger.debug(f"[collision_tp] {client.title}: strict re-solve errored ({e!r})")
+        if strict_xyz is not None and calc_Distance(strict_xyz, safe_xyz) > 5.0:
+            moved = ((strict_xyz.x - target_xyz.x) ** 2 + (strict_xyz.y - target_xyz.y) ** 2) ** 0.5
+            logger.debug(
+                f"[collision_tp] {client.title}: rejected -> strict re-solve ({strict_reason}) "
+                f"-> {strict_xyz} (moved {moved:.0f}u from target)"
+            )
+            if await _teleport_once_verified(client, strict_xyz, starting_xyz, zone_name):
+                def _blockers():
+                    from src.collision_math import blocking_volumes_at
+                    return blocking_volumes_at(world, zone_name, target_xyz, player_radius)
+
+                try:
+                    avoid = await asyncio.to_thread(_blockers)
+                except Exception:
+                    avoid = None
+                await _walk_remaining_to_target(
+                    client, target_xyz, world, zone_name, player_radius, avoid=avoid
+                )
+                return
+
+        # Still bounced: an unmodeled warp volume rather than a mis-excused wall. Back off
+        # along the approach line before giving up on the geometry entirely.
+        if await _retreat_toward(client, safe_xyz, starting_xyz, zone_name):
+            await _walk_remaining_to_target(client, target_xyz, world, zone_name, player_radius)
+            return
+        logger.debug(
+            f"[collision_tp] {client.title}: collision point never landed (unmodeled collider "
+            f"or rejected teleport); falling back to navmap TP"
+        )
+
+    else:
+        logger.debug(f"[collision_tp] {client.title}: no collision solution ({reason}); falling back to navmap TP")
+    await navmap_tp(client, xyz, leader_client)
+
+
 
 
 def calc_chunks(points: list[XYZ], entity_distance: float = 3147.0) -> list[XYZ]:

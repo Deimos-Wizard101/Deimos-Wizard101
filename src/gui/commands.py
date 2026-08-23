@@ -40,6 +40,13 @@ class GUICommandType(Enum):
     ExecuteBot = auto()
     KillBot = auto()
 
+    SearchBots = auto()          # GUI -> Backend: search registry for current zone/client count (data: None)
+    ImportSearchedBot = auto()   # GUI -> Backend: data = (bot path, run: bool)
+    BotSearchResults = auto()    # Backend -> GUI: data = {'zone', 'client_count', 'bots'} or {'error': str}
+
+    PrepareBotPublish = auto()   # GUI -> Backend: request current-zone context for publishing (data: None)
+    BotPublishContext = auto()   # Backend -> GUI: data = {'zone': str} (zone may be '')
+
     SetPlaystyles = auto()
 
     SetScale = auto()
@@ -73,7 +80,8 @@ class GUICommandType(Enum):
 
     # Launcher
     LaunchInstance = auto()
-    SaveAccount = auto()
+    SaveAccount = auto()       # GUI -> Backend: data = (nickname, steam: bool)
+    UpdateAccount = auto()     # GUI -> Backend: data = (nickname, steam: bool); updates settings only
     DeleteAccount = auto()
     LoadAccounts = auto()
     UpdateAccountList = auto()
@@ -88,6 +96,12 @@ class GUICommandType(Enum):
 
     UpdateSettings = auto()  # GUI -> Backend: dict of {key: value} pairs
 
+    # Auto-update
+    CheckForUpdates = auto()   # GUI -> Backend: trigger a manual update check (data: None)
+    ApplyUpdate = auto()       # GUI -> Backend: user accepted; download + apply (data: None)
+    ShowUpdatePrompt = auto()  # Backend -> GUI: data = {'version': str, 'notes_url': str}
+    UpdateProgress = auto()    # Backend -> GUI: data = ('status'|'progress'|'error', value)
+
 
 class GUIKeys:
     toggle_speedhack = "togglespeedhack"
@@ -97,6 +111,7 @@ class GUIKeys:
     toggle_questing = "toggle_questing"
     toggle_auto_pet = "toggleautopet"
     toggle_auto_potion = "toggleautopotion"
+    toggle_drops = "toggledrops"
     toggle_freecam = "togglefreecam"
     toggle_camera_collision = "togglecameracollision"
     toggle_show_expanded_logs = "toggleshowexpandedlogs"

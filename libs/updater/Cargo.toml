@@ -1,0 +1,24 @@
+[package]
+name = "deimos-updater"
+version = "1.0.0"
+edition = "2021"
+description = "Self-update helper for Deimos-Wizard101: waits for the parent process to exit, swaps the executable, and relaunches."
+license = "GPL-3.0-only"
+repository = "https://github.com/Deimos-Wizard101/updater"
+
+[[bin]]
+name = "deimos-updater"
+path = "src/main.rs"
+
+[dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"
+codegen-units = 1

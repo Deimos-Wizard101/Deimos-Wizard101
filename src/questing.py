@@ -712,7 +712,7 @@ class Quester():
             if can_Teleport:
                 safe_location = await self.client.body.position()
                 try:
-                    await navmap_tp(self.client, xyz)  # teleports to the xyz
+                    await collision_tp(self.client, xyz)  # teleports to the xyz
                 except:
                     print(traceback.format_exc())
 
@@ -899,7 +899,7 @@ class Quester():
                 # leader client collided and got sent back
                 if distance < 20:
                     logger.debug('client ' + proxy_leader_client.title + ' collided on initial teleport')
-                    await navmap_tp(client=proxy_leader_client, xyz=leader_client_objective_xyz, leader_client=self.current_leader_client)
+                    await collision_tp(client=proxy_leader_client, xyz=leader_client_objective_xyz, leader_client=self.current_leader_client)
 
                 await asyncio.sleep(1.0)
                 while await proxy_leader_client.is_loading():
@@ -912,7 +912,7 @@ class Quester():
                 if await proxy_leader_client.zone_name() != zone_before_teleport or detected_dungeon:
                     logger.debug('leader zone changed or interactible reached - syncing all clients')
                     try:
-                        await asyncio.gather(*[navmap_tp(client=c, xyz=leader_client_objective_xyz, leader_client=self.current_leader_client) for c in followup_teleport_clients])
+                        await asyncio.gather(*[collision_tp(client=c, xyz=leader_client_objective_xyz, leader_client=self.current_leader_client) for c in followup_teleport_clients])
                     except:
                         print(traceback.print_exc())
 
@@ -941,7 +941,7 @@ class Quester():
             # if we aren't doing a mob / boss fight, we have no need to stagger teleports
             # furthermore staggered teleports can break certain quests in dungeons for certain clients
             else:
-                await asyncio.gather(*[navmap_tp(p, leader_client_objective_xyz, leader_client=self.current_leader_client) for p in self.clients])
+                await asyncio.gather(*[collision_tp(p, leader_client_objective_xyz, leader_client=self.current_leader_client) for p in self.clients])
 
     async def handle_normal_quests(self, follower_clients: list[Client], questing_friend_tp: bool):
         # Handles chest reroll menu, will always cancel
@@ -1341,7 +1341,7 @@ class Quester():
                 while self.client.entity_detect_combat_status:
                     await asyncio.sleep(.1)
 
-                await navmap_tp(self.client, quest_xyz)
+                await collision_tp(self.client, quest_xyz)
 
                 # confirm exit dungeon early button or wait for client to exit loading
                 await self.handle_questing_zone_change()

@@ -9,7 +9,7 @@ from wizwalker.extensions.wizsprinter import SprintyClient
 from wizwalker.extensions.wizsprinter.wiz_sprinter import Coroutine, upgrade_clients
 from wizwalker.extensions.wizsprinter.wiz_navigator import toZone
 from wizwalker.extensions.scripting.deck_builder import DeckBuilder
-from src.teleport_math import navmap_tp, calc_Distance
+from src.teleport_math import navmap_tp, collision_tp, calc_Distance
 from src.deck_encoder import DeckEncoderDecoder
 
 from wizwalker.extensions.scripting.utils import _maybe_get_named_window, _cycle_to_online_friends, _click_on_friend, _friend_list_entry
@@ -223,7 +223,10 @@ class VM:
     async def _fetch_tracked_quest_text(self, client: SprintyClient) -> str:
         quest = await self._fetch_tracked_quest(client)
         name_key = await quest.name_lang_key()
-        name: str = await client.cache_handler.get_langcode_name(name_key)
+        if name_key == "Quest Finder":
+            name = name_key
+        else:
+            name: str = await client.cache_handler.get_langcode_name(name_key)
         return name.lower().strip()
 
     async def _fetch_quests(self, client: SprintyClient) -> list[tuple[int, QuestData]]:
@@ -1362,7 +1365,7 @@ class VM:
                                     if entity:
                                         pos = await entity.location()
                                         if use_navmap:
-                                            await navmap_tp(client, pos)
+                                            await collision_tp(client, pos)
                                         else:
                                             await client.teleport(pos)
                                 tg.create_task(tp_to_entity(client))
@@ -1380,7 +1383,7 @@ class VM:
                                     if entity:
                                         pos = await entity.location()
                                         if use_navmap:
-                                            await navmap_tp(client, pos)
+                                            await collision_tp(client, pos)
                                         else:
                                             await client.teleport(pos)
                                 tg.create_task(tp_to_vague_entity(client))
@@ -1391,7 +1394,7 @@ class VM:
                             # TODO: "quest" could instead be treated as an XYZ expression or something
                             for client in clients:
                                 pos = await client.quest_position.position()
-                                tg.create_task(navmap_tp(client, pos))
+                                tg.create_task(collision_tp(client, pos))
                         case TeleportKind.friend_icon:
                             async def proxy(client: SprintyClient): # type: ignore
                                 # probably doesn't need mouseless

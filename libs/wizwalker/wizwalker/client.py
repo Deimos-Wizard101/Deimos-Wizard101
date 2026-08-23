@@ -30,6 +30,7 @@ from .memory import (
     CurrentRenderContext,
     TeleportHelper,
     MovementTeleportHook,
+    DropsToggleHook,
 )
 from .memory.memory_objects.character_registry import DynamicCharacterRegistry
 from .memory.memory_objects.quest_client_manager import QuestClientManager
@@ -80,6 +81,7 @@ class Client:
 
         self._teleport_helper = TeleportHelper(self.hook_handler)
 
+        self._disable_drops_bool = None
         self._template_ids = None
         self._world_view_window = None
         self._character_registry_addr = None
@@ -576,6 +578,30 @@ class Client:
                     await self.hook_handler.write_bytes(je, old_bytes)
 
                 await self._teleport_helper.write_should_update(False)
+
+    async def enable_drops(self):
+        if not self.hook_handler._check_if_hook_active(DropsToggleHook):
+            raise RuntimeError("Drops toggle not active")
+
+        if not self._disable_drops_bool:
+            self._disable_drops_bool = await self.hook_handler.read_disable_drops_bool()
+
+        await self.hook_handler.write_bytes(
+            self._disable_drops_bool, 
+            b"\x00"
+        )
+
+    async def disable_drops(self):
+        if not self.hook_handler._check_if_hook_active(DropsToggleHook):
+            raise RuntimeError("Drops toggle not active")
+
+        if not self._disable_drops_bool:
+            self._disable_drops_bool = await self.hook_handler.read_disable_drops_bool()
+
+        await self.hook_handler.write_bytes(
+            self._disable_drops_bool, 
+            b"\x01"
+        )
 
     async def _get_je_instruction_forward_backwards(self):
         """

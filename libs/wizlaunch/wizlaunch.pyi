@@ -24,6 +24,48 @@ def has_account(nickname: str) -> bool:
     """Check if an account exists in Windows Credential Manager."""
     ...
 
+def validate_account(nickname: str) -> str | None:
+    """Validate an account entry.
+
+    Returns a human-readable error string if the entry needs attention (e.g. an
+    older account saved before Steam support, which lacks a Steam-mode flag), or
+    None if it is fully configured.
+    """
+    ...
+
+def get_account_steam(nickname: str) -> bool | None:
+    """Get an account's Steam-mode flag, or None if it has never been set."""
+    ...
+
+def set_account_steam(nickname: str, steam: bool) -> None:
+    """Set whether an account launches in Steam mode."""
+    ...
+
+def get_window_config(
+    nickname: str,
+) -> tuple[int, int, int, int, int, int, bool, bool] | None:
+    """Get an account's window placement/resolution config, or None if unset.
+
+    Returns ``(x, y, w, h, res_w, res_h, locked, borderless)``: window top-left in
+    virtual-desktop screen coords, window client size, forced render resolution,
+    whether resolution is locked to the client size (crisp 1:1), and whether the
+    window is borderless (title bar / borders stripped).
+    """
+    ...
+
+def set_window_config(
+    nickname: str,
+    x: int, y: int, w: int, h: int,
+    res_w: int, res_h: int, locked: bool,
+    borderless: bool = False,
+) -> None:
+    """Set an account's window placement/resolution config."""
+    ...
+
+def clear_window_config(nickname: str) -> None:
+    """Clear an account's window config (revert to default behavior)."""
+    ...
+
 def update_player_gid(nickname: str, gid: int) -> None:
     """Update the player GID (global ID) for a nickname."""
     ...

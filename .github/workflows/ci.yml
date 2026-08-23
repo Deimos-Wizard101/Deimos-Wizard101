@@ -7,6 +7,12 @@ on:
       - main
       - dev-main
 
+# A PR that gets pushed to repeatedly does not need every intermediate commit
+# built; keep only the newest run per ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: windows-latest
@@ -24,9 +30,49 @@ jobs:
     - name: Install dependencies
       run: uv sync --group dev
 
+    - name: Compile check
+      shell: bash
+      run: uv run --group dev python -m compileall -q Deimos.py src
+
+    - name: Record Rust version
+      id: rust
+      shell: bash
+      run: echo "ver=$(rustc --version | tr -d '(),' | tr ' ' '-')" >> "$GITHUB_OUTPUT"
+
+    # Keyed on the committed lockfiles, so the cache only rotates when a
+    # dependency actually changes. The toolchain version is in the key too:
+    # cached target/ dirs from a different rustc are not reliably reusable, and
+    # the runner image upgrades Rust without warning.
+    - name: Cache cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          libs/updater/target
+          libs/wizpatch/target
+        key: cargo-${{ runner.os }}-${{ steps.rust.outputs.ver }}-${{ hashFiles('libs/*/Cargo.lock') }}
+        restore-keys: cargo-${{ runner.os }}-${{ steps.rust.outputs.ver }}-
+
+    - name: Build update helper (Rust)
+      shell: bash
+      run: |
+        cargo build --release --manifest-path libs/updater/Cargo.toml
+        ls -la libs/updater/target/release/deimos-updater.exe
+
+    - name: Build wizpatch patcher (Rust)
+      shell: bash
+      run: |
+        cargo build --release --manifest-path libs/wizpatch/Cargo.toml
+        ls -la libs/wizpatch/target/release/wizpatch.exe
+
+    # Build through Deimos.spec -- the same entry point develop/build/release
+    # use -- so a PR that breaks the spec fails here rather than at tag time.
+    # The spec supplies the icon, version resource and manifest itself.
     - name: Build with PyInstaller
       run: |
-        uv run --group dev pyinstaller -F -w --clean -i Deimos-logo.ico --add-data "Deimos-logo.ico;." --add-data "Deimos-logo.png;." --version-file version_info.txt Deimos.py --noupx --optimize 2 --manifest "app.manifest"
+        uv run --group dev pyinstaller --noconfirm --clean Deimos.spec
+        dir dist
 
     - name: Verify build output
       shell: bash
@@ -36,3 +82,22 @@ jobs:
           exit 1
         fi
         echo "Build OK: $(stat -c%s dist/Deimos.exe) bytes"
+
+    # Fail loudly if the helpers did not make it into the bundle. Deimos.spec
+    # omits a missing helper with only a warning, which is invisible in CI logs;
+    # shipping without them silently disables self-update and game-file patching.
+    - name: Verify bundled helpers
+      shell: bash
+      run: |
+        uv run --group dev python - <<'PY'
+        import sys
+        from PyInstaller.archive.readers import CArchiveReader
+
+        required = {"deimos-updater.exe", "wizpatch.exe"}
+        bundled = set(CArchiveReader("dist/Deimos.exe").toc)
+        missing = sorted(required - bundled)
+        if missing:
+            print(f"ERROR: helper(s) missing from bundle: {', '.join(missing)}")
+            sys.exit(1)
+        print(f"All helpers embedded in Deimos.exe: {', '.join(sorted(required))}")
+        PY

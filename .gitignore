@@ -16,3 +16,4 @@ dist/
 *.lock
 !.gitignore
 .*
+target/

@@ -75,3 +75,47 @@ shake = serialize_message(
 		"client_id": str(app_id)
 	}
 )
+
+
+def get_discord_user():
+	"""Return the logged-in Discord user dict (id, username, global_name, ...) read
+	from the local Discord IPC pipe, or None if Discord isn't running / on any error.
+
+	Blocking named-pipe I/O — call off the main thread (e.g. via asyncio.to_thread).
+	"""
+	handle = None
+	try:
+		handle = connect()
+		if handle is None:
+			return None
+		send(handle, shake)
+		resp = recv(handle)
+		return resp["data"]["user"]
+	except Exception:
+		return None
+	finally:
+		if handle is not None:
+			try:
+				close(handle)
+			except Exception:
+				pass
+
+
+_cached_username = None
+
+
+def get_discord_username():
+	"""Best-effort current Discord username (the unique handle, falling back to the
+	display name), or None if it can't be determined.
+
+	The first success is cached for the process lifetime: Discord throttles rapid
+	back-to-back IPC handshakes, and the username is stable within a session.
+	"""
+	global _cached_username
+	if _cached_username is not None:
+		return _cached_username
+	user = get_discord_user()
+	if not user:
+		return None
+	_cached_username = user.get("username") or user.get("global_name")
+	return _cached_username

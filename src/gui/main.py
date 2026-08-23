@@ -10,7 +10,7 @@ import ctypes
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QCheckBox, QLineEdit, QTextEdit,
-    QPlainTextEdit, QComboBox, QFrame, QDialog,
+    QPlainTextEdit, QComboBox, QFrame, QDialog, QMessageBox,
 )
 from PyQt6.QtCore import QTimer, Qt, QSize
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QPainter
@@ -25,7 +25,7 @@ from src.gui.helpers import (
 )
 from src.gui.actions import ActionRegistry
 from src.gui.theme import compute_styles
-from src.gui.popups import show_ui_tree_popup, show_entity_list_popup
+from src.gui.popups import show_ui_tree_popup, show_entity_list_popup, show_update_dialog
 
 from src.gui.tab_launcher import build_launcher_tab
 from src.gui.tab_hotkeys import build_hotkeys_tab
@@ -493,6 +493,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
 
     # ==================== Event Loop Timer ====================
     entity_popup_ref = [None]
+    update_dialog_ref = [None]
     stats = ctx.exports.get('stats', {})
     launcher = ctx.exports.get('launcher', {})
     hotkeys_exports = ctx.exports.get('hotkeys', {})
@@ -639,6 +640,24 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
                                 pass
                         entity_popup_ref[0] = show_entity_list_popup(window, send_queue, widget_tags, tabs, dev_tab, camera_tab, tl=tl)
 
+                    case GUICommandType.BotSearchResults:
+                        dlg = getattr(ctx, 'bot_search_dialog', None)
+                        if dlg is not None:
+                            try:
+                                if dlg.isVisible():
+                                    dlg.set_results(com.data or {})
+                            except RuntimeError:
+                                ctx.bot_search_dialog = None
+
+                    case GUICommandType.BotPublishContext:
+                        dlg = getattr(ctx, 'bot_publish_dialog', None)
+                        if dlg is not None:
+                            try:
+                                if dlg.isVisible():
+                                    dlg.set_context(com.data or {})
+                            except RuntimeError:
+                                ctx.bot_publish_dialog = None
+
                     case GUICommandType.UpdateEntityListData:
                         popup = entity_popup_ref[0]
                         if popup is not None and popup.isVisible():
@@ -687,6 +706,47 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
                         _update_dev_mass = dev_utils_exports.get('update_mass_state')
                         if _update_dev_mass:
                             _update_dev_mass(hooked_count)
+
+                    case GUICommandType.ShowUpdatePrompt:
+                        info = com.data or {}
+                        existing = update_dialog_ref[0]
+                        if existing is not None:
+                            try:
+                                existing.close()
+                            except Exception:
+                                pass
+                        update_dialog_ref[0] = show_update_dialog(
+                            window, send_queue,
+                            info.get('version', '?'),
+                            info.get('notes_url', ''),
+                            tool_name=ctx.tool_name,
+                            tl=tl,
+                        )
+
+                    case GUICommandType.UpdateProgress:
+                        kind, value = com.data
+                        dlg = update_dialog_ref[0]
+                        if kind == 'progress':
+                            if dlg is not None:
+                                dlg.set_progress(value)
+                        elif kind == 'status':
+                            if dlg is not None:
+                                dlg.set_status(value)
+                        elif kind == 'error':
+                            if dlg is not None:
+                                dlg.set_error(value)
+                            else:
+                                QMessageBox.warning(window, f"{ctx.tool_name} Update", str(value))
+                        elif kind == 'uptodate':
+                            QMessageBox.information(
+                                window, f"{ctx.tool_name} Update",
+                                f"You're on the latest version (v{value}).",
+                            )
+                        elif kind == 'checkfailed':
+                            QMessageBox.warning(
+                                window, f"{ctx.tool_name} Update",
+                                "Could not check for updates. Please try again later.",
+                            )
 
                     case GUICommandType.ClearLaunchCheckboxes:
                         if account_list and not (settings and settings.get_setting('remember_chosen_clients')):

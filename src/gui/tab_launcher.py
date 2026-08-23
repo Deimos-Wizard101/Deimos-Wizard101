@@ -24,6 +24,9 @@ def build_launcher_tab(ctx):
     send_queue = ctx.send_queue
     svgs = ctx.svgs
 
+    # Amber-tinted warning icon for accounts that fail validation.
+    _warning_svg = svgs['triangle-alert'].replace(ctx.stroke_color, '#E0A100')
+
     _hover_rgba = "rgba(255,255,255,15)" if ctx.theme in ('black', 'dark') else "rgba(0,0,0,15)"
     _launcher_list_style = (
         "QListWidget::item {"
@@ -100,31 +103,51 @@ def build_launcher_tab(ctx):
     launcher_layout.addLayout(columns_layout, 1)
 
     # --- Account dialog and helpers ---
-    def _show_add_account_dialog():
+    def _show_account_dialog(nickname: str = None, steam: bool = False):
+        """Create a new account or edit an existing one's settings.
+
+        In edit mode the nickname (and stored credentials) are left untouched —
+        only the per-account options are collected.
+        """
+        editing = nickname is not None
         dlg = QDialog(ctx.window)
-        dlg.setWindowTitle(tl('add_account'))
+        dlg.setWindowTitle(tl('update_account') if editing else tl('add_account'))
         dlg.setModal(True)
         dlg_layout = QVBoxLayout(dlg)
 
-        nick_input = QLineEdit()
-        nick_input.setPlaceholderText(tl('nickname'))
         dlg_layout.addWidget(QLabel(tl('nickname')))
-        dlg_layout.addWidget(nick_input)
+        nick_input = None
+        if editing:
+            dlg_layout.addWidget(QLabel(nickname))
+        else:
+            nick_input = QLineEdit()
+            nick_input.setPlaceholderText(tl('nickname'))
+            dlg_layout.addWidget(nick_input)
+
+        steam_cb = QCheckBox(tl('steam_mode'))
+        steam_cb.setChecked(bool(steam))
+        dlg_layout.addWidget(steam_cb)
 
         save_btn = QPushButton(tl('save_account'))
         save_btn.setStyleSheet(ctx.btn_style)
         def _on_save():
-            nick = nick_input.text().strip()
-            if nick:
-                send_queue.put(GUICommand(GUICommandType.SaveAccount, nick))
+            steam_val = steam_cb.isChecked()
+            if editing:
+                send_queue.put(GUICommand(GUICommandType.UpdateAccount, (nickname, steam_val)))
                 dlg.accept()
+            else:
+                nick = nick_input.text().strip()
+                if nick:
+                    send_queue.put(GUICommand(GUICommandType.SaveAccount, (nick, steam_val)))
+                    dlg.accept()
         save_btn.clicked.connect(_on_save)
         dlg_layout.addWidget(save_btn)
 
         dlg.adjustSize()
         dlg.exec()
 
-    def _build_account_item_widget(nickname: str, disabled: bool = False):
+    def _build_account_item_widget(nickname: str, disabled: bool = False,
+                                   error: str = None, steam: bool = None):
         row = QWidget(account_list)
         row.setStyleSheet("background: transparent;")
         row_layout = QHBoxLayout(row)
@@ -144,6 +167,21 @@ def build_launcher_tab(ctx):
             lbl.setStyleSheet("color: rgba(255,255,255,80);" if ctx.theme in ('black', 'dark') else "color: rgba(0,0,0,80);")
             lbl.setToolTip(tl('already_active'))
 
+        # Validation warning: hovering shows the wizlaunch error; clicking opens
+        # the update dialog (pre-filled, never re-prompting for credentials).
+        if error:
+            def _edit_this():
+                _show_account_dialog(nickname=nickname, steam=bool(steam))
+            warn_btn = launcher_small_icon_btn(ctx, _warning_svg, error, _edit_this)
+            row_layout.addWidget(warn_btn)
+
+        def _window_config():
+            from src.gui.window_config_dialog import show_window_config_dialog
+            show_window_config_dialog(ctx, nickname)
+        proportions_btn = launcher_small_icon_btn(
+            ctx, svgs['proportions'], tl('window_config_tooltip'), _window_config)
+        row_layout.addWidget(proportions_btn)
+
         def _delete_this():
             send_queue.put(GUICommand(GUICommandType.DeleteAccount, nickname))
         trash_btn = launcher_small_icon_btn(ctx, svgs['trash'], tl('remove_account'), _delete_this)
@@ -151,15 +189,28 @@ def build_launcher_tab(ctx):
 
         return row
 
-    def _populate_account_list(nicknames: list[str]):
+    def _populate_account_list(accounts: list):
         remember = ctx.settings and ctx.settings.get_setting('remember_chosen_clients')
         managed = ctx.widget_tags.get('managed_accounts', set())
         account_list.setUpdatesEnabled(False)
         account_list.clear()
-        for nick in nicknames:
+        for entry in accounts:
+            # Accept either a bare nickname string or an enriched dict carrying
+            # validation info (so older senders keep working).
+            if isinstance(entry, dict):
+                nick = entry.get('nick')
+                error = entry.get('error')
+                steam = entry.get('steam')
+            else:
+                nick, error, steam = entry, None, None
             item = QListWidgetItem()
             item.setSizeHint(QSize(0, 28))
-            row_widget = _build_account_item_widget(nick, disabled=(nick in managed and not remember))
+            row_widget = _build_account_item_widget(
+                nick,
+                disabled=(nick in managed and not remember),
+                error=error,
+                steam=steam,
+            )
             account_list.addItem(item)
             account_list.setItemWidget(item, row_widget)
         account_list.setUpdatesEnabled(True)
@@ -246,18 +297,26 @@ def build_launcher_tab(ctx):
 
         return row
 
-    def _build_hooking_client_widget(handle: int, nick: str = None):
+    def _build_hooking_client_widget(handle: int, nick: str = None, status_text: str = None):
         row = QWidget(hooked_clients_list)
         row.setStyleSheet("background: transparent;")
         row_layout = QHBoxLayout(row)
         row_layout.setContentsMargins(2, 0, 2, 0)
         row_layout.setSpacing(4)
 
+        _dim = "color: rgba(255,255,255,120);" if ctx.theme in ('black', 'dark') else "color: rgba(0,0,0,120);"
         display = nick if nick else f"Wizard101 ({handle})"
         lbl = QLabel(display)
         lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        lbl.setStyleSheet("color: rgba(255,255,255,120);" if ctx.theme in ('black', 'dark') else "color: rgba(0,0,0,120);")
+        lbl.setStyleSheet(_dim)
         row_layout.addWidget(lbl, 1)
+
+        # Stage text (Verifying / Patching / Launching / Hooking) next to the spinner.
+        # A little right padding gives the spinner some breathing room from the text.
+        if status_text:
+            status_lbl = QLabel(status_text)
+            status_lbl.setStyleSheet(_dim + " padding-right: 4px;")
+            row_layout.addWidget(status_lbl)
 
         row_layout.addWidget(spinning_loader_widget(ctx))
 
@@ -277,7 +336,7 @@ def build_launcher_tab(ctx):
             h = info['handle']
             if h in hooking_backend:
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-                row_widget = _build_hooking_client_widget(h, info.get('account_nick'))
+                row_widget = _build_hooking_client_widget(h, info.get('account_nick'), tl('status_hooking'))
             else:
                 item.setData(Qt.ItemDataRole.UserRole, h)
                 row_widget = _build_hooked_client_widget(info)
@@ -289,9 +348,22 @@ def build_launcher_tab(ctx):
                 item = QListWidgetItem()
                 item.setSizeHint(QSize(0, 28))
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-                row_widget = _build_hooking_client_widget(h)
+                row_widget = _build_hooking_client_widget(h, None, tl('status_hooking'))
                 hooked_clients_list.addItem(item)
                 hooked_clients_list.setItemWidget(item, row_widget)
+
+        # Pre-spawn placeholders: accounts mid launch (verifying/patching/launching),
+        # keyed by nickname since no window handle exists yet. They hand off to the
+        # handle-keyed "hooking" spinner above once the client's window appears.
+        for entry in _last_hooked_data.get('launching', []):
+            nick = entry.get('nick')
+            status = entry.get('status', 'launching')
+            item = QListWidgetItem()
+            item.setSizeHint(QSize(0, 28))
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            row_widget = _build_hooking_client_widget(None, nick, tl(f'status_{status}'))
+            hooked_clients_list.addItem(item)
+            hooked_clients_list.setItemWidget(item, row_widget)
 
         remaining = [h for h in unmanaged if h not in _hooking_handles]
 
@@ -394,7 +466,7 @@ def build_launcher_tab(ctx):
 
     launcher_action_row = QHBoxLayout()
     launcher_action_row.addStretch()
-    launcher_action_row.addWidget(ctx.registry.action_icon_btn(svgs['add'], tl('add_account'), lambda: _show_add_account_dialog()))
+    launcher_action_row.addWidget(ctx.registry.action_icon_btn(svgs['add'], tl('add_account'), lambda: _show_account_dialog()))
     launcher_action_row.addWidget(ctx.registry.action_icon_btn(svgs['play'], tl('launch_login'), _launch_and_login))
     launcher_action_row.addWidget(ctx.registry.action_icon_btn(svgs['gear'], tl('settings'), _show_settings_dialog))
     launcher_action_row.addStretch()

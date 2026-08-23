@@ -1,7 +1,7 @@
 import asyncio
 from wizwalker import Keycode, Client, XYZ
 from loguru import logger
-from src.teleport_math import navmap_tp, calc_FrontalVector, are_xyzs_within_threshold
+from src.teleport_math import navmap_tp, collision_tp, calc_FrontalVector, are_xyzs_within_threshold
 from src.utils import is_visible_by_path, click_window_by_path, wait_for_zone_change, auto_potions, logout_and_in, is_free, get_quest_name, collect_wisps
 from src.paths import team_up_button_path, team_up_confirm_path, dungeon_warning_path, cancel_chest_roll_path, npc_range_path
 from src.sprinty_client import SprintyClient
@@ -65,7 +65,7 @@ class Sigil():
 		while await self.client.zone_name() != self.sigil_zone:
 			# teleport to quest, will NOT work if the user has no quest up
 			quest_xyz = await self.client.quest_position.position()
-			await navmap_tp(self.client, quest_xyz)
+			await collision_tp(self.client, quest_xyz)
 
 			# walk forward until we get a zone change
 			while not await self.client.is_loading():
@@ -159,7 +159,7 @@ class Sigil():
 						quest_xyz = await self.client.quest_position.position()
 						if await get_quest_name(self.client) != self.original_quest:
 							try:
-								await navmap_tp(self.client, quest_xyz)
+								await collision_tp(self.client, quest_xyz)
 							except ValueError:
 								pass
 
@@ -261,7 +261,7 @@ class Sigil():
 						if await get_quest_name(self.client) != self.original_quest:
 							try:
 								# await navmap_tp(self.client, quest_xyz, auto_quest_leader=True)
-								await asyncio.gather(*[navmap_tp(p, quest_xyz, leader_client=self.client) for p in self.clients])
+								await asyncio.gather(*[collision_tp(p, quest_xyz, leader_client=self.client) for p in self.clients])
 							except ValueError:
 								pass
 

@@ -12,6 +12,8 @@ pub enum VaultError {
     MetadataJson(String),
     LaunchFailed(String),
     LaunchTimeout(String),
+    SteamUnavailable(String),
+    SteamLoginTimeout(String),
     LoginFailed(String),
     WindowsApi(String),
 }
@@ -35,6 +37,8 @@ impl fmt::Display for VaultError {
             VaultError::LaunchTimeout(nick) => {
                 write!(f, "Timed out waiting for window: {nick}")
             }
+            VaultError::SteamUnavailable(msg) => write!(f, "Steam unavailable: {msg}"),
+            VaultError::SteamLoginTimeout(msg) => write!(f, "Steam login timed out: {msg}"),
             VaultError::LoginFailed(msg) => write!(f, "Login failed: {msg}"),
             VaultError::WindowsApi(msg) => write!(f, "Windows API error: {msg}"),
         }

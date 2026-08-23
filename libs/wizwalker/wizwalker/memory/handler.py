@@ -19,6 +19,7 @@ from .hooks import (
     RootWindowHook,
     RenderContextHook,
     MovementTeleportHook,
+    DropsToggleHook,
     MemoryHook
 )
 from .memory_reader import MemoryReader, Primitive
@@ -31,13 +32,14 @@ class HookHandler(MemoryReader):
     """
 
     AUTOBOT_PATTERN = (
-        rb"\x48\x8B\xC4\x55\x41\x54\x41\x55\x41\x56\x41\x57......."
-        rb"\x48......\x48.......\x48\x89\x58\x10\x48\x89"
-        rb"\x70\x18\x48\x89\x78\x20.......\x48\x33\xC4....."
-        rb"..\x4C\x8B\xE9.......\x80......\x0F"
+        rb"\x48\x89\x5C\x24.\x48\x89\x74\x24.\x48\x89\x7C\x24."
+        rb"\x55\x41\x54\x41\x55\x41\x56\x41\x57"
+        rb"\x48\x8D\xAC\x24....\x48\x81\xEC...."
+        rb"\x48\x8B\x05....\x48\x33\xC4\x48\x89\x85...."
+        rb"\x4C\x8B\xF1.......\x80......\x0F\x84...."
     )
     # rounded down
-    AUTOBOT_SIZE = 3900
+    AUTOBOT_SIZE = 4100
 
     def __init__(self, process: pymem.Pymem, client):
         super().__init__(process)
@@ -191,6 +193,7 @@ class HookHandler(MemoryReader):
         await self.activate_root_window_hook(wait_for_ready=False)
         await self.activate_render_context_hook(wait_for_ready=False)
         await self.activate_movement_teleport_hook(wait_for_ready=False)
+        await self.activate_drops_toggle_hook(wait_for_ready=False)
 
         if wait_for_ready:
             wait_tasks = []
@@ -535,6 +538,39 @@ class HookHandler(MemoryReader):
         addr = self._base_addrs.get("teleport_helper")
         if addr is None:
             raise HookNotActive("Movement teleport")
+
+        return addr
+
+    async def activate_drops_toggle_hook(
+        self, *, wait_for_ready: bool = False, timeout: float = None
+    ):
+        
+        if self._check_if_hook_active(DropsToggleHook):
+            raise HookAlreadyActivated("Drops toggle")
+
+        await self._check_for_autobot()
+
+        drops_toggle_hook = DropsToggleHook(self)
+        await drops_toggle_hook.hook()
+
+        self._active_hooks[DropsToggleHook] = drops_toggle_hook
+        self._base_addrs["disable_drops_bool"] = drops_toggle_hook.disable_drops_bool
+
+    async def deactivate_drops_toggle_hook(self):
+
+        if not self._check_if_hook_active(DropsToggleHook):
+            raise HookNotActive("Drops toggle")
+
+        drops_toggle_hook = self._active_hooks.pop(DropsToggleHook)
+        await drops_toggle_hook.unhook()
+
+        del self._base_addrs["disable_drops_bool"]
+
+    async def read_disable_drops_bool(self) -> int:
+        addr = self._base_addrs.get("disable_drops_bool")
+
+        if addr is None:
+            raise HookNotActive("Drops toggle")
 
         return addr
 

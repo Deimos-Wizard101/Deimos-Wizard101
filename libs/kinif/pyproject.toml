@@ -1,0 +1,28 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "kinif"
+version = "0.1.0"
+description = "Minimal reader for Wizard101's Gamebryo NIF model geometry (vertex extraction)."
+requires-python = ">=3.10"
+license = "GPL-3.0-only"
+readme = "README.md"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+profile = "release"
+bindings = "pyo3"
+
+# uv caches the built native wheel and, for path/workspace sources, only
+# invalidates it when pyproject.toml changes by default — so edits to the Rust
+# source were silently ignored. These keys make `uv sync`/`uv run` rebuild the
+# extension whenever the Rust sources or Cargo manifests change.
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "src/**/*.rs" },
+]
