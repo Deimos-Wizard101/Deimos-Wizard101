@@ -133,7 +133,7 @@ bot_publish_format=格式
 bot_publish_clients=客户端
 bot_publish_description=描述
 bot_publish_name_hint=脚本的显示名称
-bot_publish_zone_hint=例如 WizardCity/WC_OldeTown, Celestia/CL_Hub（多个区域用英文逗号分隔）
+bot_publish_zone_hint=例如 WizardCity/WC_Ravenwood, Celestia/CL_Hub
 bot_publish_zone_tip=首个区域存储脚本文件；以逗号分隔添加条目以拓展搜索范围。上级区域（如 WizardCity）覆盖其下所有范围。"General" 为全局通用。
 bot_publish_clients_hint=可选，例如 == 4（留空 = 任意客户端数量）
 bot_publish_description_hint=可选。支持 Markdown。
