@@ -127,14 +127,14 @@ publish_bot=Publish Bot
 bot_publish_title=Publish Bot
 bot_publish_intro=Fill in the details below, then publish to open GitHub where you can propose your bot as a pull request to the registry.
 bot_publish_name=Name
-bot_publish_zone=Zone(s)
+bot_publish_zone=Zones
 bot_publish_author=Author
 bot_publish_format=Format
 bot_publish_clients=Clients
 bot_publish_description=Description
 bot_publish_name_hint=Display name for your bot
 bot_publish_zone_hint=e.g. WizardCity/WC_Ravenwood, Celestia/CL_Hub
-bot_publish_zone_tip=First zone stores the bot file; comma-separated entries add extra discovery. A parent zone (e.g. WizardCity) covers all areas within it. "General" is global.
+bot_publish_zone_tip=First zone is the primary zone for the bot file; comma-separated zones extend discoverability. A parent zone (e.g. WizardCity) covers all areas within it. “General” is global.
 bot_publish_clients_hint=Optional, e.g. == 4 (blank = any client count)
 bot_publish_description_hint=Optional. Markdown supported.
 bot_publish_action=Publish
