@@ -2,6 +2,7 @@
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QFileDialog, QPushButton, QLabel
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 
 from src.gui.commands import GUICommand, GUICommandType
 from src.gui.helpers import centered_label, repo_icon_btn, add_recent, show_recent_menu
@@ -108,6 +109,11 @@ def build_bot_tab(ctx):
     layout.addLayout(header)
 
     editor = QTextEdit()
+    _code_font = QFont("Cascadia Code", 10)
+    _code_font.setStyleHint(QFont.StyleHint.Monospace)
+    editor.setFont(_code_font)
+    editor.document().setDefaultFont(_code_font)
+    editor.setTabStopDistance(editor.fontMetrics().horizontalAdvance(' ') * 4)
     ctx.widget_tags['bot_creator'] = editor
     layout.addWidget(editor, 1)
 
@@ -162,6 +168,25 @@ def build_bot_tab(ctx):
         ctx.bot_publish_dialog = show_bot_publish_popup(ctx, editor.toPlainText())
         ctx.send_queue.put(GUICommand(GUICommandType.PrepareBotPublish))
 
+    def bot_expand():
+        from src.gui.popups import show_bot_editor_popup
+        existing = getattr(ctx, 'bot_editor_dialog', None)
+        if existing is not None:
+            try:
+                if existing.isVisible():
+                    existing.raise_()
+                    existing.activateWindow()
+                    return
+                existing.close()
+            except (RuntimeError, Exception):
+                pass
+            ctx.bot_editor_dialog = None
+
+        ctx.bot_editor_dialog = show_bot_editor_popup(
+            ctx, editor, run_bot_callback, kill_bot_callback, set_bot_running,
+            bot_import, bot_export, ctx.tl, mode='bot'
+        )
+
     toggle_btn, set_bot_running = _make_toggle_btn(
         ctx, ctx.tl('run_bot'), ctx.tl('kill_bot'),
         run_bot_callback, kill_bot_callback, 'toggle_bot')
@@ -171,6 +196,7 @@ def build_bot_tab(ctx):
     recent_btn.clicked.connect(lambda: show_recent_menu(ctx, 'bot', editor, recent_btn))
     btn_row.addStretch()
     btn_row.addWidget(ctx.registry.action_icon_btn(ctx.svgs['search'], ctx.tl('search_bots'), bot_search))
+    btn_row.addWidget(ctx.registry.action_icon_btn(ctx.svgs['expand'], ctx.tl('expand_bot') if ctx.tl('expand_bot') != 'expand_bot' else 'Expand Bot', bot_expand))
     btn_row.addWidget(recent_btn)
     btn_row.addWidget(ctx.registry.action_icon_btn(ctx.svgs['import'], ctx.tl('import_bot'), bot_import))
     btn_row.addWidget(ctx.registry.action_icon_btn(ctx.svgs['export'], ctx.tl('export_bot'), bot_export))
@@ -193,6 +219,11 @@ def build_combat_tab(ctx):
     layout.addLayout(header)
 
     editor = QTextEdit()
+    _code_font = QFont("Cascadia Code", 10)
+    _code_font.setStyleHint(QFont.StyleHint.Monospace)
+    editor.setFont(_code_font)
+    editor.document().setDefaultFont(_code_font)
+    editor.setTabStopDistance(editor.fontMetrics().horizontalAdvance(' ') * 4)
     ctx.widget_tags['combat_config'] = editor
     layout.addWidget(editor, 1)
 
@@ -220,10 +251,30 @@ def build_combat_tab(ctx):
     def set_playstyles_callback():
         ctx.send_queue.put(GUICommand(GUICommandType.SetPlaystyles, editor.toPlainText()))
 
+    def combat_expand():
+        from src.gui.popups import show_bot_editor_popup
+        existing = getattr(ctx, 'combat_editor_dialog', None)
+        if existing is not None:
+            try:
+                if existing.isVisible():
+                    existing.raise_()
+                    existing.activateWindow()
+                    return
+                existing.close()
+            except (RuntimeError, Exception):
+                pass
+            ctx.combat_editor_dialog = None
+
+        ctx.combat_editor_dialog = show_bot_editor_popup(
+            ctx, editor, set_playstyles_callback, lambda: None, lambda _: None,
+            combat_import, combat_export, ctx.tl, mode='combat'
+        )
+
     recent_btn = ctx.registry.action_icon_btn(ctx.svgs['recent'], ctx.tl('recent_imports'), lambda: None)
     recent_btn.clicked.disconnect()
     recent_btn.clicked.connect(lambda: show_recent_menu(ctx, 'combat', editor, recent_btn))
     btn_row.addStretch()
+    btn_row.addWidget(ctx.registry.action_icon_btn(ctx.svgs['expand'], ctx.tl('expand_combat') if ctx.tl('expand_combat') != 'expand_combat' else 'Expand Combat', combat_expand))
     btn_row.addWidget(recent_btn)
     btn_row.addWidget(ctx.registry.action_icon_btn(ctx.svgs['import'], ctx.tl('import_playstyle'), combat_import))
     btn_row.addWidget(ctx.registry.action_icon_btn(ctx.svgs['export'], ctx.tl('export_playstyle'), combat_export))

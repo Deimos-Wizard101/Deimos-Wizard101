@@ -112,6 +112,11 @@ import_bot=Import Bot
 export_bot=Export Bot
 run_bot=Run Bot
 kill_bot=Kill Bot
+expand=Expand
+expand_bot=Expand Bot
+expand_combat=Expand Combat
+bot_editor_title=Bot Editor
+combat_editor_title=Combat Editor
 search_bots=Search Compatible Bots
 bot_search_title=Compatible Bots
 bot_search_searching=Searching for compatible bots...
@@ -155,7 +160,8 @@ select_pet_world=Select a pet world:
 
 # Console
 console_support=Be sure to include your logs when asking for support.
-collapse_expand_logs=Collapse / Expand Logs
+collapse_expand_logs=Expand Logs
+console_editor_title=Console Logs
 copy_logs=Copy Logs
 
 # Tooltips

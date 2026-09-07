@@ -393,6 +393,27 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
 
     toggle_expand_btn.clicked.connect(_toggle_expand_logs)
 
+    def console_expand():
+        from src.gui.popups import show_bot_editor_popup
+        existing = getattr(ctx, 'console_editor_dialog', None)
+        if existing is not None:
+            try:
+                if existing.isVisible():
+                    existing.raise_()
+                    existing.activateWindow()
+                    return
+                existing.close()
+            except (RuntimeError, Exception):
+                pass
+            ctx.console_editor_dialog = None
+
+        ctx.console_editor_dialog = show_bot_editor_popup(
+            ctx, console_text, mode='console'
+        )
+
+    toggle_expand_btn.clicked.disconnect()
+    toggle_expand_btn.clicked.connect(console_expand)
+
     console_btn_row = QHBoxLayout()
     console_btn_row.addStretch()
     console_btn_row.addWidget(toggle_expand_btn)
