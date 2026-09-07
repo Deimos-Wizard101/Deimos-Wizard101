@@ -459,6 +459,7 @@ class ClientResizingManager:
         self._enabled = False
         self._forcers: dict[int, object] = {}     # hwnd -> ResolutionForcer
         self._borders: dict[int, object] = {}      # hwnd -> WindowResizeBorder
+        self._failed_borders: set[int] = set()     # hwnd -> failed border hooks
         self._pending: dict[int, tuple] = {}       # hwnd -> (size, stable_count)
         # hwnd -> the client we last serviced, kept only so _teardown can write the
         # camera frustum back (that needs memory access, and teardown is keyed by hwnd).
@@ -627,10 +628,10 @@ class ClientResizingManager:
         # The in-process WndProc hit-test hook that makes the window grab-resizable.
         # Lock-serialized (like _ensure_forcer) so a launch-time apply and the tick
         # loop can't both install the hook for the same client.
-        if WindowResizeBorder is None or hwnd in self._borders:
+        if WindowResizeBorder is None or hwnd in self._borders or hwnd in self._failed_borders:
             return
         async with self._install_lock(hwnd):
-            if hwnd in self._borders:          # re-check after acquiring the lock
+            if hwnd in self._borders or hwnd in self._failed_borders:          # re-check after acquiring the lock
                 return
             try:
                 border = WindowResizeBorder(client)
@@ -638,6 +639,7 @@ class ClientResizingManager:
                 self._borders[hwnd] = border
                 logger.debug(f"[client_resizing] resize-border hook installed {hwnd:#x}")
             except Exception as e:
+                self._failed_borders.add(hwnd)
                 logger.opt(exception=e).warning(f"[client_resizing] resize-border hook unavailable {hwnd:#x}")
 
     async def _update_border(self, hwnd: int):
@@ -704,6 +706,7 @@ class ClientResizingManager:
         # Undo the camera correction FIRST, while the window and client are still in the
         # state we corrected them from. Leaving it applied would make the next hook read
         # our corrected frustum as the native one and push the POV back again.
+        self._failed_borders.discard(hwnd)
         client = self._clients.pop(hwnd, None)
         if client is not None and user32.IsWindow(hwnd):
             try:
