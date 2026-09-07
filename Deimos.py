@@ -3250,7 +3250,14 @@ async def main():
                                     "This GUI option requires hooks to be active, skipping."
                                 )
                                 continue
-                            command_data: str = com.data
+                            command_payload = com.data
+                            config_values = {}
+                            if isinstance(command_payload, (tuple, list)) and command_payload:
+                                command_data = command_payload[0]
+                                if len(command_payload) > 1 and isinstance(command_payload[1], dict):
+                                    config_values = command_payload[1]
+                            else:
+                                command_data = command_payload
                             expert_mode = command_data.startswith(
                                 "###deimos_expertmode"
                             )
@@ -3262,6 +3269,7 @@ async def main():
                                         v = vm.VM(walker.clients)
                                         try:
                                             v.load_from_text(command_data)
+                                            v.apply_config(config_values)
                                             v.running = True
                                             while v.running:
                                                 await v.step()
