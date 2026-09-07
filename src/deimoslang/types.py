@@ -24,9 +24,9 @@ class CommandKind(Enum):
     click = auto()
     tozone = auto()
     load_playstyle = auto()
-    set_yaw = auto() 
+    set_yaw = auto()
     setdeck = auto()
-    getdeck = auto() 
+    getdeck = auto()
     select_friend = auto()
     autopet = auto()
     compound = auto()
@@ -35,7 +35,7 @@ class CommandKind(Enum):
     set_zone = auto()
     toggle_combat = auto()
     restart_bot = auto()
-    cursor = auto() 
+    cursor = auto()
 
 class TeleportKind(Enum):
     position = auto()
@@ -174,7 +174,7 @@ class Command:
             return f"{self.kind.name}({params_str})"
         else:
             return f"{self.kind.name}({params_str}) @ {self.player_selector}"
-        
+
 
 class Expression:
     def __init__(self):
@@ -290,7 +290,7 @@ class OrExpression(Expression):
 class ConstantReferenceExpression(Expression):
     def __init__(self, name: str):
         self.name = name
-        
+
     def __repr__(self) -> str:
         return f"ConstRef(${self.name})"
 
@@ -301,7 +301,7 @@ class ConstantCheckExpression(Expression):
 
     def __repr__(self) -> str:
         return f"ConstCheck({self.name}, {self.value})"
-    
+
 class RangeMinExpression(Expression):
     def __init__(self, range_expr: Expression):
         self.range_expr = range_expr
@@ -315,7 +315,7 @@ class RangeMaxExpression(Expression):
 
     def __repr__(self) -> str:
         return f"RangeMax({self.range_expr})"
-    
+
 class IndexAccessExpression(Expression):
     def __init__(self, expr: Expression, index: Expression):
         self.expr = expr
@@ -339,6 +339,14 @@ class IdentExpression(Expression):
     def __repr__(self) -> str:
         return f"IdentE({self.ident})"
 
+class DotExpression(Expression):
+    def __init__(self, target: Expression, field: str):
+        self.target = target
+        self.field = field
+
+    def __repr__(self) -> str:
+        return f"DotE({self.target}.{self.field})"
+
 class SymExpression(Expression):
     def __init__(self, sym: "Symbol"):
         self.sym = sym
@@ -359,6 +367,14 @@ class ReadVarExpr(Expression):
 
     def __repr__(self) -> str:
         return f"ReadVarE {self.loc}"
+
+class RangeExpr(Expression):
+    def __init__(self, lo: int, hi: int):
+        self.lo = lo
+        self.hi = hi
+
+    def __repr__(self) -> str:
+        return f"Range [{self.lo};{self.hi}]"
 
 class Eval(Expression):
     def __init__(self, eval_kind: EvalKind, args=[]):
@@ -383,7 +399,7 @@ class ConstantDeclStmt(Stmt):
 class ParallelCommandStmt(Stmt):
     def __init__(self, commands: list[Command]) -> None:
         self.commands = commands
-    
+
     def __repr__(self) -> str:
         return f"ParallelCommandStmt({self.commands})"
 
@@ -394,11 +410,62 @@ class StmtList(Stmt):
     def __repr__(self) -> str:
         return "StmtList{" + "; ".join([str(x) for x in self.stmts]) + "}"
 
+
+class ConfigFieldKind(Enum):
+    checkbox = auto()
+    selection = auto()
+    textbox = auto()
+    numbox = auto()
+
+class ConfigFieldSelectionInfo:
+    def __init__(self, options: list[str]):
+        self.options = options
+
+    def __repr__(self):
+        return f"Select {self.options}"
+
+class ConfigFieldNumboxInfo:
+    def __init__(self, range):
+        self.range = range
+
+    def __repr__(self):
+        return f"Numbox {self.range}"
+
+class ConfigFieldStmt(Stmt):
+    def __init__(self,
+                 kind : ConfigFieldKind,
+                 disp_name: str,
+                 tooltip: str | None = None,
+                 default: Any = None,
+                 info: ConfigFieldNumboxInfo | ConfigFieldSelectionInfo | None = None):
+        self.kind = kind
+        self.disp_name = disp_name
+        self.tooltip = tooltip
+        self.default = default
+        self.info = info
+
+    def __repr__(self):
+        return f"CfgField({self.kind}, {self.disp_name}, {self.tooltip}, {self.default}, {self.info})"
+
+class ConfigDeclStmt(Stmt):
+    def __init__(self, fields: list[tuple[str, ConfigFieldStmt]]):
+        self.fields = fields
+
+    def defaults(self) -> dict[str, Any]:
+        return {name: field.default for name, field in self.fields}
+
+    def field_map(self) -> dict[str, ConfigFieldStmt]:
+        return {name: field for name, field in self.fields}
+
+    def __repr__(self):
+        return f"CfgDecl({self.fields})"
+
+
 class TimerStmt(Stmt):
     def __init__(self, action: TimerAction, timer_name: str):
         self.action = action
         self.timer_name = timer_name
-        
+
     def __str__(self):
         action_str = "settimer" if self.action == TimerAction.start else "endtimer"
         return f"{action_str} {self.timer_name};"

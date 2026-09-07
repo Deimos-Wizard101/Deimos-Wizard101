@@ -29,6 +29,19 @@ class TokenKind(Enum):
     less = auto()
     equals = auto()
 
+    keyword_declconfig = auto()
+    # config context-sensitive (evil ones, they are translated by the parser. Only here as a formality)
+    keyword_cfgcheckbox = auto() # checkbox <varname> {...}
+    keyword_cfgselection = auto() # selection <varname> {...}
+    keyword_cfgtextbox = auto() # textbox <varname> {...}
+    keyword_cfgnumbox = auto() # numbox <varname> {...}
+    keyword_cfgname = auto() # name = "<human_name>"
+    keyword_cfgtooltip = auto() # tooltip = "<text>"
+    keyword_cfgdefault = auto() # default = <value>
+    keyword_cfgoptions = auto() # options = [<val>, <val>, <val>]
+    keyword_cfgrange = auto() # range = [<start>; <end>] in interval notation, [0; 5[ is legal
+    # config context-sensitive end
+
     keyword_block = auto()
     keyword_call = auto()
     keyword_loop = auto()
@@ -90,9 +103,9 @@ class TokenKind(Enum):
     command_tozone = auto()
     command_load_playstyle = auto()
     command_set_yaw = auto()
-    command_nav = auto()  
+    command_nav = auto()
     command_setdeck = auto()
-    command_getdeck = auto() 
+    command_getdeck = auto()
     command_select_friend = auto()
     command_autopet = auto()
     command_set_goal = auto()
@@ -101,7 +114,7 @@ class TokenKind(Enum):
     command_toggle_combat = auto()
     command_restart_bot = auto()
     command_move_cursor = auto()
-    command_move_cursor_window = auto() 
+    command_move_cursor_window = auto()
 
     # command expressions
     command_expr_window_visible = auto()
@@ -153,7 +166,9 @@ class TokenKind(Enum):
     command_expr_account_level = auto()
 
     colon = auto() # :
+    semicolon = auto() # ;
     comma = auto()
+    dot = auto() # .
 
     plus = auto()
     minus = auto()
@@ -253,8 +268,14 @@ class Tokenizer:
                     case ":":
                         put_simple(TokenKind.colon, c)
                         i += 1
+                    case ";":
+                        put_simple(TokenKind.semicolon, c)
+                        i += 1
                     case ",":
                         put_simple(TokenKind.comma, c)
+                        i += 1
+                    case ".":
+                        put_simple(TokenKind.dot, c)
                         i += 1
                     case "+":
                         put_simple(TokenKind.plus, c)
@@ -335,7 +356,11 @@ class Tokenizer:
                         else:
                             full = ""
                             j = i
-                            while j < len(l) and not (l[j].isspace() or l[j] in "():[],`"):
+                            while j < len(l) and not (l[j].isspace() or l[j] in "():;[],`"):
+                                if l[j] == ".":
+                                    number_so_far = len(full) > 0 and all(x.isnumeric() or x in ".e-%" for x in full)
+                                    if not number_so_far:
+                                        break
                                 full += l[j]
                                 j += 1
 
@@ -364,6 +389,8 @@ class Tokenizer:
                             else:
                                 match normalize_ident(full):
                                     # keywords
+                                    case "declconfig" | "declareconfig":
+                                        put_simple(TokenKind.keyword_declconfig, full)
                                     case "block":
                                         put_simple(TokenKind.keyword_block, full)
                                     case "call":
@@ -432,9 +459,9 @@ class Tokenizer:
                                         put_simple(TokenKind.logical_off, full)
                                     case "con" | "set" | "setvar" | "var":
                                         put_simple(TokenKind.keyword_con, full)
-                                    case "True":
+                                    case "true":
                                         put_simple(TokenKind.boolean_true, full)
-                                    case "False":
+                                    case "false":
                                         put_simple(TokenKind.boolean_false, full)
                                     case "$":
                                         put_simple(TokenKind.keyword_constant_reference, full)
@@ -493,11 +520,11 @@ class Tokenizer:
                                     case "turncam" | "setcamyaw":
                                         put_simple(TokenKind.command_set_yaw, full)
                                     case "nav" | "navtp":
-                                        put_simple(TokenKind.command_nav, full) 
+                                        put_simple(TokenKind.command_nav, full)
                                     case "getdeck":
                                         put_simple(TokenKind.command_getdeck, full)
                                     case "setdeck":
-                                        put_simple(TokenKind.command_setdeck, full) 
+                                        put_simple(TokenKind.command_setdeck, full)
                                     case "selectfriend" | "choosefriend":
                                         put_simple(TokenKind.command_select_friend, full)
                                     case "plustp" | "plusteleport":
@@ -517,7 +544,7 @@ class Tokenizer:
                                     case "cursor" | "movecursor" | "mousexy" | "movemouse":
                                         put_simple(TokenKind.command_move_cursor, full)
                                     case "cursorwindow" | "mousewindow":
-                                        put_simple(TokenKind.command_move_cursor_window, full) 
+                                        put_simple(TokenKind.command_move_cursor_window, full)
 
                                     # expression commands
                                     case "contains":

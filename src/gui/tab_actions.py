@@ -5,6 +5,8 @@ from PyQt6.QtCore import Qt
 
 from src.gui.commands import GUICommand, GUICommandType
 from src.gui.helpers import centered_label, repo_icon_btn, add_recent, show_recent_menu
+from src.gui.bot_config import BotConfigPanel
+from src.gui.widgets import AnimatedTabWidget
 
 
 def _make_toggle_btn(ctx, play_tooltip, kill_tooltip, execute_cb, kill_cb, action_id):
@@ -109,7 +111,23 @@ def build_bot_tab(ctx):
 
     editor = QTextEdit()
     ctx.widget_tags['bot_creator'] = editor
-    layout.addWidget(editor, 1)
+
+    code_page = QWidget()
+    code_layout = QVBoxLayout(code_page)
+    code_layout.setContentsMargins(0, 0, 0, 0)
+    code_layout.addWidget(editor, 1)
+
+    config_panel = BotConfigPanel(ctx)
+    editor.textChanged.connect(lambda: config_panel.schedule_update(editor.toPlainText()))
+
+    pages = AnimatedTabWidget(duration=200)
+    pages.setStyleSheet("QTabWidget::tab-bar { alignment: center; }")
+    pages.addTab(config_panel, ctx.tl('bot_config'))
+    pages.addTab(code_page, ctx.tl('bot_code'))
+    pages.currentChanged.connect(
+        lambda _index: config_panel.flush(editor.toPlainText()) if pages.currentWidget() is config_panel else None
+    )
+    layout.addWidget(pages, 1)
 
     btn_row = QHBoxLayout()
 
@@ -119,6 +137,7 @@ def build_bot_tab(ctx):
             try:
                 with open(filepath) as f:
                     editor.setPlainText(f.read())
+                config_panel.flush(editor.toPlainText())
                 add_recent('bot', filepath)
             except Exception:
                 pass
@@ -133,7 +152,12 @@ def build_bot_tab(ctx):
                 pass
 
     def run_bot_callback():
-        ctx.send_queue.put(GUICommand(GUICommandType.ExecuteBot, editor.toPlainText()))
+        text = editor.toPlainText()
+        config_panel.flush(text)
+        ctx.send_queue.put(GUICommand(
+            GUICommandType.ExecuteBot,
+            (text, config_panel.values()),
+        ))
 
     def kill_bot_callback():
         ctx.send_queue.put(GUICommand(GUICommandType.KillBot))
