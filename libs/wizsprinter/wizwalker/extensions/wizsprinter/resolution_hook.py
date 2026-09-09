@@ -308,7 +308,7 @@ class WndProcNCHitHook(SimpleHook):
 
     async def get_hook_address(self, size: int) -> int:
         # The default 50 bytes isn't enough: body ~244 bytes + original (7) + jmp (5).
-        return await self.alloc(320)
+        return await self.alloc(340)
 
     async def get_hook_bytecode(self) -> bytes:
         # Allocate the export (sets self.hit_rect), assemble using its address, then
@@ -320,8 +320,8 @@ class WndProcNCHitHook(SimpleHook):
         bytecode = body + original
 
         return_addr = self.jump_address + self.instruction_length
-        rel = return_addr - (self.hook_address + len(bytecode)) - 5
-        bytecode += b"\xE9" + struct.pack("<i", rel)
+        # 64-bit absolute indirect jump: jmp [rip+0] followed by 8-byte destination address
+        bytecode += b"\xFF\x25\x00\x00\x00\x00" + struct.pack("<Q", return_addr)
         return bytecode
 
     async def prehook(self):

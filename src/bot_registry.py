@@ -62,8 +62,17 @@ def _is_general(bot: dict) -> bool:
     return str(bot.get('world') or bot.get('zone') or '').split('/')[0] == 'General'
 
 
+def _ancestor_zones(zone: str) -> list[str]:
+    """Return [zone, parent, grandparent, ..., world] in most-specific to broadest order."""
+    if not zone:
+        return []
+    parts = zone.strip('/').split('/')
+    return ['/'.join(parts[:i]) for i in range(len(parts), 0, -1)]
+
+
 def search_compatible_bots(zone: str, client_count) -> list[dict]:
-    """Return bots for the given zone plus all General bots, filtered by client count.
+    """Return bots for the given zone (and its parent/ancestor zones) plus all General bots,
+    filtered by client count.
 
     Zone bots sort before General ones and entries are deduped by path. General
     entries come from each General zone's registry.json (rich, with descriptions),
@@ -73,14 +82,28 @@ def search_compatible_bots(zone: str, client_count) -> list[dict]:
     every compatible bot regardless of team size.
     """
     candidates = []
-    zone_data = _get_registry_json(_zone_registry_url(zone)) if zone else None
-    if zone_data:
-        candidates.extend(zone_data.get('bots', []))
+    ancestors = _ancestor_zones(zone)
+    for z in ancestors:
+        try:
+            zone_data = _get_registry_json(_zone_registry_url(z))
+        except requests.RequestException:
+            zone_data = None
+        if zone_data:
+            candidates.extend(zone_data.get('bots', []))
 
     index = _get_registry_json(f'{registry_raw_base}/index.json') or {}
+
+    # If any ancestor zone was missing a per-zone registry.json, fall back to index.json for it
+    seen_candidate_paths = {b.get('path') for b in candidates if b.get('path')}
+    for b in index.get('bots', []):
+        b_zones = [z.strip() for z in str(b.get('zone', '')).split(',') if z.strip()]
+        if any(z in ancestors for z in b_zones) and b.get('path') not in seen_candidate_paths:
+            candidates.append(b)
+            seen_candidate_paths.add(b.get('path'))
+
     general_zones = sorted(z for z in index.get('zones', {}) if str(z).split('/')[0] == 'General')
     for general_zone in general_zones:
-        if general_zone == zone:
+        if general_zone in ancestors:
             continue
         try:
             general_data = _get_registry_json(_zone_registry_url(general_zone))
@@ -182,14 +205,14 @@ def build_bot_text(metadata: dict, body: str) -> str:
     """Assemble full bot text: optional expertmode marker, metadata header, then body.
 
     `clients` and `description` are omitted when blank; a multi-line description is
-    emitted as a `# @description:` line followed by `# ` continuation lines.
-    """
+    emitted as a `# @description:` line followed by `# ` continuation lines."""
     fmt = (metadata.get('format') or 'bot').strip() or 'bot'
     header: list[str] = []
     if fmt == 'expertmode':
         header.append(expertmode_marker)
     header.append(f"# @name: {(metadata.get('name') or '').strip()}")
-    header.append(f"# @zone: {(metadata.get('zone') or '').strip()}")
+    clean_zones = [z.strip() for z in (metadata.get('zone') or '').split(',') if z.strip()]
+    header.append(f"# @zone: {', '.join(clean_zones)}")
     header.append(f"# @author: {(metadata.get('author') or '').strip()}")
     header.append(f"# @format: {fmt}")
     clients = (metadata.get('clients') or '').strip()
@@ -219,8 +242,9 @@ def sanitize_bot_filename(name: str) -> str:
 
 def bot_repo_path(zone: str, name: str) -> str:
     """Repo-relative path a published bot should live at, e.g. bots/<zone>/<Name>.txt."""
-    zone = (zone or '').strip().strip('/')
-    return f"bots/{zone}/{sanitize_bot_filename(name)}"
+    clean_zones = [z.strip() for z in (zone or '').split(',') if z.strip()]
+    primary_zone = clean_zones[0].strip('/') if clean_zones else ''
+    return f"bots/{primary_zone}/{sanitize_bot_filename(name)}"
 
 
 def build_publish_url(zone: str, name: str, content: str) -> str:
