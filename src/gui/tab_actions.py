@@ -50,6 +50,7 @@ def build_flythrough_tab(ctx):
     layout.addLayout(header)
 
     editor = QTextEdit()
+    editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     ctx.widget_tags['flythrough_creator'] = editor
     layout.addWidget(editor, 1)
 
@@ -109,6 +110,7 @@ def build_bot_tab(ctx):
     layout.addLayout(header)
 
     editor = QTextEdit()
+    editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     _code_font = QFont("Cascadia Code", 10)
     _code_font.setStyleHint(QFont.StyleHint.Monospace)
     editor.setFont(_code_font)
@@ -219,6 +221,7 @@ def build_combat_tab(ctx):
     layout.addLayout(header)
 
     editor = QTextEdit()
+    editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     _code_font = QFont("Cascadia Code", 10)
     _code_font.setStyleHint(QFont.StyleHint.Monospace)
     editor.setFont(_code_font)

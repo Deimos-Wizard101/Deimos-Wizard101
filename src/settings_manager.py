@@ -129,6 +129,13 @@ def _theme_path() -> Path:
     return Path(appdata) / "Deimos" / "default_theme.json"
 
 
+# Action IDs that were removed or renamed in earlier versions.
+# Any binding saved under these names is silently pruned on load to avoid conflicts.
+_STALE_HOTKEY_IDS = {
+    'check_bot_syntax',   # Renamed to validate_bot_script (window-only, not a global hotkey)
+}
+
+
 class DeimosSettings:
     def __init__(self, settings_path: str | None = None):
         if settings_path is None:
@@ -151,6 +158,14 @@ class DeimosSettings:
         if "hotkeys" not in self._data:
             self._data["hotkeys"] = dict(DEFAULT_HOTKEYS)
             self._save()
+        else:
+            # Prune hotkey entries for actions that have been removed or renamed.
+            hotkeys = self._data["hotkeys"]
+            pruned = [aid for aid in _STALE_HOTKEY_IDS if aid in hotkeys]
+            if pruned:
+                for aid in pruned:
+                    del hotkeys[aid]
+                self._save()
 
     def _save(self):
         self._path.write_text(json.dumps(self._data, indent=2), encoding="utf-8")

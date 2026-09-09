@@ -407,9 +407,31 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
                 pass
             ctx.console_editor_dialog = None
 
+        # Always open the expanded window in "expanded logs" mode regardless of
+        # the current state. The user already sees collapsed logs in the main tab;
+        # expanding should default to showing the full view every time.
+        if not _logs_expanded[0]:
+            _toggle_expand_logs()
+
         ctx.console_editor_dialog = show_bot_editor_popup(
-            ctx, console_text, mode='console'
+            ctx, console_text, mode='console',
+            toggle_logs_cb=_toggle_expand_logs,
+            initial_logs_expanded=True
         )
+
+        # When the expanded window is closed, revert the main console tab back
+        # to collapsed logs so it matches the pre-expand state.
+        _dialog = ctx.console_editor_dialog
+        if _dialog is not None:
+            _orig_close_event = _dialog.closeEvent
+            def _on_console_popup_close(event):
+                try:
+                    if _logs_expanded[0]:
+                        _toggle_expand_logs()
+                except Exception:
+                    pass
+                _orig_close_event(event)
+            _dialog.closeEvent = _on_console_popup_close
 
     toggle_expand_btn.clicked.disconnect()
     toggle_expand_btn.clicked.connect(console_expand)

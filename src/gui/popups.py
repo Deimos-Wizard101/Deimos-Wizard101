@@ -98,9 +98,6 @@ def show_update_dialog(parent, send_queue, version, notes_url, tool_name='Deimos
         btn.setDefault(False)
 
     dialog.show()
-    if big_editor.viewport().width() > 0:
-        big_editor.document().setTextWidth(big_editor.viewport().width())
-    big_editor.update_line_number_area_width(0)
     return dialog
 
 
@@ -207,9 +204,6 @@ def show_bot_search_popup(ctx, bot_tab):
         btn.setDefault(False)
 
     dialog.show()
-    if big_editor.viewport().width() > 0:
-        big_editor.document().setTextWidth(big_editor.viewport().width())
-    big_editor.update_line_number_area_width(0)
     return dialog
 
 
@@ -361,9 +355,6 @@ def show_bot_publish_popup(ctx, bot_text):
         btn.setDefault(False)
 
     dialog.show()
-    if big_editor.viewport().width() > 0:
-        big_editor.document().setTextWidth(big_editor.viewport().width())
-    big_editor.update_line_number_area_width(0)
     return dialog
 
 
@@ -612,9 +603,6 @@ def show_entity_list_popup(parent, send_queue, widget_tags, tabs, dev_tab, camer
         btn.setDefault(False)
 
     dialog.show()
-    if big_editor.viewport().width() > 0:
-        big_editor.document().setTextWidth(big_editor.viewport().width())
-    big_editor.update_line_number_area_width(0)
     return dialog
 
 class _LineNumberArea(QWidget):
@@ -838,7 +826,7 @@ class CodeEditor(QTextEdit):
         painter.drawLine(gutter_w - 1, event.rect().top(), gutter_w - 1, event.rect().bottom())
 
 
-def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_running_cb=None, import_cb=None, export_cb=None, tl=None, mode='bot'):
+def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_running_cb=None, import_cb=None, export_cb=None, tl=None, mode='bot', toggle_logs_cb=None, initial_logs_expanded=False):
     """Opens a fully resizable, standalone Editor or Console Logs window with line numbers and shortcuts."""
     is_console = (mode == 'console')
     is_combat = (mode == 'combat')
@@ -893,13 +881,45 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
         return btn
 
     if is_console:
-        # CONSOLE TAB: Only copy button on the left, line numbers toggle (#) on the right.
+        # CONSOLE TAB: Copy button and Collapse/Expand Logs button on the left, line numbers toggle (#) on the right.
         def _copy_logs():
             import pyperclip
             pyperclip.copy(parent_editor.toPlainText())
 
         copy_btn = make_popup_icon_btn('copy_logs', ctx.tl('copy_logs'), _copy_logs, 'copy_logs')
         top_bar.addWidget(copy_btn)
+
+        # Collapse / Expand Logs toggle button.
+        # initial_logs_expanded=True means logs are already expanded when the popup
+        # opens, so the button starts showing the collapse icon and lets the user
+        # collapse at will. Every fresh open always resets to expanded.
+        if toggle_logs_cb:
+            _popup_logs_expanded = [initial_logs_expanded]
+            toggle_logs_popup_btn = QPushButton()
+            toggle_logs_popup_btn.setAutoDefault(False)
+            toggle_logs_popup_btn.setDefault(False)
+            _expand_svg = ctx.svgs.get('expand', '')
+            _collapse_svg = ctx.svgs.get('collapse', _expand_svg)
+            # Show collapse icon when already expanded, expand icon when collapsed
+            _initial_icon_svg = _collapse_svg if initial_logs_expanded else _expand_svg
+            toggle_logs_popup_btn.setIcon(ctx.titlebar_svg_icon(_initial_icon_svg, 22))
+            toggle_logs_popup_btn.setFixedSize(30, 30)
+            toggle_logs_popup_btn.setStyleSheet(ctx.icon_btn_style)
+            toggle_logs_popup_btn.setToolTip("Collapse / Expand Logs")
+            toggle_logs_popup_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            if hasattr(ctx, 'tracked_icon_buttons') and _initial_icon_svg:
+                ctx.tracked_icon_buttons.append((toggle_logs_popup_btn, _initial_icon_svg, 22))
+
+            def _on_popup_toggle_logs():
+                _popup_logs_expanded[0] = not _popup_logs_expanded[0]
+                _svg = _collapse_svg if _popup_logs_expanded[0] else _expand_svg
+                toggle_logs_popup_btn.setIcon(ctx.titlebar_svg_icon(_svg, 22))
+                toggle_logs_cb()
+
+            toggle_logs_popup_btn.clicked.connect(_on_popup_toggle_logs)
+            top_bar.addWidget(toggle_logs_popup_btn)
+
+
         top_bar.addStretch()
 
         numbers_btn = QPushButton("#")
@@ -910,6 +930,7 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
             f"{ctx.icon_btn_style}; font-weight: bold; font-size: 13px; color: rgba(200, 200, 200, 0.85);"
         )
         top_bar.addWidget(numbers_btn)
+
     else:
         # BOT & COMBAT TABS: Full action toolbar
         import_tooltip = ctx.tl('import_playstyle') if is_combat else ctx.tl('import_bot')
@@ -1047,7 +1068,8 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
     find_input.setStyleSheet("padding: 3px 6px; border-radius: 4px;")
 
     match_count_label = QLabel("0 of 0")
-    match_count_label.setStyleSheet("color: rgba(180, 180, 180, 0.85); font-size: 11px; min-width: 55px; background: transparent; border: none;")
+    match_count_label.setStyleSheet("color: rgba(180, 180, 180, 0.9); font-size: 13px; min-width: 68px; background: transparent; border: none;")
+    match_count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
     find_prev_btn = QPushButton()
     find_prev_svg = ctx.svgs.get('arrow_up', f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{getattr(ctx, "stroke_color", "#61afef")}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>')
@@ -1231,23 +1253,33 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
         if not query:
             return
         doc = big_editor.document()
-        cursor = QTextCursor(doc)
-        cursor.beginEditBlock()
+        # Use a dedicated guard cursor for the edit block so the find cursor
+        # can be freely reassigned without ever orphaning beginEditBlock().
+        # (Calling endEditBlock() on a null cursor is a no-op in Qt, which
+        # would leave the document locked inside an unclosed edit block.)
+        guard_cursor = QTextCursor(doc)
+        guard_cursor.beginEditBlock()
         replaced = False
-        while True:
-            cursor = doc.find(query, cursor)
-            if cursor.isNull():
-                break
-            cursor.insertText(replacement)
-            replaced = True
-        cursor.endEditBlock()
+        last_valid_cursor = None
+        try:
+            find_cursor = QTextCursor(doc)
+            while True:
+                find_cursor = doc.find(query, find_cursor)
+                if find_cursor.isNull():
+                    break
+                find_cursor.insertText(replacement)
+                last_valid_cursor = QTextCursor(find_cursor)
+                replaced = True
+        finally:
+            guard_cursor.endEditBlock()
         if replaced:
-            # Force immediate viewport repaint and layout refresh on both editors
-            big_editor.setTextCursor(cursor)
+            if last_valid_cursor and not last_valid_cursor.isNull():
+                big_editor.setTextCursor(last_valid_cursor)
             big_editor.viewport().update()
             if hasattr(parent_editor, 'viewport'):
                 parent_editor.viewport().update()
         update_match_label()
+
 
     def on_find_input_key(event):
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
