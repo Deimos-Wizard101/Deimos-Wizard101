@@ -329,9 +329,11 @@ class MemoryObject(MemoryReader):
             offset: int,
             object_size: int,
             object_type: type,
+            *,
+            end_offset: int = 16,
     ):
         start = await self.read_value_from_offset(offset, Primitive.uint64)
-        end = await self.read_value_from_offset(offset + 16, Primitive.uint64)
+        end = await self.read_value_from_offset(offset + end_offset, Primitive.uint64)
 
         total_size = (end - start) // object_size
 

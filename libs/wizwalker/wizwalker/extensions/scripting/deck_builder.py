@@ -276,8 +276,24 @@ class DeckBuilder:
         if self._on_deck_page:
             await self.switch_card_type_window()
 
+    async def _get_spell_list_window(self):
+        self._deck_config_window = await _maybe_get_named_window(self.client.root_window, "DeckConfiguration")
+        name = "AllPageSpellList" if self._on_deck_page else "SpellTreasureList"
+        window = await _maybe_get_named_window(self._deck_config_window, name)
+        if self._on_deck_page and not await window.is_visible():
+            cards_all = await _maybe_get_named_window(self._deck_config_window, "Cards_All")
+            async with self.client.mouse_handler:
+                await self.client.mouse_handler.click_window(cards_all)
+            for _ in range(10):
+                if await window.is_visible():
+                    break
+                await asyncio.sleep(0.1)
+        if not await window.is_visible():
+            raise ValueError(f"Spell list {name} is not visible")
+        return window
+
     async def get_spell_list(self) -> list[SpellListControlSpellEntry]:
-        spell_list_window = await _maybe_get_named_window(self._deck_config_window, "SpellList")
+        spell_list_window = await self._get_spell_list_window()
         spell_list_control = DynamicSpellListControl(self.client.hook_handler, await spell_list_window.read_base_address())
         list_of_spell_entries = await spell_list_control.spell_entries()
         list_of_valid_spell_entries = []
@@ -433,50 +449,12 @@ class DeckBuilder:
         return list_of_valid_item_spell_entries
 
     async def get_item_card_count(self):
-        spell_slot_rect = await self.get_item_spells_rectangle()
-        spell_slots = self.divide_rectangle(spell_slot_rect, 8, 2)
-        min = 0
-        max = 16
-        idx = int(max/2)
-        ever_found = False
-        async with self.client.mouse_handler:
-            while True:
-                found = False
-                await self.client.mouse_handler.set_mouse_position(*spell_slots[idx].center())
-                world_view = await self.client.get_world_view_window()
-                world_view_children = await world_view.children()
-                for graphical_spell_window in world_view_children:
-                    name = await graphical_spell_window.maybe_read_type_name()
-                    if name == 'GraphicalSpellWindow':
-                        found = ever_found = True
-                        await asyncio.sleep(.05)
-                if max-min <= 1:
-                    if idx == 0 and not ever_found:
-                        return 0
-                    return idx+1
-                if found:
-                    min = idx
-                else:
-                    max = idx
-                idx = int((max-min)/2+min)
+        window = await _maybe_get_named_window(self.client.root_window, "ItemSpells")
+        control = DynamicDeckListControl(self.client.hook_handler, await window.read_base_address())
+        return len(await control.spell_entries())
 
     async def get_active_item_card_list(self) -> list[DeckListControlSpellEntry]:
-        list_of_active_item_cards = []
-        every_item_card = (await self.get_item_card_list())
-        item_spells_rect = await self.get_item_spells_rectangle()
-        divided_item_spells_rect = self.divide_rectangle(
-            item_spells_rect, columns=8, rows=2)
-        item_card_window: Window = await _maybe_get_named_window(self.client.root_window, "ItemSpells")
-        sprites = await item_card_window.children()
-        positions: list[Rectangle] = []
-        for sprite in sprites:
-            rect = await sprite.scale_to_client()
-            positions.append(rect)
-        for index, card in enumerate(divided_item_spells_rect):
-            for pos in positions:
-                if abs(pos.x1 - card.x1) < 15 and abs(pos.y1 - card.y1) < 15:
-                    list_of_active_item_cards.append(every_item_card[index])
-        return [item for item in every_item_card if item not in list_of_active_item_cards]
+        return [card for card in await self.get_item_card_list() if not await card.disabled()]
 
     async def get_graphical_spell_cards(self) -> list[DynamicGraphicalSpell]:
         # We use this to get a list of DynamicGraphicalSpell which we then pull the names from later on
@@ -528,8 +506,10 @@ class DeckBuilder:
                 if is_active:
                     cards.append(idx)
             for card in cards:
+                await self.set_item_page(card // 16)
                 async with self.client.mouse_handler:
-                    await self.client.mouse_handler.click(*divided_item_spells_rect[card].center())
+                    await self.client.mouse_handler.click(*divided_item_spells_rect[card % 16].center())
+                await asyncio.sleep(0.1)
 
     async def clear_deck(self) -> None:
         await self.view_deck_cards()
@@ -631,15 +611,44 @@ class DeckBuilder:
         return await self._pred_match_template_name(deck_list_get_cards_with_predicate, template_name)
 
     async def set_page(self, page_number: int):
-        # Write memory address value to update the card page
-        spell_list_window = await _maybe_get_named_window(self._deck_config_window, "SpellList")
-        spell_list_control = DynamicSpellListControl(self.client.hook_handler, await spell_list_window.read_base_address())
-        await spell_list_control.write_start_index(page_number*6)
+        window = await self._get_spell_list_window()
+        control = DynamicSpellListControl(self.client.hook_handler, await window.read_base_address())
+        await self._set_card_page(control, page_number, 6, "PageUp", "PageDown")
+
+    async def set_item_page(self, page_number: int):
+        window = await _maybe_get_named_window(self.client.root_window, "ItemSpells")
+        control = DynamicDeckListControl(self.client.hook_handler, await window.read_base_address())
+        await self._set_card_page(control, page_number, 16, "PrevItemSpells", "NextItemSpells")
+
+    async def _set_card_page(self, control, page_number: int, page_size: int, previous: str, next_page: str):
+        count = len(await control.spell_entries())
+        if page_number < 0 or page_number >= max(1, math.ceil(count / page_size)):
+            raise ValueError("Card page is out of range")
+        target = page_number * page_size
+        current = await control.start_index()
+        if current < 0 or current % page_size or current >= max(page_size, count):
+            raise ValueError("Invalid card page start index")
+        page = await _maybe_get_named_window(self._deck_config_window, "DeckPage")
+        while current != target:
+            forward = current < target
+            button = await _maybe_get_named_window(page, next_page if forward else previous)
+            if not await button.is_visible():
+                raise ValueError("Card page button is not visible")
+            expected = current + (page_size if forward else -page_size)
+            async with self.client.mouse_handler:
+                await self.client.mouse_handler.click_window(button)
+            for _ in range(10):
+                await asyncio.sleep(0.1)
+                current = await control.start_index()
+                if current == expected:
+                    break
+            if current != expected:
+                raise ValueError("Card page did not change as expected")
 
     async def get_spell_list_rectangle(self) -> Rectangle:
         # Returns the size of the window as a rectangle so we can subdivide it later
         self._deck_config_window = await _maybe_get_named_window(self.client.root_window, "DeckConfiguration")
-        self.spell_list = await _maybe_get_named_window(self._deck_config_window, "SpellList")
+        self.spell_list = await self._get_spell_list_window()
         self.spell_list_scaled = await self.spell_list.scale_to_client()
         return self.spell_list_scaled
 
@@ -799,73 +808,31 @@ class DeckBuilder:
             # iter_count+=1
 
     async def add_item_by_name(self, name: str, number_of_copies: int, active_item_cards: list[DeckListControlSpellEntry], item_cards: list[DeckListControlSpellEntry], sleep):
-        """
-        builder.add_card_by_name("unicorn", number_of_copies: int | None)
-        -> number_of_copies = None: add max copies
-        -> raises: ValueError(already at max copies)
-        -> raises: ValueError(card not found)
-        """
         item_spells_rect = await self.get_item_spells_rectangle()
-        divided_item_spells_rect = self.divide_rectangle(
-            item_spells_rect, columns=8, rows=2)
-        cards = []
-        for idx, item in list(enumerate(item_cards))[::-1]:
-            graphical = await item.graphical_spell()
-            if (not graphical):
-                continue
-            template = await graphical.spell_template()
-            if (not template):
-                continue
-            try:
-                template_name = await template.name()
-            except MemoryReadError:
-                return
-            if template_name == name:
-                cards.append((item, idx))
-        inactive_cards = []
+        divided_item_spells_rect = self.divide_rectangle(item_spells_rect, columns=8, rows=2)
         active_cards = []
-        for item in cards:
-            graphical = await item[0].graphical_spell()
-            if (not graphical):
+        inactive_cards = []
+        for index, item in enumerate(item_cards):
+            graphical = await item.graphical_spell()
+            if not graphical:
                 continue
             template = await graphical.spell_template()
-            if (not template):
+            if not template or await template.name() != name:
                 continue
-            try:
-                template_name = await template.name()
-            except MemoryReadError:
-                return
-            found = False
-            for card in active_item_cards:
-                graphical = await card.graphical_spell()
-                if (not graphical):
-                    continue
-                template = await graphical.spell_template()
-                if (not template):
-                    continue
-                card_template_name = await template.name()
-                if template_name == card_template_name:
-                    found = True
-                    active_cards.append(item)
-                    break
-
-            if not found:
-                inactive_cards.append(item)
-
-        if len(active_cards) > number_of_copies:
-            if len(active_item_cards)-number_of_copies > len(active_cards):
-                return
-            for index in range(len(active_cards)-number_of_copies):
-                async with self.client.mouse_handler:
-                    await self.client.mouse_handler.click(*divided_item_spells_rect[active_cards[index][1]].center())
-                    await asyncio.sleep(sleep)
-        elif len(active_cards) < number_of_copies:
-            if number_of_copies-len(active_item_cards) > len(inactive_cards):
-                return
-            for index in range(number_of_copies-len(active_cards)):
-                async with self.client.mouse_handler:
-                    await self.client.mouse_handler.click(*divided_item_spells_rect[inactive_cards[index][1]].center())
-                    await asyncio.sleep(sleep)
+            # Copies of the same spell can have different enabled states.
+            if await item.disabled():
+                inactive_cards.append(index)
+            else:
+                active_cards.append(index)
+        if number_of_copies < 0 or number_of_copies > len(active_cards) + len(inactive_cards):
+            raise ValueError(f"Not enough item cards for {name}")
+        difference = number_of_copies - len(active_cards)
+        cards = inactive_cards[:difference] if difference > 0 else active_cards[:-difference]
+        for index in cards:
+            await self.set_item_page(index // 16)
+            async with self.client.mouse_handler:
+                await self.client.mouse_handler.click(*divided_item_spells_rect[index % 16].center())
+            await asyncio.sleep(max(sleep, 0.1))
 
     async def _add_from_spell_list(self, name: str, number_of_copies: int):
         """Add a card by clicking it in the main SpellList."""
@@ -883,6 +850,7 @@ class DeckBuilder:
         async with self.client.mouse_handler:
             for _ in range(number_of_copies):
                 await self.client.mouse_handler.click(*card_position_on_page)
+                await asyncio.sleep(0.1)
 
     async def _add_from_tiered_spell_list(self, name: str, number_of_copies: int):
         """Add a tiered spell variant by clicking the base spell to open the
@@ -975,14 +943,22 @@ class DeckBuilder:
         else:
             card = cards[0]
 
-            if number_of_copies is None:
-                number_of_copies = (await card.max_copies()) - (await card.current_copies())
+            if not self._on_deck_page:
+                # For treasure cards, current_copies is unequipped inventory.
+                available = await card.current_copies()
+                if number_of_copies is None:
+                    number_of_copies = available
+                if number_of_copies > available:
+                    raise ValueError(f"Not enough treasure cards for {name}")
+            else:
+                if number_of_copies is None:
+                    number_of_copies = (await card.max_copies()) - (await card.current_copies())
 
-            if await card.max_copies() == await card.current_copies():
-                raise ValueError(f"already at max copies for {name}")
-            elif await card.max_copies() < (await card.current_copies()) + (number_of_copies):
-                raise ValueError(
-                    f"number of copies is greater than the card allows")
+                if await card.max_copies() == await card.current_copies():
+                    raise ValueError(f"already at max copies for {name}")
+                elif await card.max_copies() < (await card.current_copies()) + (number_of_copies):
+                    raise ValueError(
+                        f"number of copies is greater than the card allows")
 
             await self._add_from_spell_list(name, number_of_copies)
 
@@ -1056,8 +1032,7 @@ class DeckBuilder:
         normal_cards = await self.parse_deck_cards()
         await self.view_deck_cards()
         item_cards_spell_list = await self.get_active_item_card_list()
-        await self.view_tc_cards()
-        tc_cards = await self.parse_deck_cards(True)
+        # Resolve item names before changing views, which can replace their objects.
         for card in item_cards_spell_list:
             graphical = await card.graphical_spell()
             if (not graphical):
@@ -1067,6 +1042,8 @@ class DeckBuilder:
                 continue
             card_name = await template.name()
             item_cards.append(card_name)
+        await self.view_tc_cards()
+        tc_cards = await self.parse_deck_cards(True)
         deck = {
             'normal': dict_maker(normal_cards),
             'item': dict_maker(item_cards),

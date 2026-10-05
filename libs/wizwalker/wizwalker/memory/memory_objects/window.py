@@ -388,6 +388,9 @@ class DeckListControlSpellEntry(DynamicMemoryObject):
     async def valid_graphical_spell(self) -> int:
         return await self.read_value_from_offset(0x10, Primitive.int32)
 
+    async def disabled(self) -> bool:
+        return await self.read_value_from_offset(0x15, Primitive.bool)
+
 
 class SpellListControlSpellEntry(DynamicMemoryObject):
     async def graphical_spell(self) -> Optional[DynamicGraphicalSpell]:
@@ -438,7 +441,11 @@ class DeckListControl(Window):
         raise NotImplementedError()
 
     async def spell_entries(self) -> List[DeckListControlSpellEntry]:
-        return await self.read_inlined_vector(0x280, 0x28, DeckListControlSpellEntry)
+        # +8 is the populated end; +16 is the allocation capacity.
+        return await self.read_inlined_vector(0x300, 0x28, DeckListControlSpellEntry, end_offset=8)
+
+    async def start_index(self) -> int:
+        return await self.read_value_from_offset(0x320, Primitive.uint32)
 
     async def card_size_horizontal(self) -> int:
         return await self.read_value_from_offset(0x2A4, Primitive.uint32)
@@ -458,7 +465,7 @@ class SpellListControl(Window):
         raise NotImplementedError()
 
     async def spell_entries(self) -> List[SpellListControlSpellEntry]:
-        return await self.read_inlined_vector(0x280, 0xA8, SpellListControlSpellEntry)
+        return await self.read_inlined_vector(0x300, 0x78, SpellListControlSpellEntry, end_offset=8)
 
     async def card_size_horizontal(self) -> int:
         return await self.read_value_from_offset(0x30C, Primitive.uint32)
@@ -467,10 +474,10 @@ class SpellListControl(Window):
         return await self.read_value_from_offset(0x310, Primitive.uint32)
 
     async def start_index(self) -> int:
-        return await self.read_value_from_offset(0x308, Primitive.uint32)
+        return await self.read_value_from_offset(0x388, Primitive.uint32)
 
     async def write_start_index(self, start_index: int):
-        return await self.write_value_to_offset(0x308, start_index, Primitive.uint32)
+        return await self.write_value_to_offset(0x388, start_index, Primitive.uint32)
 
 
 class DynamicWindow(DynamicMemoryObject, Window):
