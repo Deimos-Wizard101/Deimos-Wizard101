@@ -992,12 +992,12 @@ class PyQtSink:
             level = split_msg[1].lstrip().rstrip()
 
         def collapse_log(input: str) -> str:
-            if "-" not in input:
-                return input
-            split_input = input.split("-")
-            if len(split_input) < 4:
-                return input
-            return split_input[3].lstrip()
+            # lines are "time | LEVEL | module:function:line - message", keep the whole message.
+            # splitting on every "-" cut it off at the first negative number (coordinates)
+            parts = input.split(" | ", 2)
+            rest = parts[2] if len(parts) == 3 else input
+            _, sep, message = rest.partition(" - ")
+            return message.lstrip() if sep else input
 
         truncated_message = level + " - " + collapse_log(clean_message)
 
