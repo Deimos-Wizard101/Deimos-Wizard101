@@ -111,12 +111,12 @@ kill_flythrough=停止飞行路径
 import_bot=导入脚本
 export_bot=导出脚本
 run_bot=运行脚本
-kill_bot=????
-expand=??
-expand_bot=????
-expand_combat=????
-bot_editor_title=?????
-combat_editor_title=?????
+kill_bot=停止脚本
+expand=展开
+expand_bot=展开脚本
+expand_combat=展开战斗
+bot_editor_title=脚本编辑器
+combat_editor_title=战斗编辑器
 search_bots=搜索可用脚本
 bot_search_title=可用脚本
 bot_search_searching=正在搜索可用脚本...
@@ -160,8 +160,8 @@ select_pet_world=选择宠物世界：
 
 # 控制台
 console_support=请求帮助时请附带日志。
-collapse_expand_logs=????
-console_editor_title=?????
+collapse_expand_logs=展开日志
+console_editor_title=控制台日志
 copy_logs=复制日志
 
 # 工具提示
