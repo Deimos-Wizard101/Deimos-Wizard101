@@ -2,7 +2,7 @@ from typing import Optional
 from enum import Enum, auto
 from copy import deepcopy
 
-from .tokenizer import Tokenizer, Token
+from .tokenizer import Tokenizer, Token, normalize_ident
 from .parser import *
 from .types import *
 
@@ -84,8 +84,10 @@ class Analyzer:
         self.scope = Scope(parent=None, is_block=False)
         self._next_sym_id = 0
         self._block_defs: list[BlockDefStmt] = []
+        self._config_decl: ConfigDeclStmt | None = None
         self._stmts = stmts
         self._mixin_cache: dict[int, Symbol] = {} # {(block_sym, [mixed_syms]): mixed_block}
+        self._saw_config = False # only one config block per script allowed
 
         self._block_nesting_level = 0
         self._loop_nesting_level = 0
@@ -143,7 +145,75 @@ class Analyzer:
         return StmtList(res)
 
     def sem_expr(self, expr: Expression) -> Expression:
-        return expr # TODO
+        match expr:
+            case DotExpression():
+                expr.target = self.sem_expr(expr.target)
+                if not isinstance(expr.target, IdentExpression) or normalize_ident(expr.target.ident) != "config":
+                    raise SemError("Dot expressions are restricted to config values")
+                if self._config_decl is None:
+                    raise SemError("Config access requires a config section")
+                if expr.field not in self._config_decl.field_map():
+                    raise SemError(f"Unknown config field: {expr.field}")
+                return expr
+            case UnaryExpression():
+                expr.expr = self.sem_expr(expr.expr)
+                return expr
+            case BinaryExpression():
+                expr.lhs = self.sem_expr(expr.lhs)
+                expr.rhs = self.sem_expr(expr.rhs)
+                return expr
+            case AndExpression() | OrExpression():
+                expr.expressions = [self.sem_expr(inner) for inner in expr.expressions]
+                return expr
+            case ListExpression():
+                expr.items = [self.sem_expr(item) for item in expr.items]
+                return expr
+            case SelectorGroup():
+                expr.expr = self.sem_expr(expr.expr)
+                return expr
+            case CommandExpression():
+                self.sem_command(expr.command)
+                return expr
+            case XYZExpression():
+                expr.x = self.sem_expr(expr.x)
+                expr.y = self.sem_expr(expr.y)
+                expr.z = self.sem_expr(expr.z)
+                return expr
+            case IndexAccessExpression():
+                expr.expr = self.sem_expr(expr.expr)
+                expr.index = self.sem_expr(expr.index)
+                return expr
+            case ConstantExpression():
+                expr.value = self.sem_expr(expr.value)
+                return expr
+            case ConstantCheckExpression():
+                expr.value = self.sem_expr(expr.value)
+                return expr
+            case StrFormatExpression():
+                expr.values = tuple(self.sem_expr(v) if isinstance(v, Expression) else v for v in expr.values)
+                return expr
+            case RangeMinExpression() | RangeMaxExpression():
+                expr.range_expr = self.sem_expr(expr.range_expr)
+                return expr
+            case Eval():
+                expr.args = [self.sem_expr(arg) if isinstance(arg, Expression) else arg for arg in expr.args]
+                return expr
+            case ReadVarExpr():
+                expr.loc = self.sem_expr(expr.loc)
+                return expr
+            case _:
+                return expr
+
+    def _sem_nested(self, value):
+        if isinstance(value, Expression):
+            return self.sem_expr(value)
+        if isinstance(value, list):
+            return [self._sem_nested(item) for item in value]
+        return value
+
+    def sem_command(self, com: Command) -> Command:
+        com.data = self._sem_nested(com.data)
+        return com
 
     def mix_block(self, stmt: BlockDefStmt, source_sym: Symbol) -> BlockDefStmt:
         def _mix_stmt(stmt: Stmt, mixins: set[str]):
@@ -197,17 +267,84 @@ class Analyzer:
         _mix_stmt(stmt.body, stmt.mixins)
         stmt.mixins = set()
         return stmt
-    
+
     def lookup_constant(self, name: str) -> Expression | None:
         for stmt in self._stmts:
             if isinstance(stmt, ConstantDeclStmt) and stmt.name == name:
                 return stmt.value
-                
+
         # Not found
         return None
 
+    def sem_config(self, stmt: ConfigDeclStmt) -> ConfigDeclStmt:
+        if self.scope.is_block:
+            raise SemError(f"Config is only allowed at the top level.")
+        if self._saw_config:
+            raise SemError(f"Only one config section per bot allowed.")
+        self._saw_config = True
+        seen_fields = set()
+        for name, val in stmt.fields:
+            if name in seen_fields:
+                raise SemError(f"Config fields may only be declared once: {name}")
+            seen_fields.add(name)
+            match val.kind:
+                case ConfigFieldKind.checkbox:
+                    if val.info is not None:
+                        raise SemError(f"Checkboxes may not carry {val.info.__class__}")
+                    if val.default is not None:
+                        err = not isinstance(val.default, ConstantExpression) or not isinstance(val.default.value, StringExpression)
+                        if not err:
+                            val.default = val.default.value.string
+                            if val.default not in ["true", "false"]:
+                                err = True
+                        if err:
+                            raise SemError(f"Checkboxes may only have boolean defaults")
+                        val.default = {"true": True, "false": False}[val.default]
+                    else:
+                        val.default = False
+                case ConfigFieldKind.selection:
+                    if val.info is None or not isinstance(val.info, ConfigFieldSelectionInfo):
+                        raise SemError(f"Selections require options = [...]")
+                    if len(val.info.options) == 0:
+                        raise SemError(f"Selection options must not be empty")
+                    if val.default is None:
+                        raise SemError(f"Selections require a default value")
+                    if not isinstance(val.default, StringExpression):
+                        raise SemError(f"Selection default must be a string")
+                    val.default = val.default.string
+                    if val.default not in val.info.options:
+                        raise SemError(f"Selection default was not found in {val.info.options}")
+                case ConfigFieldKind.textbox:
+                    if val.info is not None:
+                        raise SemError(f"Textboxes may not carry {val.info.__class__}")
+                    if val.default is None:
+                        val.default = ""
+                    else:
+                        if not isinstance(val.default, StringExpression):
+                            raise SemError(f"Textbox default must be string")
+                        val.default = val.default.string
+                case ConfigFieldKind.numbox:
+                    if val.info is None or not isinstance(val.info, ConfigFieldNumboxInfo):
+                        raise SemError(f"Numboxes require range = [<lo>;<hi>]")
+                    if val.default is None:
+                        raise SemError(f"Numboxes require a default value")
+                    if not isinstance(val.default, NumberExpression):
+                        raise SemError(f"Numbox default must be a number")
+                    val.default = val.default.number
+                    if not val.default.is_integer():
+                        raise SemError(f"Numbox default must be an integer")
+                    val.default = int(val.default)
+                    if val.default < val.info.range.lo or val.default > val.info.range.hi:
+                        raise SemError(f"Numbox default {val.default} was not in {val.info.range}")
+                case _:
+                    raise SemError(f"Unknown config field kind: {val.kind}")
+        return stmt
+
     def sem_stmt(self, stmt: Stmt) -> Stmt:
         match stmt:
+            case ConfigDeclStmt():
+                self._config_decl = self.sem_config(stmt)
+                return None
             case TimerStmt():
                 return stmt
             case ConstantDeclStmt():
@@ -271,10 +408,12 @@ class Analyzer:
                 if isinstance(stmt.command, ParallelCommandStmt):
                     for cmd in stmt.command.commands:
                         self.scope._unique_player_selectors.add(cmd.player_selector)
+                        self.sem_command(cmd)
                     return stmt
                 else:
                     # Original code for single commands
                     self.scope._unique_player_selectors.add(stmt.command.player_selector)
+                    self.sem_command(stmt.command)
                     return stmt
             case IfStmt():
                 stmt.expr = self.sem_expr(stmt.expr)
@@ -344,7 +483,10 @@ class Analyzer:
                 if self._loop_nesting_level <= 0:
                     raise SemError(f"Break used outside of loop scope")
                 return stmt
-            case DefVarStmt() | WriteVarStmt() | KillVarStmt():
+            case WriteVarStmt():
+                stmt.expr = self.sem_expr(stmt.expr)
+                return stmt
+            case DefVarStmt() | KillVarStmt():
                 return stmt
             case MixinStmt():
                 if not self.scope.is_block:
@@ -356,8 +498,15 @@ class Analyzer:
         raise SemError(f"Statement fell through: {stmt}")
 
     def analyze_program(self):
-        res = []
+        leftover = []
         for stmt in self._stmts:
+            if isinstance(stmt, ConfigDeclStmt):
+                self._config_decl = self.sem_config(stmt)
+            else:
+                leftover.append(stmt)
+        self._stmts = leftover
+        res = []
+        for stmt in leftover:
             if semmed := self.sem_stmt(stmt):
                 res.append(semmed)
         self._stmts = res
@@ -366,7 +515,7 @@ class Analyzer:
 if __name__ == "__main__":
     from pathlib import Path
 
-    toks = Tokenizer().tokenize(Path("./testbot.txt").read_text())
+    toks = Tokenizer().tokenize(Path("./deimoslang/testbot.txt").read_text())
     parser = Parser(toks)
     parsed = (parser.parse())
 

@@ -80,11 +80,16 @@ class StackInfo:
     def loc(self, sym: Symbol) -> int:
         return self.slots[sym] - self.offset
 
+class Program:
+    def __init__(self, instructions: list[Instruction], config_decl: ConfigDeclStmt | None = None):
+        self.instructions = instructions
+        self.config_decl = config_decl
+
 
 class Compiler:
     def __init__(self, analyzer: Analyzer):
         self.analyzer = analyzer
-        self._program: list[Instruction] = []
+        self._instructions: list[Instruction] = []
 
         self._stacks = [StackInfo()]
 
@@ -100,6 +105,10 @@ class Compiler:
         analyzer = Analyzer(parser.parse())
         analyzer.analyze_program()
         return Compiler(analyzer=analyzer)
+
+    @staticmethod
+    def config_decl_from_text(code: str) -> ConfigDeclStmt | None:
+        return Compiler.from_text(code).analyzer._config_decl
 
     # a branch may clean up variables that must continue to exist in the next segment
     def enter_branch(self):
@@ -119,13 +128,20 @@ class Compiler:
         raise CompilerError(f"Failed to determine the stack location for symbol {sym}")
 
     def emit(self, kind: InstructionKind, data: Any | None = None):
-        self._program.append(Instruction(kind, data))
+        self._instructions.append(Instruction(kind, data))
 
     def gen_label(self, name="anonymous") -> Symbol:
         return self.analyzer.gen_label_sym(name)
 
     def emit_deimos_call(self, com: Command):
         self.emit(InstructionKind.deimos_call, [com.player_selector, com.kind.name, com.data])
+
+    def prep_value(self, value):
+        if isinstance(value, Expression):
+            self.prep_expression(value)
+        elif isinstance(value, list):
+            for item in value:
+                self.prep_value(item)
 
     def compile_command(self, com: Command):
         if isinstance(com, ParallelCommandStmt):
@@ -134,7 +150,9 @@ class Compiler:
                     self.compile_command(cmd)
                 return
 
-        match com.kind: 
+        self.prep_value(com.data)
+
+        match com.kind:
             case CommandKind.restart_bot:
                 self.emit(InstructionKind.restart_bot)
             case CommandKind.toggle_combat:
@@ -199,23 +217,23 @@ class Compiler:
                 raise CompilerError(f"Unimplemented command: {com}")
 
     def process_labels(self, program: list[Instruction]):
-        new_program: list[Instruction] = []
+        new_instructions: list[Instruction] = []
         offsets = {}
-    
+
         # discover labels
         for idx, instr in enumerate(program):
             match instr.kind:
                 case InstructionKind.label:
                     sym = instr.data
-                    offsets[sym] = len(new_program)
+                    offsets[sym] = len(new_instructions)
                     if idx + 1 == len(program):
                         # special case, jumping to the end may need padding
-                        new_program.append(Instruction(InstructionKind.nop))
+                        new_instructions.append(Instruction(InstructionKind.nop))
                 case _:
-                    new_program.append(instr)
-    
-        program = new_program
-    
+                    new_instructions.append(instr)
+
+        program = new_instructions
+
         # resolve labels
         for idx, instr in enumerate(program):
             match instr.kind:
@@ -235,7 +253,7 @@ class Compiler:
                     instr.data[2] = offset - idx
                 case _:
                     pass
-    
+
         return program
 
     def compile_block_def(self, block_def: BlockDefStmt):
@@ -296,7 +314,7 @@ class Compiler:
             case IndexAccessExpression():
                 self.prep_expression(expr.expr)
                 self.prep_expression(expr.index)
-            case ConstantExpression() |NumberExpression() | StringExpression() | KeyExpression() | CommandExpression() | XYZExpression() | IdentExpression() | StackLocExpression() | Eval():
+            case ConstantExpression() | NumberExpression() | StringExpression() | KeyExpression() | CommandExpression() | XYZExpression() | IdentExpression() | StackLocExpression() | Eval() | DotExpression() | ConstantReferenceExpression():
                 pass
             case _:
                 raise CompilerError(f"Unhandled expression type: {expr}")
@@ -372,6 +390,7 @@ class Compiler:
             case ParallelCommandStmt():
                 command_entries = []
                 for command in stmt.commands:
+                    self.prep_value(command.data)
                     command_entries.append([command.player_selector, command.kind.name, command.data])
                 self.emit(InstructionKind.compound_deimos_call, command_entries)
             case TimerStmt():
@@ -413,7 +432,7 @@ class Compiler:
             case _:
                 raise CompilerError(f"Unknown statement: {stmt}\n{type(stmt)}")
 
-    def compile(self):
+    def compile(self) -> Program:
         toplevel_start_label = self.gen_label("program_start")
         self.emit(InstructionKind.jump, toplevel_start_label)
         for stmt in self.analyzer._block_defs:
@@ -422,13 +441,18 @@ class Compiler:
 
         for stmt in self.analyzer._stmts:
             self._compile(stmt)
-        return self.process_labels(self._program)
+        self._instructions = self.process_labels(self._instructions)
+        return Program(
+            instructions=self._instructions,
+            config_decl=self.analyzer._config_decl,
+        )
 
 
 if __name__ == "__main__":
     from pathlib import Path
-    compiler = Compiler.from_text(Path("./testbot.txt").read_text())
+    compiler = Compiler.from_text(Path("./deimoslang/testbot.txt").read_text())
     prog = compiler.compile()
-    for i in prog:
+    print(prog.config_decl)
+    for i in prog.instructions:
         print(i)
     #print(prog)
