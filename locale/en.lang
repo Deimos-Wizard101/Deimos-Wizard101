@@ -112,11 +112,8 @@ import_bot=Import Bot
 export_bot=Export Bot
 run_bot=Run Bot
 kill_bot=Kill Bot
-expand=Expand
 expand_bot=Expand Bot
-expand_combat=Expand Combat
 bot_editor_title=Bot Editor
-combat_editor_title=Combat Editor
 search_bots=Search Compatible Bots
 bot_search_title=Compatible Bots
 bot_search_searching=Searching for compatible bots...
@@ -147,11 +144,15 @@ bot_publish_done=Opened in browser
 bot_publish_bad_clients=Clients must be a comparison like '== 4', '>= 1', or left blank.
 bot_publish_opened=Opened GitHub in your browser. Review and propose the file to finish.
 bot_publish_opened_clipboard=Bot is too large to prefill. It was copied to your clipboard — paste it into the GitHub editor.
+validate_syntax=Validate Syntax
+dismiss=Dismiss
 
 # Combat
 import_playstyle=Import Playstyle
 export_playstyle=Export Playstyle
 set_playstyles=Set Playstyles
+expand_combat=Expand Combat
+combat_editor_title=Combat Editor
 
 # Misc
 scale=Scale
@@ -160,7 +161,8 @@ select_pet_world=Select a pet world:
 
 # Console
 console_support=Be sure to include your logs when asking for support.
-collapse_expand_logs=Expand Logs
+expand_logs=Expand Logs
+toggle_logs=Collapse / Expand Logs
 console_editor_title=Console Logs
 copy_logs=Copy Logs
 
@@ -302,6 +304,15 @@ navigation=Navigation
 cat_other=Other
 fetch_player_gid=Fetch player GID
 copy_text=Copy text: {0}
+expand=Expand
+toggle_line_numbers=Toggle Line Numbers
+find_hint=Find text...
+find_prev=Previous Match (Shift+Enter)
+find_next=Next Match (Enter)
+find_close=Close Find (Esc)
+replace_hint=Replace with...
+replace=Replace
+replace_all=Replace All
 
 # Popups
 ui_tree=UI Tree

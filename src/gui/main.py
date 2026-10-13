@@ -378,7 +378,7 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
     toggle_expand_btn.setIcon(_titlebar_svg_icon(svgs['expand'], 32))
     toggle_expand_btn.setFixedSize(40, 40)
     toggle_expand_btn.setStyleSheet(icon_btn_style)
-    toggle_expand_btn.setToolTip(tl('collapse_expand_logs'))
+    toggle_expand_btn.setToolTip(tl('expand_logs'))
     toggle_expand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     # Track with current SVG for restyle (expand is default state)
     ctx.tracked_icon_buttons.append((toggle_expand_btn, svgs['expand'], 32))

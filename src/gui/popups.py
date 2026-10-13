@@ -1052,7 +1052,7 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
             toggle_logs_popup_btn.setIcon(ctx.titlebar_svg_icon(_initial_icon_svg, 22))
             toggle_logs_popup_btn.setFixedSize(30, 30)
             toggle_logs_popup_btn.setStyleSheet(ctx.icon_btn_style)
-            toggle_logs_popup_btn.setToolTip("Collapse / Expand Logs")
+            toggle_logs_popup_btn.setToolTip(ctx.tl('toggle_logs'))
             toggle_logs_popup_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             if hasattr(ctx, 'tracked_icon_buttons') and _initial_icon_svg:
                 ctx.tracked_icon_buttons.append((toggle_logs_popup_btn, _initial_icon_svg, 22))
@@ -1072,7 +1072,7 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
 
         numbers_btn = QPushButton("#")
         numbers_btn.setFixedSize(26, 26)
-        numbers_btn.setToolTip("Toggle Line Numbers")
+        numbers_btn.setToolTip(ctx.tl('toggle_line_numbers'))
         numbers_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         numbers_btn.setStyleSheet(
             f"{ctx.icon_btn_style}; font-weight: bold; font-size: 13px; color: rgba(200, 200, 200, 0.85);"
@@ -1183,7 +1183,7 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
 
         numbers_btn = QPushButton("#")
         numbers_btn.setFixedSize(26, 26)
-        numbers_btn.setToolTip("Toggle Line Numbers")
+        numbers_btn.setToolTip(ctx.tl('toggle_line_numbers'))
         numbers_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         numbers_btn.setStyleSheet(
             f"{ctx.icon_btn_style}; font-weight: bold; font-size: 13px; color: rgba(200, 200, 200, 0.85);"
@@ -1193,10 +1193,10 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
         check_btn = None
         if not is_combat:
             check_aid = 'validate_bot_script'
-            check_btn = make_popup_icon_btn('check', "Validate Syntax", lambda: None, check_aid)
+            check_btn = make_popup_icon_btn('check', ctx.tl('validate_syntax'), lambda: None, check_aid)
             if hasattr(ctx, 'registry') and ctx.registry:
                 if check_aid not in ctx.registry.meta:
-                    ctx.registry.register(check_aid, "Validate Syntax", "Bot", lambda: None)
+                    ctx.registry.register(check_aid, ctx.tl('validate_syntax'), 'Bot', lambda: None)
                 ctx.registry.make_bindable(check_btn, check_aid)
             top_bar.addWidget(check_btn)
 
@@ -1227,7 +1227,7 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
     find_row.setSpacing(6)
 
     find_input = QLineEdit()
-    find_input.setPlaceholderText("Find text...")
+    find_input.setPlaceholderText(ctx.tl('find_hint'))
     find_input.setStyleSheet("padding: 3px 6px; border-radius: 4px;")
 
     match_count_label = QLabel("0 of 0")
@@ -1238,7 +1238,7 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
     find_prev_svg = ctx.svgs.get('arrow_up', f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{getattr(ctx, "stroke_color", "#61afef")}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>')
     find_prev_btn.setIcon(ctx.titlebar_svg_icon(find_prev_svg, 14))
     find_prev_btn.setFixedSize(26, 24)
-    find_prev_btn.setToolTip("Previous Match (Shift+Enter)")
+    find_prev_btn.setToolTip(ctx.tl('find_prev'))
     find_prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     find_prev_btn.setStyleSheet(ctx.icon_btn_style)
 
@@ -1246,7 +1246,7 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
     find_next_svg = ctx.svgs.get('arrow_down', f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{getattr(ctx, "stroke_color", "#61afef")}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>')
     find_next_btn.setIcon(ctx.titlebar_svg_icon(find_next_svg, 14))
     find_next_btn.setFixedSize(26, 24)
-    find_next_btn.setToolTip("Next Match (Enter)")
+    find_next_btn.setToolTip(ctx.tl('find_next'))
     find_next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     find_next_btn.setStyleSheet(ctx.icon_btn_style)
 
@@ -1255,7 +1255,7 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
     find_close_btn.setDefault(False)
     find_close_btn.setIcon(ctx.titlebar_svg_icon(ctx.svgs['x'], 14))
     find_close_btn.setFixedSize(26, 24)
-    find_close_btn.setToolTip("Close Find (Esc)")
+    find_close_btn.setToolTip(ctx.tl('find_close'))
     find_close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     find_close_btn.setStyleSheet(ctx.icon_btn_style)
 
@@ -1273,13 +1273,13 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
     replace_row.setSpacing(6)
 
     replace_input = QLineEdit()
-    replace_input.setPlaceholderText("Replace with...")
+    replace_input.setPlaceholderText(ctx.tl('replace_hint'))
     replace_input.setStyleSheet("padding: 3px 6px; border-radius: 4px;")
 
-    replace_one_btn = QPushButton("Replace")
+    replace_one_btn = QPushButton(ctx.tl('replace'))
     replace_one_btn.setStyleSheet(f"{ctx.icon_btn_style}; padding: 0 8px; font-size: 11px; height: 24px;")
 
-    replace_all_btn = QPushButton("Replace All")
+    replace_all_btn = QPushButton(ctx.tl('replace_all'))
     replace_all_btn.setStyleSheet(f"{ctx.icon_btn_style}; padding: 0 8px; font-size: 11px; height: 24px;")
 
     replace_row.addWidget(replace_input, 1)
@@ -1626,7 +1626,7 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
         status_dismiss_btn.setDefault(False)
         status_dismiss_btn.setIcon(ctx.titlebar_svg_icon(ctx.svgs['x'], 14))
         status_dismiss_btn.setFixedSize(26, 24)
-        status_dismiss_btn.setToolTip("Dismiss")
+        status_dismiss_btn.setToolTip(ctx.tl('dismiss'))
         status_dismiss_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         status_dismiss_btn.setStyleSheet(ctx.icon_btn_style)
         status_dismiss_btn.clicked.connect(status_card.hide)
