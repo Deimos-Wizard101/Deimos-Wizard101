@@ -304,7 +304,6 @@ navigation=导航
 cat_other=其他
 fetch_player_gid=获取玩家 GID
 copy_text=复制文本：{0}
-expand=展开
 toggle_line_numbers=切换行号
 find_hint=查找文本...
 find_prev=上一个匹配 (Shift+Enter)

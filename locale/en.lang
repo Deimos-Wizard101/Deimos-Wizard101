@@ -304,7 +304,6 @@ navigation=Navigation
 cat_other=Other
 fetch_player_gid=Fetch player GID
 copy_text=Copy text: {0}
-expand=Expand
 toggle_line_numbers=Toggle Line Numbers
 find_hint=Find text...
 find_prev=Previous Match (Shift+Enter)
