@@ -112,6 +112,8 @@ import_bot=导入脚本
 export_bot=导出脚本
 run_bot=运行脚本
 kill_bot=停止脚本
+expand_bot=展开脚本
+bot_editor_title=脚本编辑器
 search_bots=搜索可用脚本
 bot_search_title=可用脚本
 bot_search_searching=正在搜索可用脚本...
@@ -133,7 +135,8 @@ bot_publish_format=格式
 bot_publish_clients=客户端
 bot_publish_description=描述
 bot_publish_name_hint=脚本的显示名称
-bot_publish_zone_hint=游戏区域路径，例如 WizardCity/WC_Streets/WC_OldeTown
+bot_publish_zone_hint=例如 WizardCity/WC_Ravenwood, Celestia/CL_Hub
+bot_publish_zone_tip=首个区域存储脚本文件；以逗号分隔添加条目以拓展搜索范围。上级区域（如 WizardCity）覆盖其下所有范围。"General" 为全局通用。
 bot_publish_clients_hint=可选，例如 == 4（留空 = 任意客户端数量）
 bot_publish_description_hint=可选。支持 Markdown。
 bot_publish_action=发布
@@ -141,11 +144,15 @@ bot_publish_done=已在浏览器中打开
 bot_publish_bad_clients=客户端必须是比较式，如 '== 4'、'>= 1'，或留空。
 bot_publish_opened=已在浏览器中打开 GitHub。请检查并提交文件以完成发布。
 bot_publish_opened_clipboard=脚本过大无法预填充。已复制到剪贴板——请粘贴到 GitHub 编辑器中。
+validate_syntax=验证语法
+dismiss=关闭
 
 # 战斗
 import_playstyle=导入战斗风格
 export_playstyle=导出战斗风格
 set_playstyles=设置战斗风格
+expand_combat=展开战斗
+combat_editor_title=战斗编辑器
 
 # 杂项
 scale=缩放
@@ -154,7 +161,9 @@ select_pet_world=选择宠物世界：
 
 # 控制台
 console_support=请求帮助时请附带日志。
-collapse_expand_logs=折叠 / 展开日志
+expand_logs=展开日志
+toggle_logs=折叠 / 展开日志
+console_editor_title=控制台日志
 copy_logs=复制日志
 
 # 工具提示
@@ -295,6 +304,14 @@ navigation=导航
 cat_other=其他
 fetch_player_gid=获取玩家 GID
 copy_text=复制文本：{0}
+toggle_line_numbers=切换行号
+find_hint=查找文本...
+find_prev=上一个匹配 (Shift+Enter)
+find_next=下一个匹配 (Enter)
+find_close=关闭查找 (Esc)
+replace_hint=替换为...
+replace=替换
+replace_all=全部替换
 
 # 弹窗
 ui_tree=UI 树
