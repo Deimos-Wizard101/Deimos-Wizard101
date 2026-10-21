@@ -48,6 +48,7 @@ from src.drop_logger import logging_loop
 from src.entity_collision import get_world_display_name, get_zone_display_name
 from src.gui import GUIKeys
 from src.gui_inputs import param_input, trunc
+from src.playstyle_validation import prepare_playstyle_application, format_playstyle_error
 from src.paths import advance_dialog_path, decline_quest_path, play_button_path
 from src.questing import Quester
 from src.settings_manager import DeimosSettings
@@ -1638,6 +1639,11 @@ async def main():
     released_handles: set[int] = set()
     # Handles currently mid-hook (activate_hooks in progress)
     _hooking_in_progress: set[int] = set()
+
+    def _client_ready(client):
+        # A client joins walker.clients before activate_hooks and _init_client_attrs
+        # finish; combat_config is one of the last attributes that init writes.
+        return client.window_handle not in _hooking_in_progress and hasattr(client, "combat_config")
     # Handle -> the in-flight task waiting for that client's hooks to come ready.
     # Each vault-launched client hooks in its OWN task so one still sitting at
     # character select (player_struct not written yet) can't block the detection
@@ -3435,20 +3441,54 @@ async def main():
                                 )
                             )
                         case deimosgui.GUICommandType.SetPlaystyles:
-                            if not walker.clients:
-                                logger.info(
-                                    "This GUI option requires hooks to be active, skipping."
-                                )
-                                continue
-                            combat_configs = delegate_combat_configs(
-                                str(com.data), len(walker.clients)
-                            )
-                            for i, client in enumerate(walker.clients):
-                                client.combat_config = combat_configs.get(
-                                    i, default_config
-                                )
-                            await toggle_combat_hotkey(False)
-                            await toggle_combat_hotkey(False)
+                            request = com.data if isinstance(com.data, dict) else {'source': str(com.data)}
+                            source = request['source']
+                            targets = tuple(walker.clients)
+                            configs, validation = prepare_playstyle_application(source, len(targets), default_config)
+                            result = dict(source=source, request_id=request.get('request_id'),
+                                          applied_clients=0, configs_restored=True, combat_restored=True)
+                            if configs is None:
+                                result.update(state='invalid', message=format_playstyle_error(validation))
+                            elif validation.no_op:
+                                result['state'] = 'no_op'
+                            elif not targets:
+                                result['state'] = 'no_clients'
+                            elif not all(_client_ready(client) for client in targets):
+                                result['state'] = 'hooking'
+                            else:
+                                previous = []
+                                was_running = combat_task is not None and not combat_task.done()
+                                try:
+                                    previous = [(client, client.combat_config) for client in targets]
+                                    for client, config in zip(targets, configs):
+                                        client.combat_config = config
+                                    # Leave stopped combat stopped; refresh a running loop only.
+                                    if was_running and not freecam_status:
+                                        await toggle_combat_hotkey(False)
+                                        await toggle_combat_hotkey(False)
+                                except Exception:
+                                    logger.exception('Could not apply playstyles')
+                                    result['state'] = 'failed'
+                                    for client, config in previous:
+                                        try:
+                                            client.combat_config = config
+                                        except Exception:
+                                            result['configs_restored'] = False
+                                            logger.exception('Could not restore a client playstyle')
+                                    if (was_running and result['configs_restored'] and not freecam_status
+                                            and (combat_task is None or combat_task.done())):
+                                        try:
+                                            await toggle_combat_hotkey(False)
+                                        except Exception:
+                                            logger.exception('Could not restore combat after Apply')
+                                    # Report the loop's actual state, not the attempt: a failed recovery
+                                    # leaves combat stopped (or started) without the user having asked.
+                                    result['combat_restored'] = freecam_status or (
+                                        (combat_task is not None and not combat_task.done()) == was_running)
+                                else:
+                                    result.update(state='applied', applied_clients=len(targets))
+                            gui_send_queue.put(deimosgui.GUICommand(
+                                deimosgui.GUICommandType.PlaystyleValidationResult, result))
                         case deimosgui.GUICommandType.SetScale:
                             if not walker.clients:
                                 logger.info(

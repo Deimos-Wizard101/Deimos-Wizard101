@@ -48,6 +48,7 @@ class GUICommandType(Enum):
     BotPublishContext = auto()   # Backend -> GUI: data = {'zone': str} (zone may be '')
 
     SetPlaystyles = auto()
+    PlaystyleValidationResult = auto()
 
     SetScale = auto()
 

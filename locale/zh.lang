@@ -315,3 +315,14 @@ orientation_pry=朝向（PRY）：
 
 # 状态弹窗
 combat_stats=战斗统计
+playstyle_applying=正在应用战斗风格...
+playstyle_apply_unconfirmed=尚未收到应用结果。再次应用前请检查战斗状态。
+playstyle_applied_one=已应用到 1 个客户端。
+playstyle_applied_many=已应用到 {count} 个客户端。
+playstyle_active_unchanged=当前战斗风格未更改。
+playstyle_no_clients=没有已挂接的客户端。未应用任何内容。
+playstyle_no_changes=战斗风格未发生更改。
+playstyle_apply_failed=无法应用战斗风格。请检查日志和战斗状态。
+playstyle_rollback_failed=无法恢复所有客户端的当前战斗风格。请停止战斗并重新应用后再继续。
+playstyle_hooking=客户端仍在挂接。请稍后再试。
+playstyle_combat_unconfirmed=战斗可能未恢复到之前的状态。继续之前请检查战斗状态。
