@@ -8,6 +8,7 @@ from wizwalker.extensions.wizsprinter.combat_backends.combat_api import CombatCo
 from wizwalker.extensions.wizsprinter.combat_backends.config_backend import get_sprinty_grammar, Lark, TreeToConfig
 from wizwalker.extensions.wizsprinter import SprintyCombat
 from typing import List, Dict, Tuple
+from src.combat_sections import scan_combat_configs
 # from wizwalker.client import Client
 
 import re
@@ -47,31 +48,4 @@ def delegate_combat_configs(input_data: str, fallback_clients: int = 1, line_sep
     - line_seperator (str): Symbol or string that seperates lines of the file, newline by default
     '''
 
-    config_lines = input_data.split(line_seperator)
-    client_configs: Dict[int, str] = {}
-
-    #Match number in "###pX", where X is a number. This determines the client index. This also strips all whitespace.
-    pattern = re.compile(r'###\s*p\s*(\d+)')
-    client_to_match = -1
-    local_configs: List[str] = []
-
-    for i, line in enumerate(config_lines):
-        client_match = re.search(pattern, line)
-        if client_match is not None:
-            if client_to_match != -1:
-                client_configs[client_to_match] = line_seperator.join(local_configs)
-            client_to_match = int(client_match.group(1)) - 1
-            local_configs.clear()
-            continue
-
-        local_configs.append(line)
-
-    #If no client was ever specified, just assign entire config to all clients
-    if client_to_match == -1:
-        for i in range(fallback_clients):
-            client_configs[i] = line_seperator.join(config_lines)
-
-    else:
-        client_configs[client_to_match] = line_seperator.join(local_configs)
-
-    return client_configs
+    return scan_combat_configs(input_data, fallback_clients, line_seperator)[0]
