@@ -17,7 +17,7 @@ from wizwalker.memory import ObjectType, Window, WindowFlags
 from wizwalker.combat import CombatMember
 from loguru import logger
 
-from src.dance_game_hook import attempt_deactivate_dance_hook
+#from src.dance_game_hook import attempt_deactivate_dance_hook
 from src.paths import *
 from src.sprinty_client import SprintyClient
 import typing
@@ -1257,7 +1257,7 @@ async def try_task_coro(coro: Coroutine, clients: List[Client], deactive_mousele
         except asyncio.CancelledError:
             for p in clients:
                 p.feeding_pet_status = False
-            await asyncio.gather(*[attempt_deactivate_dance_hook(p) for p in clients])
+            await asyncio.gather(*[p.hook_handler.attempt_deactivate_dance_hook() for p in clients])
             return
 
         except (wizwalker.errors.MemoryInvalidated, wizwalker.errors.ExceptionalTimeout):
