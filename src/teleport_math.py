@@ -383,7 +383,46 @@ async def _resolve_player_radius(client: Client, zone_name: str) -> float:
 # teleporter trigger volumes (e.g. AZ-TELEPORT-…) carry no solid-collision file yet
 # still rubber-band you, so a geometrically-clear landing can be rejected. When that
 # happens we step back along the approach line until we're clear of the object.
-_RETREAT_STEPS = (70.0, 140.0, 230.0, 350.0, 520.0)
+_RETREAT_STEPS = (110.0, 230.0, 400.0)
+_ARRIVE_POLL = 0.1  # seconds between position checks after a teleport
+_ARRIVE_HOLD = 0.4  # how long a landing has to hold to count
+
+# the quest helper thread keeps the goal location at +0xCFC (what wizwalker's quest hook reads)
+# and how many zones away the goal is at +0xD08. 0 means the goal is in this zone, more means the
+# arrow is pointing at the door out of it
+_QUEST_HOPS_OFFSET = 0xD08 - 0xCFC
+
+
+LOAD_SETTLE = 1.0  # the zone keeps loading in for a bit after the loading screen, teleporting right away tends to bounce
+
+
+async def wait_for_load(client: Client, timeout: float = 60.0, settle: float = LOAD_SETTLE) -> bool:
+    # if there's a loading screen wait for it to finish, then settle seconds more. True if there was one
+    waited, elapsed = False, 0.0
+    while elapsed < timeout:
+        try:
+            if not await client.is_loading():
+                break
+        except Exception:
+            return waited
+        waited = True
+        await asyncio.sleep(0.1)
+        elapsed += 0.1
+    if waited:
+        await asyncio.sleep(settle)
+    return waited
+
+
+async def quest_zone_hops(client: Client):
+    # how many zones away the quest goal is (0 = this zone so the quest position is the goal,
+    # 1+ = it's the door toward it), None if it can't be read
+    from wizwalker.memory.memory_object import Primitive
+
+    try:
+        hops = await client.quest_position.read_value_from_offset(_QUEST_HOPS_OFFSET, Primitive.int32)
+    except Exception:
+        return None
+    return hops if 0 <= hops < 64 else None
 
 
 # navmap_tp's check_sigma default: "still within this many units of where we started"
@@ -398,7 +437,7 @@ def _sent_back(pos: XYZ, origin: XYZ) -> bool:
 
 
 async def _arrived(client: Client, dest: XYZ, origin: XYZ = None, zone_before: str = None,
-                   settle: float = 1.0, tol: float = 60.0) -> bool:
+                   settle: float = 0.7, tol: float = 60.0) -> bool:
     """True if, after letting the server settle, the teleport to ``dest`` actually took.
 
     Two independent signals, because either one alone has a blind spot:
@@ -417,17 +456,40 @@ async def _arrived(client: Client, dest: XYZ, origin: XYZ = None, zone_before: s
     retreating would only fight whatever moved us. Unreadable position -> assume success
     rather than thrash on a transient read error.
     """
-    await asyncio.sleep(settle)
-    try:
-        if zone_before is not None and await client.zone_name() != zone_before:
-            logger.debug(f"[collision_tp] {client.title}: zone changed during teleport; done")
+    # check every _ARRIVE_POLL so a landing that worked returns right away,
+    # a rejected one (we never move) still waits the whole settle time
+    waited = 0.0
+    while True:
+        await asyncio.sleep(_ARRIVE_POLL)
+        waited += _ARRIVE_POLL
+        try:
+            if zone_before is not None and await client.zone_name() != zone_before:
+                logger.debug(f"[collision_tp] {client.title}: zone changed during teleport; done")
+                return True
+            if not await is_free(client):
+                logger.debug(f"[collision_tp] {client.title}: no longer free during teleport; done")
+                return True
+            pos = await client.body.position()
+        except Exception:
             return True
-        if not await is_free(client):
-            logger.debug(f"[collision_tp] {client.title}: no longer free during teleport; done")
-            return True
-        pos = await client.body.position()
-    except Exception:
-        return True
+        landed = math.hypot(pos.x - dest.x, pos.y - dest.y) <= tol
+        if landed and (origin is None or _sent_back(dest, origin) or not _sent_back(pos, origin)):
+            if waited >= settle:
+                return True
+            # landed, give it a moment in case we get pulled back
+            await asyncio.sleep(_ARRIVE_HOLD)
+            try:
+                if zone_before is not None and await client.zone_name() != zone_before:
+                    return True
+                if not await is_free(client):
+                    return True
+                pos = await client.body.position()
+            except Exception:
+                return True
+            if math.hypot(pos.x - dest.x, pos.y - dest.y) <= tol:
+                return True
+        if waited >= settle:
+            break
     if origin is not None and not _sent_back(dest, origin):
         # dest is somewhere we'd have to move to reach, so staying put means rejection
         if _sent_back(pos, origin):
@@ -439,12 +501,55 @@ async def _arrived(client: Client, dest: XYZ, origin: XYZ = None, zone_before: s
     return math.hypot(pos.x - dest.x, pos.y - dest.y) <= tol
 
 
+async def _applied_teleport(client: Client, dest: XYZ) -> str:
+    # wizwalker's teleport, but checks the game actually took it. the hook only writes the position
+    # on the client's next movement update and wizwalker gives up after 0.6s if that doesn't happen,
+    # so we tap a movement key to make it update. returns "applied", "nudged" or "not applied"
+    try:
+        from wizwalker.memory.hooks import MovementTeleportHook
+
+        helper = client._teleport_helper
+        await client.teleport(dest, purge_on_after_unuser_fixer=False)
+    except Exception as e:
+        logger.debug(f"[collision_tp] {client.title}: teleport call failed ({e!r})")
+        return "not applied"
+
+    async def taken(seconds: float) -> bool:
+        for _ in range(max(1, int(seconds / 0.05))):
+            if not await helper.should_update():
+                return True
+            await asyncio.sleep(0.05)
+        return False
+
+    if await taken(0.6):
+        return "applied"
+    try:
+        await client.send_key(Keycode.W, 0.05)  # step forward, turning alone may not move us
+    except Exception:
+        pass
+    if await taken(0.6):
+        return "nudged"
+    try:  # give up like wizwalker does, put the patched jumps back and clear the flag
+        hook = client.hook_handler._get_hook_by_type(MovementTeleportHook)
+        jes = await client._get_je_instruction_forward_backwards()
+        for je, old_bytes in zip(jes, hook._old_jes_bytes):
+            await client.hook_handler.write_bytes(je, old_bytes)
+        await helper.write_should_update(False)
+    except Exception as e:
+        logger.debug(f"[collision_tp] {client.title}: couldn't undo the teleport patch ({e!r})")
+    return "not applied"
+
+
 async def _teleport_once_verified(client: Client, dest: XYZ, anchor: XYZ,
                                   zone_before: str = None) -> bool:
     """One teleport to ``dest``, confirmed by ``_arrived``. No retreating."""
     if not await is_free(client):
         return False
-    await client.teleport(dest)
+    applied = await _applied_teleport(client, dest)
+    if applied != "applied":
+        logger.debug(f"[collision_tp] {client.title}: teleport to {dest} {applied}")
+    if applied == "not applied":
+        return False
     return await _arrived(client, dest, anchor, zone_before)
 
 
@@ -463,8 +568,10 @@ async def _retreat_toward(client: Client, dest: XYZ, anchor: XYZ,
             f"[collision_tp] {client.title}: destination bounced; retreating {back:.0f}u "
             f"toward start -> {point}"
         )
-        await client.teleport(point)
-        if await _arrived(client, point, anchor, zone_before):
+        applied = await _applied_teleport(client, point)
+        if applied != "applied":
+            logger.debug(f"[collision_tp] {client.title}: teleport to {point} {applied}")
+        if applied != "not applied" and await _arrived(client, point, anchor, zone_before):
             return True
     return False
 
@@ -623,7 +730,35 @@ async def prewarm_zone(client: Client, zone_name: str = None) -> None:
         logger.debug(f"[prewarm] skipped ({e!r})")
 
 
-async def collision_tp(client: Client, xyz: XYZ = None, leader_client: Client = None):
+async def strict_landing(client: Client, target_xyz: XYZ):
+    # where the strict collision solve would land for the target (every volume around it counts).
+    # collision_tp uses it when the game refuses a landing right away, this is for when the refusal
+    # comes late (it can take a second or more)
+    try:
+        from src.collision import CollisionWorld, get_collision_data
+        from src.collision_math import find_walkable_teleport_point
+        from src import entity_collision
+
+        zone_name = await client.zone_name()
+        player_radius = await _resolve_player_radius(client, zone_name)
+        world = CollisionWorld()
+        world.load(await get_collision_data(client, zone_name))
+
+        def _solve():
+            extra_shapes = entity_collision.build_zone_static_shapes(zone_name, None)
+            return find_walkable_teleport_point(
+                world, zone_name, target_xyz, extra_shapes=extra_shapes,
+                player_radius=player_radius, strict=True,
+            )
+
+        point, _reason = await asyncio.to_thread(_solve)
+        return point
+    except Exception as e:
+        logger.debug(f"[collision_tp] {client.title}: strict solve errored ({e!r})")
+        return None
+
+
+async def collision_tp(client: Client, xyz: XYZ = None, leader_client: Client = None, door: bool = None):
     """Teleport by solving the zone's collision geometry — a single, decisive teleport.
 
     Loads the zone collision data, computes (in a 2D slice at the target's height)
@@ -635,14 +770,27 @@ async def collision_tp(client: Client, xyz: XYZ = None, leader_client: Client = 
     outside the loaded area of interest, or a solve/teleport error — does it fall back
     to the proven navmap_tp. Debug logs report exactly which path ran.
     """
+    if await wait_for_load(client):
+        logger.debug(f"[collision_tp] {client.title}: waited for the loading screen before teleporting")
     if not await is_free(client):
         return
 
     target_xyz = xyz if xyz is not None else await client.quest_position.position()
     starting_xyz = await client.body.position()
+    # a quest target in another zone is the door toward it and the exact spot gets refused
+    # (the door's own volume), so go straight to the strict solve that lands just short of it
+    hops = None
+    if door is None:  # not given, it's a door if the quest helper says the goal is in another zone
+        try:
+            if calc_Distance(await client.quest_position.position(), target_xyz) <= 1.0:
+                hops = await quest_zone_hops(client)
+        except Exception:
+            hops = None
+        door = bool(hops)
     logger.debug(
         f"[collision_tp] {client.title}: target {target_xyz} in '{await client.zone_name()}' "
-        f"(from {'arg' if xyz is not None else 'quest_position'}); "
+        f"(from {'arg' if xyz is not None else 'quest_position'}"
+        f"{'' if hops is None else f', quest goal {hops} zone(s) away'}); "
         f"start {starting_xyz} ({calc_Distance(starting_xyz, target_xyz):.0f}u away)"
     )
     if calc_Distance(starting_xyz, target_xyz) <= 5.0:
@@ -675,7 +823,9 @@ async def collision_tp(client: Client, xyz: XYZ = None, leader_client: Client = 
                 player_radius=player_radius, strict=strict,
             )
 
-        safe_xyz, reason = await asyncio.to_thread(_solve)
+        safe_xyz, reason = await asyncio.to_thread(_solve, door)
+        if safe_xyz is None and door:
+            safe_xyz, reason = await asyncio.to_thread(_solve)
     except Exception as e:
         logger.debug(f"[collision_tp] {client.title}: collision solve errored ({e!r}); using navmap TP")
         safe_xyz = None
