@@ -1,4 +1,5 @@
-# the client's type dump from wiztype, cached per client version in %APPDATA%/Deimos/types/<version>.json.
+# the client's type dump from wiztype (JsonTypeDumperV2, keyed by type hash), cached per client version in
+# %APPDATA%/Deimos/types_v2/<version>.json. to look a type up by name use katsuba.utils.string_id(name)
 # entity collision and the quest data reader use it to read game files with katsuba
 
 import os
@@ -25,7 +26,7 @@ def typelist_cache_path(key: str) -> Path:
     # where the type dump for a client version (like Wizard_1_610) is stored, next to the Deimos settings
     appdata = os.environ.get("APPDATA", "")
     base = Path(appdata) / "Deimos" if appdata else Path(os.getcwd())
-    return base / "types" / (key.replace(".", "_") + ".json")
+    return base / "types_v2" / (key.replace(".", "_") + ".json")
 
 
 def typelist_is_loadable(path: Path) -> bool:
@@ -63,7 +64,7 @@ def dump_type_list(revision: str, path: Path) -> None:
             f"(`uv lock --upgrade-package wiztype && uv sync`)"
         ) from e
     tmp = path.with_suffix(".tmp")
-    wiztype.JsonTypeDumperV1(tree).dump(tmp, indent=None)
+    wiztype.JsonTypeDumperV2(tree).dump(tmp, indent=None)
     tmp.replace(path)
     logger.info(
         f"[typedump] type list cached at {path} "
