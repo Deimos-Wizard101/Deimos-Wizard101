@@ -117,20 +117,19 @@ GATE_KINDS = ("standard", "dungeon", "dungeonExitConfirm", "xNoWait")  # gate ki
 RIDE_MARK = "SkipRide"  # gate kinds with this in the name are rides
 
 
-def merge_gate_list(db: PoiDb, path=None, lines=None) -> int:
+def merge_gate_list(db: PoiDb, path=None) -> int:
     # adds the doors from wizsprinter's gates_list.txt that poi.dat is missing, rides also go in db.rides
-    if lines is None:
-        if path is None:
-            try:
-                import wizwalker.extensions.wizsprinter as wizsprinter
-
-                path = Path(list(wizsprinter.__path__)[0]) / "traversalData" / "gates_list.txt"
-            except Exception:
-                return 0
+    if path is None:
         try:
-            lines = Path(path).read_text(encoding="utf-8").splitlines()
-        except OSError:
+            import wizwalker.extensions.wizsprinter as wizsprinter
+
+            path = Path(list(wizsprinter.__path__)[0]) / "traversalData" / "gates_list.txt"
+        except Exception:
             return 0
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return 0
     have = {(zone, n) for zone, doors in db.doors.items() for n, _ in doors}
     added = 0
     for line in lines:
@@ -156,23 +155,6 @@ _POI: dict = {}
 _POI_LOCK = threading.Lock()
 
 
-# links that poi.dat and wizsprinter don't have, taken from the zones' volumes.xml
-# (crown of fire: landing zone -> path of scales -> elevator -> malistaire's lair)
-_DS = "DragonSpire/DS_A3_Kings/DS_A3Z3_Volcano/"
-EXTRA_GATES = f"""
-standard;3831;11547;-404;{_DS}DS_Volcano1_2;{_DS}DS_Volcano_Cave3
-standard;-729;-10534;-2393;{_DS}DS_Volcano_Cave3;{_DS}DS_Volcano1
-standard;508;-60;-2;{_DS}DS_Volcano_Cave3;{_DS}DS_Volcano1_2
-xSkipRideCrownOfFireElevatorUp;-1318;5495;-5777;{_DS}DS_Volcano1;{_DS}DS_Volcano2
-xSkipRideCrownOfFireElevatorDown;-1417;5640;4734;{_DS}DS_Volcano2;{_DS}DS_Volcano1
-standard;-1270;11427;4734;{_DS}DS_Volcano2;DragonSpire/DS_A3_Kings/Interiors/DS_MalistaireLair
-xSkipRideCrownOfFireElevatorUpStop;19;936;-15;{_DS}DS_Volcano_Elevator_Up;{_DS}DS_Volcano2
-xSkipRideCrownOfFireElevatorDownStop;5;-912;-16;{_DS}DS_Volcano_Elevator_Down;{_DS}DS_Volcano1
-"""
-# elevator zones, a ride that starts in one walks to the other end
-RIDE_STOPS = frozenset({_DS + "DS_Volcano_Elevator_Up", _DS + "DS_Volcano_Elevator_Down"})
-
-
 def poi_db() -> PoiDb:
     # loads poi.dat once, empty db if it can't be read
     with _POI_LOCK:
@@ -186,7 +168,6 @@ def poi_db() -> PoiDb:
                 added = merge_gate_list(_POI["db"])
                 if added:
                     logger.debug(f"[quest] {added} door(s) from wizsprinter's gate list that poi.dat lacks")
-                merge_gate_list(_POI["db"], lines=EXTRA_GATES.strip().splitlines())
                 logger.debug(f"[quest] poi.dat: {sum(len(v) for v in _POI['db'].records.values())} placements, "
                              f"{len(_POI['db'].adjectives)} goals with target adjectives")
             except Exception as e:
@@ -391,6 +372,7 @@ async def describe_active_goal(client) -> str:
 
 WORLD_GATE_MIN = 3  # a door spot with this many destinations is the spiral door
 GATE_COST = 20  # makes the spiral door the last choice
+WORLD_DOOR_COST = 2 * GATE_COST  # other doors into another world are quest portals, only if nothing else works
 
 
 def zone_doors(db: PoiDb, zone: str) -> list[tuple[str, XYZ, bool]]:
@@ -429,7 +411,8 @@ def zone_route(db: PoiDb, start: str, goal: str) -> list[tuple[str, XYZ, bool]]:
         for neighbour, pos, gate in zone_doors(db, zone):
             if gate and neighbour.split("/")[0] == zone.split("/")[0]:
                 continue  # the spiral door only for other worlds
-            nxt = cost + (GATE_COST if gate else 1)
+            other_world = neighbour.split("/")[0] != zone.split("/")[0]
+            nxt = cost + (GATE_COST if gate else WORLD_DOOR_COST if other_world else 1)
             if nxt < best.get(neighbour, 1 << 30):
                 best[neighbour] = nxt
                 previous[neighbour] = (zone, pos, gate)
@@ -696,52 +679,6 @@ async def _zone_changes(client, here: str, seconds: float, confirm_dungeon: bool
 
 
 RIDE_SECONDS = 90.0  # how long a ride gets to finish
-RIDE_STALL = 4.0  # stuck this long on a ride with nothing to press, walk to the other end
-
-_VOLUME_XYZ = [struct.pack("<II", 96, h) for h in (0x7DB3F828, 0x7DB3F829, 0x7DB3F82A)]
-_VOLUME_RADIUS = struct.pack("<II", 96, 0x3AF933DF)
-_VOLUMES: dict = {}  # zone -> [(name, center, radius)]
-
-
-def parse_volumes(raw: bytes) -> list[tuple[str, XYZ, float]]:
-    # reads volumes.xml (trigger volumes). its type isn't in the type dump so it's read by layout:
-    # name string, then x y z as tagged floats, then the shape and radius
-    out = []
-    i = 0
-    while True:
-        i = raw.find(_VOLUME_XYZ[0], i)
-        if i < 0 or i + 36 > len(raw):
-            break
-        if raw[i + 12:i + 20] != _VOLUME_XYZ[1] or raw[i + 24:i + 32] != _VOLUME_XYZ[2]:
-            i += 1
-            continue
-        x, y, z = (struct.unpack_from("<f", raw, i + off)[0] for off in (8, 20, 32))
-        name = ""
-        for k in range(1, 120):
-            if i - k - 1 < 0:
-                break
-            if raw[i - k - 1] == k * 2 and all(32 <= b < 127 for b in raw[i - k:i]):
-                name = raw[i - k:i].decode()
-        j = raw.find(_VOLUME_RADIUS, i + 36, i + 240)
-        radius = struct.unpack_from("<f", raw, j + 8)[0] if j > 0 else 0.0
-        out.append((name, XYZ(x, y, z), radius))
-        i += 36
-    return out
-
-
-def zone_volumes(zone: str) -> list[tuple[str, XYZ, float]]:
-    # trigger volumes of a zone, empty if they can't be read
-    if zone not in _VOLUMES:
-        try:
-            from katsuba.wad import Archive
-            from wizwalker.utils import get_wiz_install
-
-            wad = Path(get_wiz_install()) / "Data" / "GameData" / (zone.replace("/", "-") + ".wad")
-            _VOLUMES[zone] = parse_volumes(bytes(Archive.mmap(str(wad))["volumes.xml"]))
-        except Exception as e:
-            logger.debug(f"[quest] couldn't read {zone}'s volumes ({e})")
-            _VOLUMES[zone] = []
-    return _VOLUMES[zone]
 
 
 async def _ride(client, start: XYZ, zone: str) -> bool:
@@ -765,54 +702,21 @@ async def _ride(client, start: XYZ, zone: str) -> bool:
         await collision_tp(client, start, door=True)
         if not await _prompt_text(client):
             await approach(client, start, max_seconds=5.0)
-    origin = await client.zone_name()
-    deadline, pressed, still_since, walked = time.time() + RIDE_SECONDS, 0.0, None, set()
+    deadline, pressed = time.time() + RIDE_SECONDS, 0.0
     while time.time() < deadline:
         try:
-            here = await client.zone_name()
-            if here == zone and not await client.is_loading():
+            if await client.zone_name() == zone and not await client.is_loading():
                 return True
             if not await client.is_loading() and time.time() - pressed > 1.0:
                 if await _prompt_text(client):
                     await client.send_key(Keycode.X, 0.1)
-                    pressed, still_since = time.time(), None
+                    pressed = time.time()
                 elif await answer_dungeon_box(client):  # Marleybone's Ironworks asks first
-                    pressed, still_since = time.time(), None
-                elif here != origin or here in RIDE_STOPS:
-                    # nothing to press (crown of fire elevator), walk to the far trigger volume
-                    if still_since is None:
-                        still_since = time.time()
-                    elif time.time() - still_since > RIDE_STALL:
-                        still_since = None
-                        await _walk_to_far_volume(client, here, walked)
+                    pressed = time.time()
         except Exception as e:
             logger.debug(f"[quest] {client.title}: ride step failed ({e!r})")
         await asyncio.sleep(0.4)
     return await client.zone_name() == zone
-
-
-async def _walk_to_far_volume(client, zone: str, walked: set) -> bool:
-    # walk to the farthest trigger volume we haven't tried yet, teleport if walking doesn't get there
-    import math
-
-    pos = await client.body.position()
-    volumes = [(name, center) for name, center, _ in zone_volumes(zone)
-               if (round(center.x), round(center.y)) not in walked]
-    if not volumes:
-        return False
-    name, center = max(volumes, key=lambda v: math.hypot(v[1].x - pos.x, v[1].y - pos.y))
-    walked.add((round(center.x), round(center.y)))
-    logger.info(f"[quest] {client.title}: nothing to press on the way; walking to '{name}' at {center}")
-    try:
-        await asyncio.wait_for(client.goto(center.x, center.y), timeout=15.0)
-    except Exception:
-        pass
-    await asyncio.sleep(1.0)
-    if await client.zone_name() == zone:
-        pos = await client.body.position()
-        if math.hypot(center.x - pos.x, center.y - pos.y) > 150:
-            await client.teleport(XYZ(center.x, center.y, center.z + 5))
-    return True
 
 
 async def travel_toward(client, zone: str, hops: int = 1) -> bool:
