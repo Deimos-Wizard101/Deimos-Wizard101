@@ -35,8 +35,8 @@ hotkeys_label=快捷键
 quest_tp=任务传送
 freecam=自由视角
 freecam_tp=自由视角传送
-mass_hotkeys=群体快捷键
-mass_tp=群体传送
+mass_hotkeys=全体快捷键
+mass_tp=全体传送
 xyz_sync=XYZ同步
 x_press=按下X键
 friend_tp=好友传送
@@ -68,7 +68,7 @@ distance=距离
 dist_min=最小距离
 dist_max=最大距离
 copy_camera_position=复制镜头坐标
-populate_camera=填充
+populate_camera=填入镜头参数
 
 # 开发工具
 advanced_warning=以下工具仅适用于高级用户，官方不提供支持。
@@ -79,20 +79,20 @@ available_entities=可用实体
 available_paths=可用路径
 zone_name=区域名称
 go_to_zone=前往区域
-mass_go_to_zone=群体前往区域
+mass_go_to_zone=全体前往区域
 world_name=世界名称
 go_to_world=前往世界
-mass_go_to_world=群体前往世界
+mass_go_to_world=全体前往世界
 go_to_bazaar=前往集市
-mass_go_to_bazaar=群体前往集市
+mass_go_to_bazaar=全体前往集市
 refill_potions=补充药水
-mass_refill_potions=群体补充药水
+mass_refill_potions=全体补充药水
 
 # 状态
 caster_target_indices=施法者/目标索引
 dmg=伤害
 base_dmg=基础伤害
-school=系别
+school=学派
 crit=暴击
 view_stats=查看状态
 copy_stats=复制状态
@@ -112,12 +112,14 @@ import_bot=导入脚本
 export_bot=导出脚本
 run_bot=运行脚本
 kill_bot=停止脚本
+expand_bot=展开脚本
+bot_editor_title=脚本编辑器
 search_bots=搜索可用脚本
 bot_search_title=可用脚本
 bot_search_searching=正在搜索可用脚本...
 bot_search_results_header={0}（{1} 个客户端）的可用脚本：
 bot_search_no_results=未找到适用于 {0}（{1} 个客户端）的脚本。
-bot_search_no_clients=没有已挂钩的客户端。请先挂钩客户端再试。
+bot_search_no_clients=没有已注入的客户端。请先注入客户端再试。
 bot_search_no_zone=无法读取当前区域。请等客户端加载完成后再试。
 bot_search_error=无法连接脚本仓库。请检查网络后重试。
 bot_search_general=通用
@@ -133,7 +135,8 @@ bot_publish_format=格式
 bot_publish_clients=客户端
 bot_publish_description=描述
 bot_publish_name_hint=脚本的显示名称
-bot_publish_zone_hint=游戏区域路径，例如 WizardCity/WC_Streets/WC_OldeTown
+bot_publish_zone_hint=例如 WizardCity/WC_Ravenwood, Celestia/CL_Hub
+bot_publish_zone_tip=首个区域存储脚本文件；以逗号分隔添加条目以拓展搜索范围。上级区域（如 WizardCity）覆盖其下所有范围。"General" 为全局通用。
 bot_publish_clients_hint=可选，例如 == 4（留空 = 任意客户端数量）
 bot_publish_description_hint=可选。支持 Markdown。
 bot_publish_action=发布
@@ -141,11 +144,15 @@ bot_publish_done=已在浏览器中打开
 bot_publish_bad_clients=客户端必须是比较式，如 '== 4'、'>= 1'，或留空。
 bot_publish_opened=已在浏览器中打开 GitHub。请检查并提交文件以完成发布。
 bot_publish_opened_clipboard=脚本过大无法预填充。已复制到剪贴板——请粘贴到 GitHub 编辑器中。
+validate_syntax=验证语法
+dismiss=关闭
 
 # 战斗
 import_playstyle=导入战斗风格
 export_playstyle=导出战斗风格
 set_playstyles=设置战斗风格
+expand_combat=展开战斗
+combat_editor_title=战斗编辑器
 
 # 杂项
 scale=缩放
@@ -154,7 +161,9 @@ select_pet_world=选择宠物世界：
 
 # 控制台
 console_support=请求帮助时请附带日志。
-collapse_expand_logs=折叠 / 展开日志
+expand_logs=展开日志
+toggle_logs=折叠 / 展开日志
+console_editor_title=控制台日志
 copy_logs=复制日志
 
 # 工具提示
@@ -178,13 +187,13 @@ tooltip_section_navigation=前往区域、世界、集市，或补充药水
 
 # 启动器
 launcher=启动器
-saved_accounts=账号管理
-hooked_clients=客户端管理
+saved_accounts=已保存账号
+hooked_clients=已注入客户端
 unhook_client=取消注入
 hook_client=注入
-kill_client=结束
-relaunch_client=重新启动
-unmanaged_clients=可用客户端
+kill_client=结束客户端
+relaunch_client=重启客户端
+unmanaged_clients=未注入客户端
 status_verifying=正在验证
 status_patching=正在修补
 status_launching=正在启动
@@ -270,7 +279,7 @@ setting_gear_switching=单人区域切换装备
 setting_hitter_client=输出客户端
 setting_ignore_pet_level_up=忽略宠物升级
 setting_only_dance_game=只玩跳舞游戏
-setting_client_resizing=客户端窗口缩放
+setting_client_resizing=调整客户端窗口大小
 setting_remember_chosen_clients=记住已选择客户端
 setting_verify_patch_files=启动前验证/修补游戏文件
 setting_check_for_updates=启动时检查更新
@@ -295,6 +304,14 @@ navigation=导航
 cat_other=其他
 fetch_player_gid=获取玩家 GID
 copy_text=复制文本：{0}
+toggle_line_numbers=切换行号
+find_hint=查找文本...
+find_prev=上一个匹配 (Shift+Enter)
+find_next=下一个匹配 (Enter)
+find_close=关闭查找 (Esc)
+replace_hint=替换为...
+replace=替换
+replace_all=全部替换
 
 # 弹窗
 ui_tree=UI 树
