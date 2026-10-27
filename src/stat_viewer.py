@@ -264,27 +264,23 @@ async def total_stats(client: Client, ally_index: int, enemy_index: int, base_da
 		crits, _ = to_seperated_str_stats(real_crits)
 		blocks, _ = to_seperated_str_stats(real_blocks)
 
-		if await member.is_player() and await target.is_player():
-			stat_lines = [{'key': 'pvp', 'label': 'Notice', 'value': 'The stat viewer is not supported in PvP.'}]
-
-		else:
-			stat_lines = [
-				{'key': 'est_dmg',     'label': 'Est. Max Dmg',  'value': f'{int(estimated_damage)} vs {await target.name()}'},
-				{'key': 'name',        'label': 'Name',          'value': f'{member_name} - {member_type} - {school_name}'},
-				{'key': 'template_id', 'label': 'Template ID',   'value': str(template_id)},
-				{'key': 'template_name','label': 'Template Name', 'value': template_name},
-				{'key': 'power_pips',  'label': 'Power Pips',    'value': str(power_pips)},
-				{'key': 'pips',        'label': 'Pips',          'value': str(pips)},
-				{'key': 'shadow_pips', 'label': 'Shadow Pips',   'value': str(shadow_pips)},
-				{'key': 'health',      'label': 'Health',        'value': f'{health}/{max_health} ({int(health / max_health * 100)}%)'},
-				{'key': 'boosts',      'label': 'Boosts',        'value': dict_to_str(raw_boosts, take_abs=True)},
-				{'key': 'resists',     'label': 'Resists',       'value': dict_to_str(resistances)},
-				{'key': 'damages',     'label': 'Damages',       'value': dict_to_str(damages)},
-				{'key': 'pierces',     'label': 'Pierces',       'value': dict_to_str(pierces)},
-				{'key': 'crits',       'label': 'Crits',         'value': dict_to_str(crits)},
-				{'key': 'blocks',      'label': 'Blocks',        'value': dict_to_str(blocks)},
-				{'key': 'masteries',   'label': 'Masteries',     'value': masteries_str},
-			]
+		stat_lines = [
+			{'key': 'est_dmg',     'label': 'Est. Max Dmg',  'value': f'{int(estimated_damage)} vs {await target.name()}'},
+			{'key': 'name',        'label': 'Name',          'value': f'{member_name} - {member_type} - {school_name}'},
+			{'key': 'template_id', 'label': 'Template ID',   'value': str(template_id)},
+			{'key': 'template_name','label': 'Template Name', 'value': template_name},
+			{'key': 'power_pips',  'label': 'Power Pips',    'value': str(power_pips)},
+			{'key': 'pips',        'label': 'Pips',          'value': str(pips)},
+			{'key': 'shadow_pips', 'label': 'Shadow Pips',   'value': str(shadow_pips)},
+			{'key': 'health',      'label': 'Health',        'value': f'{health}/{max_health} ({int(health / max_health * 100)}%)'},
+			{'key': 'boosts',      'label': 'Boosts',        'value': dict_to_str(raw_boosts, take_abs=True)},
+			{'key': 'resists',     'label': 'Resists',       'value': dict_to_str(resistances)},
+			{'key': 'damages',     'label': 'Damages',       'value': dict_to_str(damages)},
+			{'key': 'pierces',     'label': 'Pierces',       'value': dict_to_str(pierces)},
+			{'key': 'crits',       'label': 'Crits',         'value': dict_to_str(crits)},
+			{'key': 'blocks',      'label': 'Blocks',        'value': dict_to_str(blocks)},
+			{'key': 'masteries',   'label': 'Masteries',     'value': masteries_str},
+		]
 
 		# Per-slot damage estimates using tracked positions (preserves dead members)
 		slot_info = {}
