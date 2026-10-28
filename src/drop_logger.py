@@ -1,6 +1,5 @@
 from wizwalker import Client
 from wizwalker.memory.memory_objects.window import Window
-from wizwalker.memory.memory_object import Primitive
 from src.utils import get_window_from_path, is_visible_by_path
 from src.paths import chat_window_path, main_chat_channel_path, group_chat_channel_path, house_chat_channel_path, friend_chat_channel_path, channel_one_chat_channel_path, channel_two_chat_channel_path, channel_three_chat_channel_path, guild_chat_channel_path, team_up_chat_channel_path
 from typing import List
@@ -60,7 +59,7 @@ async def get_current_active_chat_channel(client: Client) -> List[str]:
         if await is_visible_by_path(client, window_path):
             channel_window = await get_window_from_path(client.root_window, window_path)
             if channel_window:
-                if await channel_window.read_value_from_offset(1016, Primitive.bool): # value for if the channel is active
+                if await channel_window.maybe_chat_channel_is_active():
                     return window_path
     
     return None # this should not happen

@@ -7,7 +7,7 @@ from pymem.exception import MemoryReadError
 from wizwalker import HookAlreadyActivated, HookNotActive, HookNotReady, Client, Keycode, XYZ
 from wizwalker.memory import HookHandler, SimpleHook
 
-from src.dance_game_hook import attempt_activate_dance_hook, attempt_deactivate_dance_hook
+#from src.dance_game_hook import attempt_activate_dance_hook, attempt_deactivate_dance_hook
 from src.paths import *
 from src.teleport_math import navmap_tp
 from src.utils import navigate_to_ravenwood, click_window_by_path, is_visible_by_path, navigate_to_commons_from_ravenwood, post_keys, get_window_from_path, safe_wait_for_zone_change, LoadingScreenNotFound, FriendBusyOrInstanceClosed, get_popup_title
@@ -78,7 +78,7 @@ async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game
             if (only_play_dance_game or not await is_visible_by_path(client, skip_pet_game_button_path)) and not dance_hook_activated:
                 logger.debug('Client ' + client.title + ': Activating dance game hook.')
                 # dance hook seems to need time to activate fully - without a sleep, it will miss turns in the game
-                await attempt_activate_dance_hook(client, sleep_time=5.0)
+                await client.hook_handler.attempt_activate_dance_hook(sleep_time=5.0)
                 dance_hook_activated = True
 
 
@@ -226,7 +226,7 @@ async def nomnom(client: Client, ignore_pet_level_up: bool, only_play_dance_game
 
     if dance_hook_activated:
         logger.debug('Client ' + client.title + ': Deactivating dance game hook.')
-        await attempt_deactivate_dance_hook(client)
+        await client.hook_handler.attempt_deactivate_dance_hook()
 
     # home button can in rare cases be greyed out after auto_buy - wait some time to make sure that clients don't get stuck if other code tries to send them home
     # await asyncio.sleep(6.5)
