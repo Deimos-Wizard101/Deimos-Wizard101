@@ -529,6 +529,21 @@ async def navmap_teleport(
     async def client_navmap_teleport(client: Client, xyz: XYZ = None):
         if not xyz:
             xyz = await client.quest_position.position()
+        from src.quest_targets import describe_active_goal, teleport_to_goal
+
+        if debug:
+            goal = await describe_active_goal(client)
+            if goal:
+                logger.debug(f"[quest] {client.title}: {goal}")
+        if abs(xyz.x) < 1 and abs(xyz.y) < 1 and abs(xyz.z) < 1:
+            # no arrow (most collect goals), use the quest data instead of teleporting to 0, 0, 0
+            try:
+                if await teleport_to_goal(client):
+                    return
+            except Exception as e:
+                logger.debug(f"[quest] {client.title}: no-arrow quest TP failed ({e})")
+            logger.info(f"[quest] {client.title}: no quest arrow and nothing in the quest data to go to")
+            return
         await collision_tp(client, xyz)
 
     if debug:

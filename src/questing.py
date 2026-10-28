@@ -15,6 +15,16 @@ from wizwalker.extensions.scripting import teleport_to_friend_from_list
 from src.sprinty_client import SprintyClient
 from src.utils import *
 from src.paths import *
+from src.quest_targets import (COLLECT_TYPES, answer_dungeon_box, approach, goal_adjectives, goal_targets,
+                               goal_template_ids, goal_zones, hidden_goal_spot, label, land_at, live_targets,
+                               nearest_first, quest_reader, travel_toward)
+
+_GOAL_FAILURES: dict = {}  # goal key -> rounds that got nothing done
+_VISITED: dict = {}  # goal key -> {spot: when we collected there}
+GO_TO_MARKER = 1700  # Basic Dynamic Trigger Object, what a go to goal completes at
+_HIDDEN_SPOT: dict = {}  # goal key -> (zone, position) for a goal poi.dat doesn't have
+REVISIT_AFTER = 90.0  # seconds before an emptied collect spot gets checked again
+_LAST_GOALS: dict = {}  # client process id -> the open goals we logged last
 from thefuzz import fuzz
 
 
@@ -647,7 +657,254 @@ class Quester():
                     await asyncio.sleep(.1)
 
 
+    async def collect_from_quest_data(self, client: Client) -> bool:
+        # for goals the quest arrow doesn't show, use the quest data (src/quest_targets.py). go through the
+        # doors to the goal's zone, then to its targets. collect/use goals get every target nearest first,
+        # other goals go to the target and interact once. returns False only when there's no quest data,
+        # then the old name search runs
+        reader = quest_reader(client)
+        try:
+            open_goals = await reader.active_goals()
+        except Exception as e:
+            logger.debug(f'[quest] {client.title}: quest data unreadable ({e})')
+            return False
+        if not open_goals:
+            logger.debug(f'[quest] {client.title}: no active goal in the quest data')
+            return False
+        here = await client.zone_name()
+        listing = tuple(g.key for g in open_goals)
+        if _LAST_GOALS.get(client.process_id) != listing:
+            _LAST_GOALS[client.process_id] = listing
+            logger.info(f"[quest] {client.title}: open goals of '{label(open_goals[0].quest_name)}': " + "; ".join(
+                f"'{label(g.title)}' in {(g.destination_zone or '?').split('/')[-1]}"
+                + (' (selected)' if g.selected else '') for g in open_goals))
+        # the selected goal first, but skip one that keeps failing (a quest can have a goal open that we
+        # can't do yet), and prefer goals in this zone
+        goal = min(open_goals, key=lambda g: (_GOAL_FAILURES.get(g.key, 0) >= 2, not g.selected,
+                                              bool(g.destination_zone) and g.destination_zone != here))
+        goal_zone = _HIDDEN_SPOT.get(goal.key, (goal.destination_zone,))[0]
+        if goal_zone and goal_zone != here:
+            # no arrow for this goal so go through the doors ourselves
+            logger.info(f"[quest] {client.title}: '{label(goal.title)}' is in {goal_zone}")
+            if not await travel_toward(client, goal_zone, hops=12):
+                # we know where it is so no random search, wait and try the doors again. a door that keeps
+                # failing (area not open yet) lets the other goals go first, if it's the only goal left check every 30s
+                _GOAL_FAILURES[goal.key] = _GOAL_FAILURES.get(goal.key, 0) + 1
+                await asyncio.sleep(3.0 if _GOAL_FAILURES[goal.key] < 2 or len(open_goals) > 1 else 30.0)
+            return True  # in the right zone, next round looks again (the arrow may show up now)
+
+        wanted, template_ids = await goal_adjectives(goal), goal_template_ids(goal)
+        candidates = await goal_targets(client, goal)
+        if not candidates and not wanted and not template_ids:
+            logger.info(f"[quest] {client.title}: the quest data has nothing on '{label(goal.title)}'")
+            if goal.goal_type == 5:
+                # go to goal with no spot, the name search below would only teleport around under the map.
+                # its marker might be loaded near us so try those, otherwise wait a bit (it may finish just from
+                # being in the zone) and then let the other goals go first
+                async def marker_done() -> bool:
+                    return not await reader.is_open(goal)
+
+                hidden = await asyncio.get_running_loop().run_in_executor(None, hidden_goal_spot, goal)
+                if hidden:
+                    _HIDDEN_SPOT[goal.key] = hidden
+                    zone, spot = hidden
+                    if zone != here:
+                        logger.info(f"[quest] {client.title}: the quest data leaves '{label(goal.title)}' out; "
+                                    f"the quest's marker no other goal claims is in {zone}")
+                        if not await travel_toward(client, zone, hops=12):
+                            _GOAL_FAILURES[goal.key] = _GOAL_FAILURES.get(goal.key, 0) + 1
+                            await asyncio.sleep(3.0)
+                        return True
+                    logger.info(f"[quest] {client.title}: to the quest's unclaimed marker at {spot}")
+                    if not await land_at(client, spot, done=marker_done):
+                        _GOAL_FAILURES[goal.key] = _GOAL_FAILURES.get(goal.key, 0) + 1
+                    return True
+                now = time.time()
+                visited = _VISITED.setdefault(goal.key, {})
+                markers = [t for t in await live_targets(client, set(), {GO_TO_MARKER})
+                           if now - visited.get((round(t.position.x / 50), round(t.position.y / 50)), 0)
+                           > REVISIT_AFTER]
+                if markers:
+                    target = nearest_first(markers, await client.body.position())[0]
+                    visited[(round(target.position.x / 50), round(target.position.y / 50))] = now
+                    logger.info(f"[quest] {client.title}: {len(markers)} 'Go To' marker(s) loaded here; "
+                                f"to the nearest at {target.position}")
+                    await land_at(client, target.position, done=marker_done)
+                    return True
+                _GOAL_FAILURES[goal.key] = _GOAL_FAILURES.get(goal.key, 0) + 1
+                if _GOAL_FAILURES[goal.key] >= 2 and len(open_goals) > 1:
+                    logger.info(f"[quest] {client.title}: nowhere to go for '{label(goal.title)}' in "
+                                f"{here.split('/')[-1]}; on to the quest's other goals")
+                await asyncio.sleep(3.0)
+                return True
+            return False
+        if goal.goal_type in COLLECT_TYPES and len(candidates) > 1:
+            return await self._collect_tour(client, goal, reader, wanted, template_ids, candidates)
+        start = await client.body.position()
+        live = [t for t in candidates if t.source == 'live']
+        spots = [t for t in candidates if t.source != 'live']
+        if not live and spots:
+            # the goal's own spots first, go to/find goals finish there and items spawn around them
+            for spot in nearest_first(spots, start):
+                if not await is_free(client):
+                    break
+                logger.info(f"[quest] {client.title}: to the quest-data spot of '{label(goal.title)}' at {spot.position}")
+
+                async def moved_on() -> bool:
+                    return not await reader.is_open(goal)
+
+                await land_at(client, spot.position, done=moved_on)
+                if not await reader.is_open(goal):
+                    logger.info(f"[quest] {client.title}: '{label(goal.title)}' done")
+                    _GOAL_FAILURES.pop(goal.key, None)
+                    return True
+                live = await live_targets(client, wanted, template_ids)
+                if live:
+                    break
+                if await is_visible_by_path(client, npc_range_path):
+                    live = [spot]  # something to use right here
+                    break
+        if not live and goal.goal_type in COLLECT_TYPES and (wanted or template_ids):
+            # last resort for items that spawn away from the spots, sweep the zone
+            logger.info(f"[quest] {client.title}: nothing at the quest-data spots; sweeping the zone")
+            live = await self._search_for_targets(client, wanted, template_ids, [])
+        if not live:
+            zones = goal_zones(goal)
+            if not spots:
+                await client.teleport(start)
+            logger.info(f"[quest] {client.title}: found nothing for '{label(goal.title)}' in this zone"
+                        + (f"; the quest data puts it in {', '.join(zones)}" if zones else ''))
+            _GOAL_FAILURES[goal.key] = _GOAL_FAILURES.get(goal.key, 0) + 1
+            await asyncio.sleep(3.0)  # spawns take a moment, next round looks again
+            return True
+
+        collected, tried, risky, forced = 0, set(), [], False
+        while live:
+            target = nearest_first(live, await client.body.position())[0]
+            tried.add((round(target.position.x), round(target.position.y)))
+            if not await reader.is_open(goal):
+                logger.info(f"[quest] {client.title}: '{label(goal.title)}' done")
+                _GOAL_FAILURES.pop(goal.key, None)
+                return True
+            while not await is_free(client) or client.entity_detect_combat_status:
+                await asyncio.sleep(0.1)
+            if goal.goal_type in COLLECT_TYPES and not forced and not await self.is_position_safe(target.position):
+                logger.debug(f'[quest] {client.title}: {target.position} has enemies close; trying the others first')
+                risky.append(target)
+            elif await self._collect_at(client, target.position, go_back=goal.goal_type in COLLECT_TYPES):
+                collected += 1
+                if goal.goal_type not in COLLECT_TYPES:
+                    return True  # talked to it or used it once, let the quest move on
+            live = [t for t in await live_targets(client, wanted, template_ids)
+                    if (round(t.position.x), round(t.position.y)) not in tried]
+            if not live and not collected and risky and not forced:
+                # every target has enemies near it, go anyway (once) and let auto combat fight
+                logger.info(f"[quest] {client.title}: every target has enemies near it; going anyway")
+                forced, live, risky = True, risky, []
+        logger.info(f"[quest] {client.title}: {collected} interaction(s) for '{label(goal.title)}' this pass")
+        if not collected:
+            _GOAL_FAILURES[goal.key] = _GOAL_FAILURES.get(goal.key, 0) + 1
+            await asyncio.sleep(3.0)
+        return True
+
+    async def _collect_tour(self, client: Client, goal, reader, wanted: set, template_ids: set, candidates: list) -> bool:
+        # collect goal with a bunch of targets (like 11 items in a cave). goes to every known one nearest
+        # first and collects at each. spots emptied in the last REVISIT_AFTER seconds get skipped (items
+        # respawn), targets that load in on the way get added, ones with enemies near them go last
+        def spot(pos) -> tuple:
+            return round(pos.x / 50), round(pos.y / 50)
+
+        now = time.time()
+        visited = _VISITED.setdefault(goal.key, {})
+        for k in [k for k, t in visited.items() if now - t > REVISIT_AFTER]:
+            del visited[k]
+        pending = [t for t in candidates if spot(t.position) not in visited]
+        if not pending:
+            logger.info(f"[quest] {client.title}: every spot for '{label(goal.title)}' was emptied in the last "
+                        f"{REVISIT_AFTER:.0f}s; waiting for them to respawn")
+            await asyncio.sleep(5.0)
+            return True
+        logger.info(f"[quest] {client.title}: {len(pending)} spot(s) to collect '{label(goal.title)}' from")
+        collected, risky, forced = 0, [], False
+        while pending:
+            if not await reader.is_open(goal):
+                logger.info(f"[quest] {client.title}: '{label(goal.title)}' done ({collected} collected this pass)")
+                _GOAL_FAILURES.pop(goal.key, None)
+                return True
+            while not await is_free(client) or client.entity_detect_combat_status:
+                await asyncio.sleep(0.1)
+            target = nearest_first(pending, await client.body.position())[0]
+            pending.remove(target)
+            if not forced and target.source == 'live' and not await self.is_position_safe(target.position):
+                risky.append(target)  # enemies near it, do it after the others
+            else:
+                visited[spot(target.position)] = time.time()
+                if await self._collect_at(client, target.position, go_back=False):
+                    collected += 1
+            # anything that loaded in on the way gets added
+            queued = {spot(t.position) for t in pending + risky}
+            for t in await live_targets(client, wanted, template_ids):
+                key = spot(t.position)
+                if key not in visited and key not in queued:
+                    pending.append(t)
+                    queued.add(key)
+            if not pending and risky and not forced:
+                # only targets with enemies left, go anyway (once) and let auto combat fight
+                logger.info(f"[quest] {client.title}: {len(risky)} target(s) left with enemies near them; going anyway")
+                pending, risky, forced = risky, [], True
+        logger.info(f"[quest] {client.title}: {collected} collected for '{label(goal.title)}' this pass")
+        if not collected:
+            _GOAL_FAILURES[goal.key] = _GOAL_FAILURES.get(goal.key, 0) + 1
+            await asyncio.sleep(3.0)
+        return True
+
+    async def _search_for_targets(self, client: Client, wanted: set, template_ids: set, spots: list) -> list:
+        # look for loaded targets from under the map, the goal's spots first then the zone chunks
+        # (objects load within a few thousand units of the player)
+        try:
+            chunks = await self.get_zone_chunks()
+        except Exception:
+            chunks = []
+        looked = 0
+        for spot in list(spots) + list(chunks):
+            await wait_for_load(client)
+            if not await is_free(client):
+                return []
+            await client.teleport(XYZ(spot.x, spot.y, spot.z - 550))
+            await asyncio.sleep(0.6)
+            looked += 1
+            live = await live_targets(client, wanted, template_ids)
+            if live:
+                logger.debug(f'[quest] {client.title}: targets loaded after {looked} stop(s)')
+                return live
+        return []
+
+    async def _collect_at(self, client: Client, position: XYZ, go_back: bool = True) -> bool:
+        # teleport to a target and press X on it, then go back to where we were for items
+        safe_location = await client.body.position()
+        try:
+            await collision_tp(client, position)
+        except Exception as e:
+            logger.debug(f'[quest] {client.title}: teleport to {position} failed ({e})')
+            return False
+        await asyncio.sleep(0.4)
+        if not await is_visible_by_path(client, npc_range_path):
+            # the teleport may only land next to it if it's inside something, walk up to it
+            if not await approach(client, position):
+                return False  # already taken or out of reach
+        for _ in range(3):
+            await client.send_key(Keycode.X, 0.1)
+            await asyncio.sleep(0.15)
+        await asyncio.sleep(0.5)
+        while not await is_free(client) or client.entity_detect_combat_status:
+            await asyncio.sleep(0.1)
+        if go_back and await is_free(client):
+            await client.teleport(safe_location)
+        return True
+
     async def auto_collect_rewrite(self, client: Client):
+        if await self.collect_from_quest_data(client):
+            return
         quest_item_list = await self.get_collect_quest_object_name()
 
         entities_to_skip = ['Basic Positional', 'WispHealth', 'WispMana', 'KT_WispHealth', 'KT_WispMana', 'WispGold', 'DuelCircle', 'Player Object', 'SkeletonKeySigilArt', 'Basic Ambient', 'TeleportPad']
@@ -824,9 +1081,21 @@ class Quester():
                 await self.correct_dungeon_desync(follower_clients)
 
     async def handle_npc_talking_quests(self, talking_client: Client, present_clients: list[Client]):
-        # wait for initial dialogue to appear
-        while await is_free_leader_questing(talking_client):
-            await asyncio.sleep(.1)
+        # wait for the dialogue to show up, if X didn't work press it again and then give up
+        # so questing doesn't sit here forever
+        for attempt in range(2):
+            for _ in range(50):
+                if not await is_free_leader_questing(talking_client):
+                    break
+                await asyncio.sleep(.1)
+            else:
+                if attempt == 0:
+                    logger.debug(f'{talking_client.title}: no dialogue yet; pressing X again')
+                    await talking_client.send_key(Keycode.X, 0.1)
+                    continue
+                logger.info(f'{talking_client.title}: talking to the NPC never opened a dialogue; moving on')
+                return
+            break
 
         start_time = time.time()
         while time.time() < start_time + 3.0:
@@ -1316,6 +1585,9 @@ class Quester():
                 await click_window_by_path(self.client, exit_dungeon_path)
                 await self.client.wait_for_zone_change()
                 await asyncio.sleep(1.0)
+        elif await answer_dungeon_box(self.client):  # the leave dungeon yes/no box
+            await self.client.wait_for_zone_change()
+            await asyncio.sleep(1.0)
         else:
             while await self.client.is_loading():
                 await asyncio.sleep(.1)
