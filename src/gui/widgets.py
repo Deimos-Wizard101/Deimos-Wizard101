@@ -926,7 +926,7 @@ class HighlightOverlay(QWidget):
 class ConsoleTextEdit(QPlainTextEdit):
     """QPlainTextEdit subclass with thread-safe slots for log appending."""
 
-    MAX_BLOCK_COUNT = 1000
+    MAX_BLOCK_COUNT = 50000
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -949,7 +949,7 @@ class PyQtSink:
     def __init__(self, console_widget: QPlainTextEdit):
         self.console_widget = console_widget
         self.buffer = []
-        self.max_lines = 1000
+        self.max_lines = 50000
         self.show_expanded_logs = False
 
     def copy(self):
