@@ -120,6 +120,12 @@ class ElasticCameraController(CameraController):
     async def write_max_distance(self, max_distance: float):
         await self.write_value_to_offset(328, max_distance, Primitive.float32)
 
+    async def max_distance_target(self) -> float:
+        return await self.read_value_from_offset(476, Primitive.float32)
+
+    async def write_max_distance_target(self, max_distance_target: float):
+        await self.write_value_to_offset(476, max_distance_target, Primitive.float32)
+
     async def min_distance(self) -> float:
         return await self.read_value_from_offset(332, Primitive.float32)
 

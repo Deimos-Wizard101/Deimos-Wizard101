@@ -47,4 +47,5 @@ class Fish(DynamicMemoryObject):
         return await self.read_value_from_offset(0xEC, Primitive.float32)
 
     async def is_chest(self) -> bool:
-        return await self.read_value_from_offset(0xF0, Primitive.bool)
+        print("is_chest is no longer functional on the latest version of Wizard101 and will always return False. Please consider updating your scripts")
+        return False

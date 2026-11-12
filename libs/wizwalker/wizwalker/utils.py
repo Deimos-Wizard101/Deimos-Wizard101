@@ -291,10 +291,12 @@ def instance_login(window_handle: int, username: str, password: str):
 
     send_chars(username)
     # tab
-    user32.SendMessageW(window_handle, 0x102, 9, 0)
+    user32.SendMessageW(window_handle, 0x100, 9, 0)
+    user32.SendMessageW(window_handle, 0x101, 9, 0)
     send_chars(password)
     # enter
-    user32.SendMessageW(window_handle, 0x102, 13, 0)
+    user32.SendMessageW(window_handle, 0x100, 13, 0)
+    user32.SendMessageW(window_handle, 0x101, 13, 0)
 
 
 # TODO: use login window for this

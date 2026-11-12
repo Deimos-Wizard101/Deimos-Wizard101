@@ -31,6 +31,8 @@ from .memory import (
     TeleportHelper,
     MovementTeleportHook,
     DropsToggleHook,
+    AhmarraAutoPuzzleHook,
+    UpdateZoneCounterHook,
 )
 from .memory.memory_objects.character_registry import DynamicCharacterRegistry
 from .memory.memory_objects.quest_client_manager import QuestClientManager
@@ -82,6 +84,8 @@ class Client:
         self._teleport_helper = TeleportHelper(self.hook_handler)
 
         self._disable_drops_bool = None
+        self._auto_puzzle_bool = None
+        self._server_teleport_snapback_bool = None
         self._template_ids = None
         self._world_view_window = None
         self._character_registry_addr = None
@@ -603,6 +607,51 @@ class Client:
             b"\x01"
         )
 
+    async def enable_auto_puzzle(self):
+        if not self.hook_handler._check_if_hook_active(AhmarraAutoPuzzleHook):
+            raise RuntimeError("Auto puzzle not active")
+
+        if not self._auto_puzzle_bool:
+            self._auto_puzzle_bool = await self.hook_handler.read_auto_puzzle_bool()
+
+        await self.hook_handler.write_bytes(
+            self._auto_puzzle_bool,
+            b"\x01"
+        )
+
+    async def disable_auto_puzzle(self):
+        if not self.hook_handler._check_if_hook_active(AhmarraAutoPuzzleHook):
+            raise RuntimeError("Auto puzzle not active")
+
+        if not self._auto_puzzle_bool:
+            self._auto_puzzle_bool = await self.hook_handler.read_auto_puzzle_bool()
+
+        await self.hook_handler.write_bytes(
+            self._auto_puzzle_bool,
+            b"\x00"
+        )
+    
+    async def is_server_teleport_snapbacked(self):
+        if not self.hook_handler._check_if_hook_active(UpdateZoneCounterHook):
+            raise RuntimeError("Update zone counter not active")
+        
+        if not self._server_teleport_snapback_bool:
+            self._server_teleport_snapback_bool = await self.hook_handler.read_server_teleport_snapback_bool()
+        
+        return await self.hook_handler.read_typed(self._server_teleport_snapback_bool, Primitive.bool)
+    
+    async def reset_server_teleport_snapback(self):
+        if not self.hook_handler._check_if_hook_active(UpdateZoneCounterHook):
+            raise RuntimeError("Update zone counter not active")
+        
+        if not self._server_teleport_snapback_bool:
+            self._server_teleport_snapback_bool = await self.hook_handler.read_server_teleport_snapback_bool()
+        
+        await self.hook_handler.write_bytes(
+            self._server_teleport_snapback_bool,
+            b"\x00"
+        )
+
     async def _get_je_instruction_forward_backwards(self):
         """
         this method returns the two je instruction addresses :)
@@ -736,7 +785,7 @@ class Client:
                 b"\x48\xBA" + packed_new_camera_address +  # mov rdx, new_cam_addr
                 b"\x49\xC7\xC0\x01\x00\x00\x00"  # mov r8, 0x1
                 b"\x48\x8B\x01"  # mov rax, [rcx]
-                b"\x48\x8B\x80\x78\x04\x00\x00"  # mov rax, [rax+0x478]
+                b"\x48\x8B\x80\x98\x04\x00\x00"  # mov rax, [rax+0x498]
                 b"\x49\x89\xC1"  # mov r9, rax
                 b"\xFF\xD0"  # call rax
 
