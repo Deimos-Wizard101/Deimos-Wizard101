@@ -12,6 +12,13 @@ from shapely.geometry import MultiPoint, Point, Polygon
 from shapely.ops import unary_union
 from wizwalker.utils import get_wiz_install
 
+from src.typedump import (
+    cached_type_lists,
+    client_version as _client_version,
+    dump_type_list as _dump_type_list,
+    typelist_cache_path as _typelist_cache_path,
+)
+
 # katsuba + kinif + wiztype are best-effort: if any is missing we degrade to
 # bounding-box entity collision rather than breaking collision TP entirely.
 try:
@@ -266,64 +273,6 @@ def _footprint_cache_path(revision: str) -> Path:
     return base / "footprint_cache" / (revision.replace(".", "_") + ".json")
 
 
-def _client_version(revision: str) -> str:
-    """The client-version component of a revision string, e.g.
-    ``r803238.Wizard_1_610`` -> ``Wizard_1_610``.
-
-    The property/type tree is compiled into the client executable and only changes on a
-    client-version bump — every ``r80xxxx.Wizard_1_610`` *build* (a content patch) shares one
-    tree. So this, not the build number, is the correct key for the type-list cache: it lets one
-    dump serve every build of a version instead of forcing a fresh (and, when wiztype's signature
-    is stale for the new build, hanging) re-pull on each content patch. Falls back to the whole
-    string if there's no ``build.version`` split."""
-    return revision.split(".", 1)[1] if "." in revision else revision
-
-
-def _typelist_cache_path(key: str) -> Path:
-    """Writable katsuba TypeList location (alongside Deimos settings), keyed by ``key`` (the
-    client version, e.g. ``Wizard_1_610`` — see ``_client_version``)."""
-    appdata = os.environ.get("APPDATA", "")
-    base = Path(appdata) / "Deimos" if appdata else Path(os.getcwd())
-    return base / "types" / (key.replace(".", "_") + ".json")
-
-
-def _typelist_is_loadable(path: Path) -> bool:
-    """Cheap validity probe: the cached dump exists, is non-empty, and katsuba can
-    open it. Catches a corrupt/half-written cache so we re-dump instead of choking."""
-    try:
-        return path.exists() and path.stat().st_size > 0 and bool(TypeList.open(str(path)))
-    except Exception:
-        return False
-
-
-def _dump_type_list(revision: str, path: Path) -> None:
-    """Pull a fresh type dump from the running client and write it to ``path`` (atomic).
-
-    Requires a live WizardGraphicalClient. Raises with an actionable message when
-    wiztype can't read the client's type tree — that means the client was patched
-    and wiztype's memory signature is stale, which a re-dump cannot fix.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(
-        f"[entity_collision] pulling a fresh type dump for revision {revision} "
-        f"from the running client via wiztype (one-time, ~10-30s)"
-    )
-    try:
-        tree = wiztype.get_type_tree()
-    except Exception as e:
-        raise RuntimeError(
-            f"wiztype could not read the client's type tree "
-            f"({type(e).__name__}: {e}); the client was likely patched and wiztype's "
-            f"memory signature is stale — upgrade wiztype "
-            f"(`uv lock --upgrade-package wiztype && uv sync`)"
-        ) from e
-    tmp = path.with_suffix(".tmp")
-    wiztype.JsonTypeDumperV1(tree).dump(tmp, indent=None)
-    tmp.replace(path)
-    logger.info(
-        f"[entity_collision] type list cached at {path} "
-        f"({path.stat().st_size // (1024 * 1024)} MB)"
-    )
 
 
 def _extract_nif_asset(template) -> str | None:
@@ -465,16 +414,7 @@ class _Resolver:
         build of a version shares one type tree, so any is a valid source. With ``version=None``,
         every cached dump regardless of version (the cross-version resilience fallback). Corrupt or
         half-written files are dropped by the cheap loadable probe."""
-        d = _typelist_cache_path(version or "_").parent
-        try:
-            files = [p for p in d.glob("*.json")
-                     if (version is None
-                         or p.stem == version or p.stem.endswith("_" + version))
-                     and _typelist_is_loadable(p)]
-        except Exception:
-            return []
-        files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-        return files
+        return cached_type_lists(version)
 
     def _try_type_list(self, path: Path) -> bool:
         """Build the serializers from ``path`` and confirm they match the client. False on error."""
