@@ -36,6 +36,7 @@ from wizwalker.utils import get_all_wizard_handles, get_foreground_window
 from src import bot_registry, discsdk, updater, wizpatch_runner
 from src import gui as deimosgui
 from src.auto_pet import nomnom
+from src.camera_distance import set_camera_distance, camera_distance_bounds
 from src.client_resizing import ClientResizingManager
 from src.command_parser import execute_flythrough, parse_command
 from src.config_combat import (
@@ -619,10 +620,7 @@ async def tool_finish():
                 client_object = await p.body.parent_client_object()
                 await camera.write_attached_client_object(client_object)
                 await camera.write_check_collisions(True)
-                await camera.write_distance_target(300.0)
-                await camera.write_distance(300.0)
-                await camera.write_min_distance(150.0)
-                await camera.write_max_distance(450.0)
+                await set_camera_distance(camera, distance=300.0, minimum=150.0, maximum=450.0)
                 await camera.write_zoom_resolution(150.0)
             await p.body.write_scale(1.0)
         except Exception:
@@ -2965,24 +2963,28 @@ async def main():
                             if foreground_client:
                                 camera = await foreground_client.game_client.elastic_camera_controller()
                                 current_zoom = await camera.distance()
-                                current_min = await camera.min_distance()
-                                current_max = await camera.max_distance()
-                                distance_input = param_input(
-                                    com.data["Distance"], current_zoom
-                                )
-                                min_input = param_input(com.data["Min"], current_min)
-                                max_input = param_input(com.data["Max"], current_max)
-                                logger.debug(
-                                    f"Setting camera distance to {distance_input}, min={min_input}, max={max_input}"
-                                )
-                                if com.data["Distance"]:
-                                    await camera.write_distance_target(distance_input)
-                                    await camera.write_distance(distance_input)
-                                if com.data["Min"]:
-                                    await camera.write_min_distance(min_input)
-                                    await camera.write_zoom_resolution(min_input)
-                                if com.data["Max"]:
-                                    await camera.write_max_distance(max_input)
+                                current_min, current_max = await camera_distance_bounds(camera)
+                                try:
+                                    distance_input = (
+                                        param_input(com.data["Distance"], current_zoom)
+                                        if com.data["Distance"] else None
+                                    )
+                                    min_input = (
+                                        param_input(com.data["Min"], current_min)
+                                        if com.data["Min"] else None
+                                    )
+                                    max_input = (
+                                        param_input(com.data["Max"], current_max)
+                                        if com.data["Max"] else None
+                                    )
+                                    await set_camera_distance(
+                                        camera, distance=distance_input, minimum=min_input,
+                                        maximum=max_input, wheel=True
+                                    )
+                                except ValueError as error:
+                                    logger.warning(f"Invalid camera distance settings: {error}")
+                                except Exception as error:
+                                    logger.opt(exception=error).warning("Could not apply camera distance settings")
                         case deimosgui.GUICommandType.PopulateCamera:
                             if not walker.clients:
                                 logger.info(
@@ -2999,8 +3001,7 @@ async def main():
                                 ) = await camera.orientation()
                                 elastic_camera = await foreground_client.game_client.elastic_camera_controller()
                                 current_zoom = await elastic_camera.distance()
-                                current_min = await elastic_camera.min_distance()
-                                current_max = await elastic_camera.max_distance()
+                                current_min, current_max = await camera_distance_bounds(elastic_camera)
                                 gui_send_queue.put(
                                     deimosgui.GUICommand(
                                         deimosgui.GUICommandType.UpdateWindow,
