@@ -24,6 +24,7 @@ from .hooks import (
     DanceGameMovesHook,
     AhmarraAutoPuzzleHook,
     UpdateZoneCounterHook,
+    ServerMoveSnapbackHook,
     MemoryHook
 )
 from .memory_reader import MemoryReader, Primitive
@@ -200,6 +201,7 @@ class HookHandler(MemoryReader):
         await self.activate_drops_toggle_hook(wait_for_ready=False)
         await self.activate_auto_puzzle_hook(wait_for_ready=False)
         await self.activate_update_zone_counter_hook(wait_for_ready=False)
+        await self.activate_server_move_snapback_hook(wait_for_ready=False)
 
         if wait_for_ready:
             wait_tasks = []
@@ -643,6 +645,39 @@ class HookHandler(MemoryReader):
 
         if addr is None:
             raise HookNotActive("Update Zone Counter")
+
+        return addr
+
+    async def activate_server_move_snapback_hook(
+        self, *, wait_for_ready: bool = False, timeout: float = None
+    ):
+
+        if self._check_if_hook_active(ServerMoveSnapbackHook):
+            raise HookAlreadyActivated("Server move snapback")
+
+        await self._check_for_autobot()
+
+        server_move_snapback_hook = ServerMoveSnapbackHook(self)
+        await server_move_snapback_hook.hook()
+
+        self._active_hooks[ServerMoveSnapbackHook] = server_move_snapback_hook
+        self._base_addrs["server_move_snapback_bool"] = server_move_snapback_hook.server_move_snapback_bool
+
+    async def deactivate_server_move_snapback_hook(self):
+
+        if not self._check_if_hook_active(ServerMoveSnapbackHook):
+            raise HookNotActive("Server move snapback")
+
+        server_move_snapback_hook = self._active_hooks.pop(ServerMoveSnapbackHook)
+        await server_move_snapback_hook.unhook()
+
+        del self._base_addrs["server_move_snapback_bool"]
+
+    async def read_server_move_snapback_bool(self) -> int:
+        addr = self._base_addrs.get("server_move_snapback_bool")
+
+        if addr is None:
+            raise HookNotActive("Server move snapback")
 
         return addr
 
