@@ -1,6 +1,8 @@
 import asyncio
 from wizwalker import XYZ, Orient, Client, Keycode
 from wizwalker.file_readers.wad import Wad
+from wizwalker.utils import maybe_wait_for_value_with_timeout
+from wizwalker.errors import ExceptionalTimeout
 import math
 import struct
 from io import BytesIO
@@ -398,7 +400,7 @@ def _sent_back(pos: XYZ, origin: XYZ) -> bool:
 
 
 async def _arrived(client: Client, dest: XYZ, origin: XYZ = None, zone_before: str = None,
-                   settle: float = 1.0, tol: float = 60.0) -> bool:
+                   settle: float = 0.5, tol: float = 60.0) -> bool:
     """True if, after letting the server settle, the teleport to ``dest`` actually took.
 
     Two independent signals, because either one alone has a blind spot:
@@ -417,26 +419,44 @@ async def _arrived(client: Client, dest: XYZ, origin: XYZ = None, zone_before: s
     retreating would only fight whatever moved us. Unreadable position -> assume success
     rather than thrash on a transient read error.
     """
-    await asyncio.sleep(settle)
+
+    await client.reset_server_teleport_snapback()
+
     try:
-        if zone_before is not None and await client.zone_name() != zone_before:
-            logger.debug(f"[collision_tp] {client.title}: zone changed during teleport; done")
-            return True
-        if not await is_free(client):
-            logger.debug(f"[collision_tp] {client.title}: no longer free during teleport; done")
-            return True
-        pos = await client.body.position()
-    except Exception:
+        await maybe_wait_for_value_with_timeout(
+            client.is_server_teleport_snapbacked,
+            value=True,
+            sleep_time=0.01,
+            timeout=settle,
+        )
+
+        logger.debug(
+            f"[collision_tp] {client.title}: never left the starting position; "
+            f"teleport to {dest} was rejected"
+        )
+        return False
+    except ExceptionalTimeout:
         return True
-    if origin is not None and not _sent_back(dest, origin):
-        # dest is somewhere we'd have to move to reach, so staying put means rejection
-        if _sent_back(pos, origin):
-            logger.debug(
-                f"[collision_tp] {client.title}: never left the starting position; "
-                f"teleport to {dest} was rejected"
-            )
-            return False
-    return math.hypot(pos.x - dest.x, pos.y - dest.y) <= tol
+    # await asyncio.sleep(settle)
+    # try:
+    #     if zone_before is not None and await client.zone_name() != zone_before:
+    #         logger.debug(f"[collision_tp] {client.title}: zone changed during teleport; done")
+    #         return True
+    #     if not await is_free(client):
+    #         logger.debug(f"[collision_tp] {client.title}: no longer free during teleport; done")
+    #         return True
+    #     pos = await client.body.position()
+    # except Exception:
+    #     return True
+    # if origin is not None and not _sent_back(dest, origin):
+    #     # dest is somewhere we'd have to move to reach, so staying put means rejection
+    #     if _sent_back(pos, origin):
+    #         logger.debug(
+    #             f"[collision_tp] {client.title}: never left the starting position; "
+    #             f"teleport to {dest} was rejected"
+    #         )
+    #         return False
+    # return math.hypot(pos.x - dest.x, pos.y - dest.y) <= tol
 
 
 async def _teleport_once_verified(client: Client, dest: XYZ, anchor: XYZ,
@@ -667,7 +687,7 @@ async def collision_tp(client: Client, xyz: XYZ = None, leader_client: Client = 
         # Rasterize the zone's walkability into a node grid (collision.bcd navmesh, height-aware
         # bcd colliders, and the WHOLE-zone static entity colliders — teleporter pads, boats — from
         # gamedata.bin, all known from files before we move) and pick the closest teleport-valid
-        # point to the target. All file/CPU work, cached per zone, so it runs off the event loop.
+        # point to the target. All file/CPU work, cached per zone, so it runs off the event loop.  
         def _solve(strict=False):
             extra_shapes = entity_collision.build_zone_static_shapes(zone_name, None)
             return find_walkable_teleport_point(
@@ -687,7 +707,7 @@ async def collision_tp(client: Client, xyz: XYZ = None, leader_client: Client = 
             f"{safe_xyz} (moved {moved:.0f}u from target)"
         )
         if await _teleport_once_verified(client, safe_xyz, starting_xyz, zone_name):
-            await _walk_remaining_to_target(client, target_xyz, world, zone_name, player_radius)
+            #await _walk_remaining_to_target(client, target_xyz, world, zone_name, player_radius)
             return
 
         # The game refused a point the geometry called clear, so something solid is there
@@ -719,15 +739,15 @@ async def collision_tp(client: Client, xyz: XYZ = None, leader_client: Client = 
                     avoid = await asyncio.to_thread(_blockers)
                 except Exception:
                     avoid = None
-                await _walk_remaining_to_target(
-                    client, target_xyz, world, zone_name, player_radius, avoid=avoid
-                )
+                #await _walk_remaining_to_target(
+                #    client, target_xyz, world, zone_name, player_radius, avoid=avoid
+                #)
                 return
 
         # Still bounced: an unmodeled warp volume rather than a mis-excused wall. Back off
         # along the approach line before giving up on the geometry entirely.
         if await _retreat_toward(client, safe_xyz, starting_xyz, zone_name):
-            await _walk_remaining_to_target(client, target_xyz, world, zone_name, player_radius)
+            #await _walk_remaining_to_target(client, target_xyz, world, zone_name, player_radius)
             return
         logger.debug(
             f"[collision_tp] {client.title}: collision point never landed (unmodeled collider "
