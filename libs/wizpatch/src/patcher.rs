@@ -52,6 +52,12 @@ pub struct PatchOptions {
     pub platform: Platform,
     pub country: Country,
     pub revision: Option<String>,
+    /// Base URL of a patch server to use instead of looking one up from
+    /// KingsIsle. The file list is expected at `<base>/LatestFileList.bin`
+    /// (fetched as `.xml`, as with the live servers) and every record's
+    /// `SrcFileName` is joined onto the same base. `None` uses the live
+    /// lookup, which is the default.
+    pub base_url: Option<String>,
     /// Operation to run against the file list.
     pub mode: Mode,
     /// Glob/substring patterns selecting which files to act on. Empty means
@@ -115,7 +121,8 @@ impl Stats {
 
 pub async fn patch(opts: &PatchOptions) -> Result<PatchStats, WizPatchError> {
     let urls = resolve_urls(opts).await?;
-    let revision = revision_from_url(&urls.file_list_url)?;
+    let revision =
+        revision_from_url(&urls.file_list_url).unwrap_or_else(|_| "unknown".to_string());
     println!("Revision: {revision}");
     println!("Base URL: {}", urls.base_url);
 
@@ -466,6 +473,18 @@ async fn classify(
 }
 
 async fn resolve_urls(opts: &PatchOptions) -> Result<PatchUrls, WizPatchError> {
+    // An explicit base replaces the live lookup outright. Private servers serve
+    // the same file list and the same tree underneath it, but do not speak the
+    // binary handshake `get_patch_urls` relies on, so there is nothing to ask.
+    // `--revision` is redundant here: the base already names one.
+    if let Some(base) = &opts.base_url {
+        let base = base.trim_end_matches('/').to_string();
+        return Ok(PatchUrls {
+            file_list_url: format!("{base}/LatestFileList.bin"),
+            base_url: base,
+        });
+    }
+
     let live = get_patch_urls(opts.game, opts.platform, opts.country).await?;
     let Some(target_rev) = &opts.revision else {
         return Ok(live);

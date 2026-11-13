@@ -35,6 +35,9 @@ fn usage() {
            --platform <p>           windows|mac|steam\n\
                                     (default: mac on macOS, windows elsewhere)\n\
            --country <us|eu>        Patch server region (default: us)\n\
+           --url <BASE>             Patch from this base URL instead of\n\
+                                    KingsIsle's servers, e.g. a private\n\
+                                    server. Expects <BASE>/LatestFileList.bin\n\
            --revision <STR>         Pin a specific revision\n\
                                     (e.g. V_r800683.Wizard_1_610)\n\
            --no-download-missing    Patch only files already present locally\n\
@@ -100,6 +103,7 @@ async fn run(args: Vec<String>) -> Result<(), WizPatchError> {
     let mut download_missing = true;
     let mut country = Country::Us;
     let mut revision: Option<String> = None;
+    let mut base_url: Option<String> = None;
     let mut game_path: Option<PathBuf> = None;
     let mut platform: Option<Platform> = None;
     let mut jobs: usize = 8;
@@ -143,6 +147,14 @@ async fn run(args: Vec<String>) -> Result<(), WizPatchError> {
                         .ok_or_else(|| {
                             WizPatchError::Protocol("--revision needs a value".into())
                         })?
+                        .clone(),
+                );
+            }
+            "--url" => {
+                i += 1;
+                base_url = Some(
+                    args.get(i)
+                        .ok_or_else(|| WizPatchError::Protocol("--url needs a value".into()))?
                         .clone(),
                 );
             }
@@ -221,6 +233,7 @@ async fn run(args: Vec<String>) -> Result<(), WizPatchError> {
         platform,
         country,
         revision,
+        base_url,
         mode,
         globs,
         download_missing,

@@ -5,6 +5,7 @@
 # gives reproducible builds (and the Nix flake needs it tracked).
 .*
 !.gitignore
+!.github
 # Re-include Cargo.lock: the repo root ignores *.lock, but see the note above.
 !Cargo.lock
 flake.lock

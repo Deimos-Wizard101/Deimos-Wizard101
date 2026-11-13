@@ -1,0 +1,149 @@
+name: release
+
+# Releases are cut by bumping `version` in Cargo.toml. Pushing that to main
+# builds every target and publishes them under a `v<version>` tag; any other
+# change to Cargo.toml (a new dependency, say) is ignored.
+on:
+  push:
+    branches: [main]
+    paths: ["Cargo.toml"]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Release the current Cargo.toml version even if unchanged"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          read_version() { grep -m1 '^version' <<<"$1" | sed -E 's/.*"(.*)".*/\1/'; }
+
+          current=$(read_version "$(cat Cargo.toml)")
+          echo "version=$current" >> "$GITHUB_OUTPUT"
+          echo "Cargo.toml version: $current"
+
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Forced by workflow_dispatch."
+            exit 0
+          fi
+
+          # A tag that already exists means this version shipped; never
+          # re-release over it.
+          if git ls-remote --exit-code --tags origin "refs/tags/v$current" >/dev/null 2>&1; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Tag v$current already exists; nothing to do."
+            exit 0
+          fi
+
+          # Cargo.lock pins this package's own version, so bumping only
+          # Cargo.toml makes the build's --locked fail with a far less obvious
+          # message than this one.
+          locked=$(awk '/^name = "wizpatch"$/{getline; print}' Cargo.lock | sed -E 's/.*"(.*)".*/\1/')
+          if [ "$locked" != "$current" ]; then
+            echo "::error::Cargo.lock says $locked but Cargo.toml says $current." \
+                 "Run a cargo command locally and commit the updated Cargo.lock."
+            exit 1
+          fi
+
+          previous=""
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            previous=$(read_version "$(git show HEAD~1:Cargo.toml 2>/dev/null || true)")
+          fi
+          echo "Previous version: ${previous:-none}"
+
+          if [ "$current" != "$previous" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Version unchanged; nothing to do."
+          fi
+
+  build:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-14
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # TLS comes from rustls, so there is no OpenSSL or Security framework to
+      # wire up on any of these runners.
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="wizpatch-${{ needs.version.outputs.version }}-${{ matrix.target }}"
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "dist/$name.zip" "./target/${{ matrix.target }}/release/wizpatch.exe" > /dev/null
+          else
+            tar czf "dist/$name.tar.gz" -C "target/${{ matrix.target }}/release" wizpatch
+          fi
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ls -l dist
+          gh release create "v${{ needs.version.outputs.version }}" \
+            --title "v${{ needs.version.outputs.version }}" \
+            --generate-notes \
+            dist/*
