@@ -34,6 +34,9 @@ jobs:
       shell: bash
       run: uv run --group dev python -m compileall -q Deimos.py src
 
+    - name: Check playstyle Apply
+      run: uv run --group dev python -m unittest discover -s tests -v
+
     - name: Record Rust version
       id: rust
       shell: bash

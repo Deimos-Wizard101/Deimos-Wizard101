@@ -315,3 +315,14 @@ orientation_pry=Orientation (PRY):
 
 # Stats popup
 combat_stats=Combat Stats
+playstyle_applying=Applying playstyle...
+playstyle_apply_unconfirmed=No confirmation received yet. Check combat status before applying again.
+playstyle_applied_one=Applied to 1 client.
+playstyle_applied_many=Applied to {count} clients.
+playstyle_active_unchanged=Active playstyle unchanged.
+playstyle_no_clients=No clients hooked. Nothing applied
+playstyle_no_changes=No playstyle changes.
+playstyle_apply_failed=Could not apply the playstyle. Check the log and combat status.
+playstyle_rollback_failed=Could not restore every client's active playstyle. Stop combat and reapply before continuing.
+playstyle_hooking=Clients are still hooking. Try again in a moment.
+playstyle_combat_unconfirmed=Combat may not be in its previous state. Check combat status before continuing.
