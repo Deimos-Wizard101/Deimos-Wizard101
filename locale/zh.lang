@@ -280,6 +280,7 @@ setting_hitter_client=输出客户端
 setting_ignore_pet_level_up=忽略宠物升级
 setting_only_dance_game=只玩跳舞游戏
 setting_client_resizing=调整客户端窗口大小
+setting_chained_teleport=链式传送（长距离分段传送）
 setting_remember_chosen_clients=记住已选择客户端
 setting_verify_patch_files=启动前验证/修补游戏文件
 setting_check_for_updates=启动时检查更新

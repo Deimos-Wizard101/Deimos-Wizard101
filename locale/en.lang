@@ -271,6 +271,7 @@ setting_hitter_client=Hitter Client
 setting_ignore_pet_level_up=Ignore Pet Level Up
 setting_only_dance_game=Only Play Dance Game
 setting_client_resizing=Client Resizing
+setting_chained_teleport=Chained Teleport (multi-hop long distance TP)
 setting_remember_chosen_clients=Remember Chosen Clients
 setting_verify_patch_files=Patch Game Files On Launch
 setting_check_for_updates=Check for Updates on Startup

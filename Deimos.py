@@ -134,6 +134,7 @@ gui_font_size = 9
 use_team_up = False
 buy_potions = True
 client_resizing = True
+chained_teleport = False
 client_to_follow = None
 client_to_boost = None
 questing_friend_tp = False
@@ -162,6 +163,9 @@ drop_status = _json_settings.get("drop_logging", drop_status)
 anti_afk_status = _json_settings.get("use_anti_afk", anti_afk_status)
 buy_potions = _json_settings.get("buy_potions", buy_potions)
 client_resizing = _json_settings.get("client_resizing", client_resizing)
+chained_teleport = _json_settings.get("chained_teleport", chained_teleport)
+# Mirrors wizwalker Client._teleport_distance default; 0 disables hop splitting entirely.
+CHAINED_TELEPORT_DISTANCE = 2000
 client_resizing_manager = ClientResizingManager()
 
 
@@ -1725,9 +1729,15 @@ async def main():
             )
         )
 
+    async def _apply_chained_teleport(client):
+        await client.modify_teleport_distance(
+            CHAINED_TELEPORT_DISTANCE if chained_teleport else 0
+        )
+
     async def _init_client_attrs(client):
         """Initialize all per-client attributes. Called once per client after hooking."""
         client_speeds[client.process_id] = await client.client_object.speed_multiplier()
+        await _apply_chained_teleport(client)
         client.combat_status = False
         client.questing_status = False
         client.sigil_status = False
@@ -3827,6 +3837,7 @@ async def main():
                                 automatic_team_based_combat, \
                                 discard_duplicate_cards
                             global check_for_updates, auto_install_updates
+                            global chained_teleport
                             settings_dict = com.data
                             for key, value in settings_dict.items():
                                 match key:
@@ -3870,6 +3881,13 @@ async def main():
                                         auto_install_updates = value
                                     case "client_resizing":
                                         client_resizing = value
+                                    case "chained_teleport":
+                                        chained_teleport = value
+                                        for c in walker.clients:
+                                            try:
+                                                await _apply_chained_teleport(c)
+                                            except Exception as e:
+                                                logger.debug(f"Failed to apply chained teleport setting: {e}")
                             logger.debug(
                                 f"Settings updated: {list(settings_dict.keys())}"
                             )

@@ -46,6 +46,8 @@ DEFAULT_SETTINGS = {
     # automatic camera-aspect correction so the 3D view fills any window size
     # undistorted. Disable to leave game windows untouched.
     "client_resizing": True,
+    # Split long teleports into hops so the server accepts them. Off = single direct teleport.
+    "chained_teleport": False,
     # [launcher]
     "remember_chosen_clients": False,
     # Verify/patch game files (via the bundled wizpatch binary) before launching.

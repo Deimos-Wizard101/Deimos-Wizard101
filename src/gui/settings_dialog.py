@@ -346,6 +346,7 @@ def show_settings_dialog(ctx):
     client_form.setSpacing(4)
 
     _add_checkbox(client_form, 'client_resizing', 'setting_client_resizing')
+    _add_checkbox(client_form, 'chained_teleport', 'setting_chained_teleport')
 
     layout.addWidget(client_group)
 
