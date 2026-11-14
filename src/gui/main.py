@@ -175,18 +175,23 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
         else:
             pin_btn.setIcon(_pin_icon if _is_pinned[0] else _unpin_icon)
         pin_btn.setToolTip(tl('always_on_top') if _is_pinned[0] else tl('not_on_top'))
-        import ctypes.wintypes
-        _SetWindowPos = ctypes.windll.user32.SetWindowPos
-        _SetWindowPos.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
-        _SetWindowPos.restype = ctypes.wintypes.BOOL
-        hwnd = ctypes.wintypes.HWND(int(window.winId()))
-        HWND_TOPMOST = ctypes.wintypes.HWND(-1)
-        HWND_NOTOPMOST = ctypes.wintypes.HWND(-2)
-        SWP_NOMOVE = 0x0002
-        SWP_NOSIZE = 0x0001
-        SWP_NOACTIVATE = 0x0010
-        insert_after = HWND_TOPMOST if _is_pinned[0] else HWND_NOTOPMOST
-        _SetWindowPos(hwnd, insert_after, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+        if sys.platform == "win32":
+            import ctypes.wintypes
+            _SetWindowPos = ctypes.windll.user32.SetWindowPos
+            _SetWindowPos.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+            _SetWindowPos.restype = ctypes.wintypes.BOOL
+            hwnd = ctypes.wintypes.HWND(int(window.winId()))
+            HWND_TOPMOST = ctypes.wintypes.HWND(-1)
+            HWND_NOTOPMOST = ctypes.wintypes.HWND(-2)
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_NOACTIVATE = 0x0010
+            insert_after = HWND_TOPMOST if _is_pinned[0] else HWND_NOTOPMOST
+            _SetWindowPos(hwnd, insert_after, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+        else:
+            from PyQt6.QtCore import Qt as _Qt
+            window.setWindowFlag(_Qt.WindowType.WindowStaysOnTopHint, bool(_is_pinned[0]))
+            window.show()
 
     pin_btn.clicked.connect(_toggle_pin)
     titlebar_layout.addWidget(pin_btn)

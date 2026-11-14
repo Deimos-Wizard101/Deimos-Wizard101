@@ -64,8 +64,36 @@ kernel32 = _Stub(
     },
 )
 
-# user32/gdi32/ntdll: window, input, and drawing. Implemented lazily as the
-# Linux window/input layer is wired in; until then these raise if touched.
-user32 = _Stub("user32", {})
+# Global hotkeys are a Win32 message-loop feature (RegisterHotKey + PeekMessage).
+# Stubbed as a successful no-op on Linux: the Deimos GUI still works, but global
+# hotkeys do not fire. A real Linux path (X11 XGrabKey / evdev) is a follow-up.
+def _register_hotkey(hwnd, hotkey_id, modifiers, vk):
+    return 1
+
+
+def _unregister_hotkey(hwnd, hotkey_id):
+    return 1
+
+
+def _peek_message(msg_ptr, hwnd, msg_min, msg_max, remove):
+    return 0  # no messages → the listener loop idles
+
+
+def _noop(*args, **kwargs):
+    return 0
+
+
+# user32/gdi32/ntdll: window, input, and drawing. Window/input proper is handled
+# by wizwalker._linux via xdotool; these cover the remaining direct calls.
+user32 = _Stub(
+    "user32",
+    {
+        "RegisterHotKey": _register_hotkey,
+        "UnregisterHotKey": _unregister_hotkey,
+        "PeekMessageW": _peek_message,
+        "DispatchMessageW": _noop,
+        "TranslateMessage": _noop,
+    },
+)
 gdi32 = _Stub("gdi32", {})
 ntdll = _Stub("ntdll", {})

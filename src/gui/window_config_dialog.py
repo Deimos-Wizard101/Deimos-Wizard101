@@ -14,6 +14,7 @@ in the account's wizlaunch metadata; it is applied automatically on launch.
 from __future__ import annotations
 
 import ctypes
+import sys
 from ctypes import wintypes
 
 from PyQt6.QtWidgets import (
@@ -27,7 +28,7 @@ import wizlaunch
 
 
 # ---- physical monitor enumeration (matches SetWindowPos screen coords) ----
-_user32 = ctypes.windll.user32
+_user32 = ctypes.windll.user32 if sys.platform == "win32" else None
 
 
 class _MONITORINFO(ctypes.Structure):

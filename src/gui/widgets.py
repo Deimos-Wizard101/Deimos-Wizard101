@@ -2,6 +2,7 @@ import math
 import re
 import time
 import ctypes
+import sys
 import ctypes.wintypes
 
 import pyperclip
@@ -868,6 +869,8 @@ class HighlightOverlay(QWidget):
         self._click_through_set = False
 
     def _ensure_click_through(self):
+        if sys.platform != "win32":
+            return
         if not self._click_through_set:
             self._click_through_set = True
             hwnd = int(self.winId())
@@ -875,6 +878,8 @@ class HighlightOverlay(QWidget):
             ctypes.windll.user32.SetWindowLongW(hwnd, -20, ex_style | 0x20 | 0x80000)
 
     def update_box(self, game_hwnd, x1, y1, x2, y2):
+        if sys.platform != "win32":
+            return
         self._ensure_click_through()
         origin = ctypes.wintypes.POINT(0, 0)
         ctypes.windll.user32.ClientToScreen(game_hwnd, ctypes.byref(origin))

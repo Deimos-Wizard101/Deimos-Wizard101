@@ -3,7 +3,13 @@ import struct
 
 from enum import IntEnum
 
-import win32pipe, win32file
+import sys
+
+if sys.platform == "win32":
+    import win32pipe, win32file
+else:
+    import os
+    import socket
 
 
 discord_base_pipe_path = "\\\\?\\pipe\\discord-ipc-"
@@ -19,30 +25,55 @@ class Opcodes(IntEnum):
 	Pong = 4
 
 
+def _linux_ipc_dirs():
+	# Discord's IPC socket lives in the runtime dir, with flatpak/snap variants.
+	base = os.environ.get("XDG_RUNTIME_DIR") or os.environ.get("TMPDIR") or "/tmp"
+	return [
+		base,
+		os.path.join(base, "app", "com.discordapp.Discord"),
+		os.path.join(base, "snap.discord"),
+	]
+
+
 def connect():
-	handle = None
-	for i in range(10):
-		path = discord_base_pipe_path + str(i)
-
-		try:
-			handle = win32file.CreateFile(
-				path,
-				win32file.GENERIC_READ | win32file.GENERIC_WRITE,
-				0,
-				None,
-				win32file.OPEN_EXISTING,
-				0,
-				None
-			)
-			win32pipe.SetNamedPipeHandleState(handle, win32pipe.PIPE_READMODE_BYTE, None, None)
-			break
-		except:
-			pass
-
-	return handle
+	if sys.platform == "win32":
+		handle = None
+		for i in range(10):
+			path = discord_base_pipe_path + str(i)
+			try:
+				handle = win32file.CreateFile(
+					path,
+					win32file.GENERIC_READ | win32file.GENERIC_WRITE,
+					0,
+					None,
+					win32file.OPEN_EXISTING,
+					0,
+					None
+				)
+				win32pipe.SetNamedPipeHandleState(handle, win32pipe.PIPE_READMODE_BYTE, None, None)
+				break
+			except:
+				pass
+		return handle
+	# Linux: AF_UNIX socket at <runtime>/discord-ipc-<i>
+	for d in _linux_ipc_dirs():
+		for i in range(10):
+			path = os.path.join(d, f"discord-ipc-{i}")
+			if not os.path.exists(path):
+				continue
+			try:
+				sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+				sock.connect(path)
+				return sock
+			except OSError:
+				pass
+	return None
 
 def close(handle):
-	win32file.CloseHandle(handle)
+	if sys.platform == "win32":
+		win32file.CloseHandle(handle)
+	else:
+		handle.close()
 
 def serialize_message(opcode, jsondata) -> bytearray:
 	result = bytearray()
@@ -61,12 +92,20 @@ def parse_message(msg):
 	return json.loads(data)
 
 def send(handle, data):
-	win32file.WriteFile(handle, data)
+	if sys.platform == "win32":
+		win32file.WriteFile(handle, data)
+	else:
+		handle.sendall(data)
 
 def recv(handle):
-	data = win32file.ReadFile(handle, 65536)
-	if data[0] == 0:
-		return parse_message(data[1])
+	if sys.platform == "win32":
+		data = win32file.ReadFile(handle, 65536)
+		if data[0] == 0:
+			return parse_message(data[1])
+	else:
+		raw = handle.recv(65536)
+		if raw:
+			return parse_message(raw)
 
 shake = serialize_message(
 	Opcodes.Handshake,

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import ctypes
+import sys
 from ctypes import wintypes
 
 from loguru import logger
@@ -44,19 +45,20 @@ except Exception:  # pragma: no cover
 RESIZE_MARGIN = 14  # px grab zone at the window edges
 
 # ---- Win32 (cross-process safe: GWL_STYLE, SetWindowPos, Get*Rect) ----
-user32 = ctypes.WinDLL("user32", use_last_error=True)
-LONG_PTR = ctypes.c_longlong
+if sys.platform == "win32":
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    LONG_PTR = ctypes.c_longlong
 
-user32.GetWindowLongPtrW.restype = LONG_PTR
-user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
-user32.SetWindowLongPtrW.restype = LONG_PTR
-user32.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, LONG_PTR]
-user32.SetWindowPos.restype = wintypes.BOOL
-user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
-user32.AdjustWindowRectEx.argtypes = [ctypes.POINTER(wintypes.RECT), wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
-user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
-user32.IsWindow.argtypes = [wintypes.HWND]
+    user32.GetWindowLongPtrW.restype = LONG_PTR
+    user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.SetWindowLongPtrW.restype = LONG_PTR
+    user32.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, LONG_PTR]
+    user32.SetWindowPos.restype = wintypes.BOOL
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+    user32.AdjustWindowRectEx.argtypes = [ctypes.POINTER(wintypes.RECT), wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.IsWindow.argtypes = [wintypes.HWND]
 
 GWL_STYLE = -16
 GWL_EXSTYLE = -20
@@ -758,3 +760,22 @@ class ClientResizingManager:
         self._shutdown = True
         self._enabled = False
         await self._teardown_all()
+
+
+if sys.platform != "win32":
+    class ClientResizingManager:  # noqa: F811
+        """No-op on Linux: freeform client-window resizing is a Win32 feature."""
+        def __init__(self):
+            pass
+        def drop_keep_alive(self, hwnd):
+            pass
+        async def tick(self, clients, enabled):
+            pass
+        async def apply_account_window(self, *args, **kwargs):
+            pass
+        async def teardown_client(self, hwnd):
+            pass
+        async def _teardown_all(self):
+            pass
+        async def shutdown(self):
+            pass

@@ -1436,6 +1436,14 @@ def override_wiz_install_using_handle(max_size = 100):
     """
     This function allows you to automatically override your wiz install location, provided that wizard101 is open.
     """
+    import sys, os
+    if sys.platform != "win32":
+        # Native Linux: the install path comes from the env or the Steam default,
+        # not Win32 process introspection.
+        install_location = os.environ.get("WIZLAUNCH_GAME_PATH") or os.path.expanduser(
+            "~/.local/share/Steam/steamapps/common/Wizard101")
+        override_wiz_install_location(install_location)
+        return
     path = ctypes.create_unicode_buffer(max_size)
     pid = get_pid_from_handle(get_all_wizard_handles()[0])
     handle = kernel32.OpenProcess(0x410, 0, pid) # PROCESS_QUERY_INFORMATION and PROCESS_VM_READ

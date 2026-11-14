@@ -10,7 +10,8 @@ import sys
 import threading
 import time
 import traceback
-import winreg
+if sys.platform == "win32":
+    import winreg
 from typing import List
 
 import pyperclip
@@ -73,7 +74,12 @@ from src.utils import (  # , assign_pet_level
 )
 from src.world_to_screen import get_camera_state, project_point, world_to_screen
 
-cMessageBox = ctypes.windll.user32.MessageBoxW
+if sys.platform == "win32":
+    cMessageBox = ctypes.windll.user32.MessageBoxW
+else:
+    def cMessageBox(hwnd, text, caption, flags):
+        logger.error(f"{caption}: {text}")
+        return 0
 
 tool_version: str = "3.14.1"
 tool_name: str = "Deimos"
@@ -1661,13 +1667,17 @@ async def main():
         try:
             pid = utils.get_pid_from_handle(handle)
             if pid:
-                PROCESS_TERMINATE = 0x0001
-                h_proc = ctypes.windll.kernel32.OpenProcess(
-                    PROCESS_TERMINATE, False, pid
-                )
-                if h_proc:
-                    ctypes.windll.kernel32.TerminateProcess(h_proc, 1)
-                    ctypes.windll.kernel32.CloseHandle(h_proc)
+                if sys.platform == "win32":
+                    PROCESS_TERMINATE = 0x0001
+                    h_proc = ctypes.windll.kernel32.OpenProcess(
+                        PROCESS_TERMINATE, False, pid
+                    )
+                    if h_proc:
+                        ctypes.windll.kernel32.TerminateProcess(h_proc, 1)
+                        ctypes.windll.kernel32.CloseHandle(h_proc)
+                else:
+                    import os, signal
+                    os.kill(pid, signal.SIGKILL)
         except Exception as e:
             logger.error(f"Failed to kill process for handle {handle}: {e}")
 
@@ -4188,13 +4198,14 @@ async def main():
     async def ban_watcher():
         known_ban = False
         try:
-            rkey = winreg.OpenKeyEx(
-                winreg.HKEY_CURRENT_USER,
-                r"SOFTWARE\Slackaduts\Deimos",
-                access=winreg.KEY_READ,
-            )
-            a = winreg.QueryValueEx(rkey, "badboy")[0]
-            known_ban = a != 0
+            if sys.platform == "win32":
+                rkey = winreg.OpenKeyEx(
+                    winreg.HKEY_CURRENT_USER,
+                    r"SOFTWARE\Slackaduts\Deimos",
+                    access=winreg.KEY_READ,
+                )
+                a = winreg.QueryValueEx(rkey, "badboy")[0]
+                known_ban = a != 0
         except:
             pass
 
@@ -4205,12 +4216,13 @@ async def main():
             while ban_task.is_alive():
                 await asyncio.sleep(1)
         try:
-            rkey = winreg.CreateKeyEx(
-                winreg.HKEY_CURRENT_USER,
-                r"SOFTWARE\Slackaduts\Deimos",
-                access=winreg.KEY_ALL_ACCESS,
-            )
-            winreg.SetValueEx(rkey, "badboy", 0, winreg.REG_DWORD, 1)
+            if sys.platform == "win32":
+                rkey = winreg.CreateKeyEx(
+                    winreg.HKEY_CURRENT_USER,
+                    r"SOFTWARE\Slackaduts\Deimos",
+                    access=winreg.KEY_ALL_ACCESS,
+                )
+                winreg.SetValueEx(rkey, "badboy", 0, winreg.REG_DWORD, 1)
         except:
             pass
         cMessageBox(
