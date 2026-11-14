@@ -38,13 +38,12 @@ enter_sandbox "${orig_args[@]}"
 mkdir -p "$LOG_DIR"
 
 if [ "$clients" -gt 0 ]; then
-    exe="$GAME_PATH/Bin/WizardGraphicalClient.exe"
-    if [ ! -f "$exe" ]; then
-        echo "game client not found at $exe; set WIZLAUNCH_GAME_PATH" >&2
+    if [ ! -f "$GAME_PATH/Bin/WizardGraphicalClient.exe" ]; then
+        echo "game client not found under $GAME_PATH/Bin; set WIZLAUNCH_GAME_PATH" >&2
         exit 1
     fi
     for ((i = 0; i < clients; i++)); do
-        (cd "$GAME_PATH/Bin" && proton_run "$exe" -L "${server%:*}" "${server##*:}" &)
+        launch_client "${server%:*}" "${server##*:}" &
     done
 fi
 
@@ -53,7 +52,7 @@ fi
 fifo="$DEIMOS_LINUX_HOME/sandbox.cmd"
 rm -f "$fifo"
 mkfifo "$fifo"
-export -f proton_run winpath
+export -f proton_run launch_client winpath
 export WIN_PYTHON REPO LOG_DIR GAME_PATH
 (
     while read -r line < "$fifo"; do
@@ -71,4 +70,4 @@ fi
 
 cd "$REPO"
 export DEIMOS_STDOUT_LOG="$(winpath "$LOG_DIR/deimos-stdout.log")"
-"$PROTON" run "${WIN_PYTHON%python.exe}pythonw.exe" -X utf8 "$(winpath scripts/linux/bootstrap.py)"
+proton_run "${WIN_PYTHON%python.exe}pythonw.exe" -X utf8 "$(winpath scripts/linux/bootstrap.py)"

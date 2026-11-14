@@ -4,7 +4,7 @@
 #   scripts/linux/exec.sh <shell command>
 #
 # The command runs in the sandbox's bash with env.sh loaded, so `proton_run`,
-# `winpath`, $WIN_PYTHON, $REPO etc. are available. Its output goes wherever
+# `launch_client`, `winpath`, $WIN_PYTHON, $REPO etc. are available. Its output goes wherever
 # the command sends it; redirect to a file to read it from the host, e.g.
 #
 #   scripts/linux/exec.sh 'proton_run "$WIN_PYTHON" "$(winpath test.py)" > "$LOG_DIR/test.out" 2>&1'

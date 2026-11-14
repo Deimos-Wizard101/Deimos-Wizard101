@@ -83,10 +83,17 @@ pip install --only-binary=:all: \
     "regex>=2024.11.6,<2025" "lark>=1.1.9" "iced-x86>=1.21.0"
 pip install --only-binary=:all: --no-deps "memobj==0.14.1" "wiztype>=0.1.12"
 pip install -e "\$(winpath '$REPO/libs/wizwalker')" -e "\$(winpath '$REPO/libs/wizsprinter')"
+
+# Point wizwalker/wizlaunch at the game install. get_wiz_install() reads this
+# uninstall key; without it, launching an account from the GUI can't find Bin/.
+proton_run reg add \
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{A9E27FF5-6294-46A8-B8FD-77B1DECA3021}" \
+    /v InstallLocation /t REG_SZ /d "\$(winpath "$GAME_PATH")" /f
 INNER
 
 cp "$REPO/libs/wizlaunch/target/x86_64-pc-windows-gnu/release/wizlaunch.dll" "$WIN_SITE_PACKAGES/wizlaunch.pyd"
 cp "$REPO/libs/wizlaunch/wizlaunch.pyi" "$WIN_SITE_PACKAGES/"
 cp "$REPO/libs/kinif/target/x86_64-pc-windows-gnu/release/kinif.dll" "$WIN_SITE_PACKAGES/kinif.pyd"
 
-step "Done. Launch with: scripts/linux/run.sh --clients 1"
+step "Done. Add accounts with: scripts/linux/accounts.sh add <nick>"
+step "Then launch with:    scripts/linux/run.sh --clients 1"

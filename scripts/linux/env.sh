@@ -43,20 +43,24 @@ export STEAM_COMPAT_DATA_PATH="$PREFIX"
 export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT"
 # Xalia's gamepad overlay steals focus from freshly launched clients.
 export PROTON_USE_XALIA="${PROTON_USE_XALIA:-0}"
-# Proton sends child stdout/stderr to /dev/null unless PROTON_LOG is set; any
-# value other than "1" is also appended to WINEDEBUG, so "-all" gives the file
-# without Wine's own debug spew.
-export PROTON_LOG="${PROTON_LOG:--all}"
-export PROTON_LOG_DIR="${PROTON_LOG_DIR:-$LOG_DIR}"
 
 # Host path -> path Wine sees through its Z: drive.
 winpath() {
     printf 'Z:%s' "$(realpath -m "$1" | tr / '\\')"
 }
 
-# Run a Windows program in the prefix.
+# Run a Windows program in the prefix. `runinprefix` execs wine directly, so
+# the program's stdout/stderr come back to the caller; Proton's `run` verb goes
+# through its bundled steam.exe wrapper, which swallows them. The game itself
+# is started with `run` (see launch_client) because that verb also maps the
+# Steam library drive the client expects.
 proton_run() {
-    "$PROTON" run "$@"
+    "$PROTON" runinprefix "$@"
+}
+
+launch_client() {
+    local exe="$GAME_PATH/Bin/WizardGraphicalClient.exe"
+    (cd "$GAME_PATH/Bin" && "$PROTON" run "$exe" -L "$1" "$2")
 }
 
 # steam-run mounts a private tmpfs on /tmp, and that is where wineserver keeps
