@@ -419,9 +419,6 @@ async def _arrived(client: Client, dest: XYZ, origin: XYZ = None, zone_before: s
     retreating would only fight whatever moved us. Unreadable position -> assume success
     rather than thrash on a transient read error.
     """
-
-    await client.reset_server_teleport_snapback()
-
     try:
         await maybe_wait_for_value_with_timeout(
             client.is_server_teleport_snapbacked,
@@ -464,6 +461,7 @@ async def _teleport_once_verified(client: Client, dest: XYZ, anchor: XYZ,
     """One teleport to ``dest``, confirmed by ``_arrived``. No retreating."""
     if not await is_free(client):
         return False
+    await client.reset_server_teleport_snapback()
     await client.teleport(dest)
     return await _arrived(client, dest, anchor, zone_before)
 
