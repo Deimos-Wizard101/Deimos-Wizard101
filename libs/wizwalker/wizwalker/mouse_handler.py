@@ -19,8 +19,10 @@ class MouseHandler:
         # only for context managing
         self._ref_lock = None
         self._ref_count = 0
-        # Make our app dpi aware so scaling works for free
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        # Make our app dpi aware so scaling works for free (Windows only).
+        import sys as _sys
+        if _sys.platform == "win32":
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
 
     async def __aenter__(self):
         if self._ref_lock is None:

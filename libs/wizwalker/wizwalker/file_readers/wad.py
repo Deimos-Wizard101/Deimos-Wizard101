@@ -10,6 +10,17 @@ import aiofiles
 from wizwalker.utils import get_wiz_install
 
 
+def _resolve_case_insensitive(path: Path):
+    parent = path.parent
+    if not parent.is_dir():
+        return None
+    want = path.name.lower()
+    for child in parent.iterdir():
+        if child.name.lower() == want:
+            return child
+    return None
+
+
 class WadFileInfo:
     def __init__(self, *, name, offset, size, is_zip, crc, unzipped_size):
         self.name = name
@@ -29,7 +40,14 @@ class Wad:
 
         self.file_path = path
         if not self.file_path.exists():
-            raise ValueError(f"{self.file_path} not found.")
+            # Case-insensitive fallback: Windows game data filenames differ in
+            # case from what wizwalker requests (e.g. Root.wad vs root.wad),
+            # which only matters on a case-sensitive filesystem.
+            resolved = _resolve_case_insensitive(path)
+            if resolved is not None:
+                self.file_path = resolved
+            else:
+                raise ValueError(f"{self.file_path} not found.")
 
         self._file_list = []
         self._refreshed_once = False

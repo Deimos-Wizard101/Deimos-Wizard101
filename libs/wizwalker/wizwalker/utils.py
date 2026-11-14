@@ -7,9 +7,12 @@ import struct
 import subprocess
 import contextlib
 
-# noinspection PyCompatibility
-import winreg
+import sys
 import zlib
+
+if sys.platform == "win32":
+    # noinspection PyCompatibility
+    import winreg
 from pathlib import Path
 from typing import Any, Callable, Iterable, List, Optional
 
@@ -954,3 +957,60 @@ def make_string_id(x: str) -> int:
         if shift > 24:
             hash ^= sign_extend(val >> (32 - shift))
     return abs(hash) & 0xFFFF_FFFF
+
+
+if sys.platform != "win32":
+    # ---- Native-Linux OS boundary (Proton-hosted client via /proc + xdotool) ----
+    from wizwalker import _linux as _lx
+
+    def get_wiz_install() -> Path:  # noqa: F811
+        return _lx.get_wiz_install(_OVERRIDE_PATH)
+
+    def check_if_process_running(handle) -> bool:  # noqa: F811
+        return _lx.check_if_process_running(handle)
+
+    def get_pid_from_handle(handle: int) -> int:  # noqa: F811
+        return _lx.get_pid_from_handle(handle)
+
+    def get_all_wizard_handles() -> list:  # noqa: F811
+        return _lx.get_all_wizard_handles()
+
+    def get_foreground_window():  # noqa: F811
+        return _lx.get_foreground_window()
+
+    def set_foreground_window(window_handle: int) -> bool:  # noqa: F811
+        return _lx.set_foreground_window(window_handle)
+
+    def get_window_title(handle: int, max_size: int = 100) -> str:  # noqa: F811
+        return _lx.get_window_title(handle, max_size)
+
+    def set_window_title(handle: int, window_title: str):  # noqa: F811
+        return _lx.set_window_title(handle, window_title)
+
+    def get_window_rectangle(handle: int) -> Rectangle:  # noqa: F811
+        r = _lx.window_rect(handle)
+        if r is None:
+            return Rectangle(0, 0, 0, 0)
+        x, y, w, h = r
+        return Rectangle(x, y, x + w, y + h)
+
+    def get_system_directory(max_size: int = 100) -> Path:  # noqa: F811
+        return Path("C:/windows/system32")
+
+    def _send_keydown(window_handle: int, key):  # noqa: F811
+        import subprocess
+        ks = _lx.keysym_for_vk(key.value)
+        if ks:
+            subprocess.run(["xdotool", "windowactivate", str(window_handle)], check=False)
+            subprocess.run(["xdotool", "keydown", "--clearmodifiers", ks], check=False)
+
+    def _send_keyup(window_handle: int, key):  # noqa: F811
+        import subprocess
+        ks = _lx.keysym_for_vk(key.value)
+        if ks:
+            subprocess.run(["xdotool", "keyup", "--clearmodifiers", ks], check=False)
+
+    async def _send_keydown_forever(window_handle: int, key):  # noqa: F811
+        _send_keydown(window_handle, key)
+        while True:
+            await asyncio.sleep(3600)

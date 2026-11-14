@@ -1,12 +1,18 @@
-import ctypes
 import struct
+import sys
 from enum import Enum
 
+if sys.platform == "win32":
+    import ctypes
 
-user32 = ctypes.windll.user32
-kernel32 = ctypes.windll.kernel32
-gdi32 = ctypes.windll.gdi32
-ntdll = ctypes.windll.ntdll
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    gdi32 = ctypes.windll.gdi32
+    ntdll = ctypes.windll.ntdll
+else:
+    # On Linux wizwalker runs natively against a Proton-hosted client; these are
+    # Linux stand-ins for the Win32 DLLs (see wizwalker._winshim).
+    from wizwalker._winshim import user32, kernel32, gdi32, ntdll
 
 
 WM_KEYDOWN = 0x100
