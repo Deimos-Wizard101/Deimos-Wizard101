@@ -33,38 +33,56 @@ fn main() -> ExitCode {
     let script_args = args[2..].to_vec();
 
     pyo3::prepare_freethreaded_python();
-    let result = Python::with_gil(|py| -> PyResult<()> {
-        let sys = py.import_bound("sys")?;
-        let sys_path = sys.getattr("path")?.downcast_into::<PyList>().unwrap();
+    let code = Python::with_gil(|py| -> ExitCode {
+        let run = (|| -> PyResult<()> {
+            let sys = py.import_bound("sys")?;
+            let sys_path = sys.getattr("path")?.downcast_into::<PyList>().unwrap();
 
-        // Prepend PYTHONPATH entries (venv site-packages, Deimos dirs, zhol dir).
-        if let Ok(pp) = std::env::var("PYTHONPATH") {
-            for (i, entry) in pp.split(':').filter(|s| !s.is_empty()).enumerate() {
-                sys_path.insert(i, PyString::new_bound(py, entry))?;
+            // Prepend PYTHONPATH entries (venv site-packages, Deimos dirs, zhol dir).
+            if let Ok(pp) = std::env::var("PYTHONPATH") {
+                for (i, entry) in pp.split(':').filter(|s| !s.is_empty()).enumerate() {
+                    sys_path.insert(i, PyString::new_bound(py, entry))?;
+                }
+            }
+
+            // sys.argv = [script, args...], as a normal `python script.py ...` run.
+            let argv = PyList::empty_bound(py);
+            argv.append(PyString::new_bound(py, &script))?;
+            for a in &script_args {
+                argv.append(PyString::new_bound(py, a))?;
+            }
+            sys.setattr("argv", argv)?;
+
+            // Run the script as __main__ (so `if __name__ == "__main__":` fires).
+            let runpy = py.import_bound("runpy")?;
+            let kwargs = pyo3::types::PyDict::new_bound(py);
+            kwargs.set_item("run_name", "__main__")?;
+            runpy.call_method("run_path", (PyString::new_bound(py, &script),), Some(&kwargs))?;
+            Ok(())
+        })();
+
+        if let Err(e) = &run {
+            e.print(py);
+        }
+        // Flush: Python's stdout/stderr are block-buffered when not a tty (piped or
+        // redirected), so without this all script output is lost on a clean exit.
+        if let Ok(sys) = py.import_bound("sys") {
+            for name in ["stdout", "stderr"] {
+                if let Ok(stream) = sys.getattr(name) {
+                    let _ = stream.call_method0("flush");
+                }
             }
         }
-
-        // sys.argv = [script, args...], as a normal `python script.py ...` run.
-        let argv = PyList::empty_bound(py);
-        argv.append(PyString::new_bound(py, &script))?;
-        for a in &script_args {
-            argv.append(PyString::new_bound(py, a))?;
-        }
-        sys.setattr("argv", argv)?;
-
-        // Run the script as __main__ (so `if __name__ == "__main__":` fires).
-        let runpy = py.import_bound("runpy")?;
-        let kwargs = pyo3::types::PyDict::new_bound(py);
-        kwargs.set_item("run_name", "__main__")?;
-        runpy.call_method("run_path", (PyString::new_bound(py, &script),), Some(&kwargs))?;
-        Ok(())
-    });
-
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            Python::with_gil(|py| e.print(py));
+        if run.is_ok() {
+            ExitCode::SUCCESS
+        } else {
             ExitCode::FAILURE
         }
+    });
+
+    // Finalize so atexit handlers run and C-level buffers flush before exit.
+    unsafe {
+        pyo3::ffi::Py_FinalizeEx();
     }
+    code
 }
