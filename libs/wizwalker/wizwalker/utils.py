@@ -960,8 +960,12 @@ def make_string_id(x: str) -> int:
 
 
 if sys.platform != "win32":
-    # ---- Native-Linux OS boundary (Proton-hosted client via /proc + xdotool) ----
-    from wizwalker import _linux as _lx
+    # ---- Native OS boundary for a Wine-hosted client ----
+    # Linux: /proc + xdotool (Proton). macOS: ps + Mach, pid-as-handle (CrossOver).
+    if sys.platform == "darwin":
+        from wizwalker import _macos as _lx
+    else:
+        from wizwalker import _linux as _lx
 
     def get_wiz_install() -> Path:  # noqa: F811
         return _lx.get_wiz_install(_OVERRIDE_PATH)

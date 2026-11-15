@@ -463,5 +463,8 @@ class HotkeyListener:
 # grab RegisterHotKey needs, so on Linux swap in the evdev-backed listener. Same
 # public API — add_hotkey/remove_hotkey/start/stop/clear — so callers are
 # unchanged; only the implementation that runs differs.
-if sys.platform != "win32":
+if sys.platform == "darwin":
+    # evdev is Linux-only; macOS global hotkeys are a later CGEventTap sub-stage.
+    from wizwalker._macos_hotkey import _MacHotkeyListener as HotkeyListener  # noqa: F811,E402
+elif sys.platform != "win32":
     from wizwalker._linux_hotkey import _LinuxHotkeyListener as HotkeyListener  # noqa: F811,E402

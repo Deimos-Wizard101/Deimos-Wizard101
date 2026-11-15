@@ -7,7 +7,9 @@ import wizwalker
 from wizwalker import user32
 from wizwalker.memory.hooks import MouselessCursorMoveHook
 
-if sys.platform != "win32":
+if sys.platform == "darwin":
+    from wizwalker import _macos as _linux  # same OS-boundary surface
+elif sys.platform != "win32":
     from wizwalker import _linux
 
 
