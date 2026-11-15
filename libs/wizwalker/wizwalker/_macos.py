@@ -49,7 +49,16 @@ def get_wizard_pids() -> list:
         if not line:
             continue
         first, _, cmd = line.partition(" ")
-        if first.isdigit() and needle in cmd.lower():
+        cmd = cmd.strip()
+        if not first.isdigit() or not cmd:
+            continue
+        # Key on argv[0]'s basename (like the Linux backend), not a substring of the
+        # whole command line — otherwise a grep/editor/Deimos that merely mentions
+        # the exe path would false-positive. Wine re-execs the client with the exe
+        # name as argv[0] (the winetemp hard-link), so its basename matches.
+        argv0 = cmd.split()[0]
+        base = argv0.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+        if base.lower() == needle:
             pids.append(int(first))
     return pids
 
