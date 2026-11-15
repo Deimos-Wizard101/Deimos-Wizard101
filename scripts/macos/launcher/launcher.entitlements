@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Lets this process task_for_pid the Wine-hosted game (what zhol needs). -->
+    <key>com.apple.security.cs.debugger</key>
+    <true/>
+    <!-- Load the many third-party dylibs the app needs (libpython, zhol.so, PyQt6,
+         numpy, ...) without hardened-runtime library validation rejecting them. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- Allow DYLD_* env (e.g. pointing at the framework libpython) if needed. -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+</dict>
+</plist>

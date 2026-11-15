@@ -1,0 +1,14 @@
+[package]
+name = "deimos-launcher"
+version = "0.1.0"
+edition = "2021"
+description = "Signed macOS host that embeds libpython to run Deimos with the cs.debugger entitlement (so zhol's task_for_pid against the Wine-hosted game works)."
+
+[[bin]]
+name = "deimos-launcher"
+path = "src/main.rs"
+
+[dependencies]
+# Embed (not extend) CPython: no `extension-module` feature, so this binary links
+# libpython and IS the interpreter host. `auto-initialize` lets us start it.
+pyo3 = { version = "0.22", features = ["auto-initialize"] }
