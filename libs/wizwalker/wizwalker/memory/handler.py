@@ -92,6 +92,16 @@ class HookHandler(MemoryReader):
         # Linux thread-hijack RPC (start_thread): a cached writable done-flag.
         self._rpc_done = None
 
+        # Inline value-capture hooks (a jump patched over game .text that writes a
+        # captured pointer to scratch each frame) do NOT fire under Rosetta on
+        # macOS: a cross-process write to already-translated x86 code is ignored by
+        # Rosetta's self-modifying-code detection. So those hooks are unsupported on
+        # macOS — memory reads and the pointer-redirect RPC (start_thread → camera/
+        # freecam) still work. This capability keeps the platform split BELOW
+        # wizwalker's API: callers use activate_hooks identically everywhere.
+        self._supports_inline_hooks = sys.platform != "darwin"
+        self._warned_no_inline_hooks = False
+
         # TODO: Is this signature correct?
         self._active_hooks: dict[type, MemoryHook] = {}
         self._base_addrs = {}
@@ -374,6 +384,20 @@ class HookHandler(MemoryReader):
             wait_for_ready: Wait for hook values to be written
             timeout: How long to wait for hook values to be written (None for no timeout)
         """
+        # macOS/Rosetta: inline value-capture hooks can't fire (and installing them
+        # would also fail the rel32 reach to a fresh page), so skip them and don't
+        # wait — otherwise `_wait_for_value` blocks forever on a value that is never
+        # written. Memory reads and camera/RPC features don't need these hooks.
+        if not self._supports_inline_hooks:
+            if not self._warned_no_inline_hooks:
+                self._warned_no_inline_hooks = True
+                logger.warning(
+                    "Inline value-capture hooks are unsupported on macOS (Rosetta); "
+                    "skipping them. Memory reads and camera/RPC features still work; "
+                    "hook-dependent reads (player/stats/quest) are unavailable here."
+                )
+            return
+
         await self.activate_player_hook(wait_for_ready=False)
         # quest hook is not written if the quest arrow is off
         await self.activate_quest_hook()
