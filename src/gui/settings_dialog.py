@@ -133,6 +133,7 @@ def show_settings_dialog(ctx):
     _add_checkbox(general_form, 'rich_presence', 'setting_rich_presence')
     _add_checkbox(general_form, 'drop_logging', 'setting_drop_logging')
     _add_checkbox(general_form, 'use_anti_afk', 'setting_use_anti_afk')
+    _add_checkbox(general_form, 'auto_puzzle', 'setting_auto_puzzle_ahmarra')
 
     layout.addWidget(general_group)
 

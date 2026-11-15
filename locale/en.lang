@@ -250,6 +250,7 @@ setting_buy_potions=Buy Potions
 setting_rich_presence=Rich Presence
 setting_drop_logging=Drop Logging
 setting_use_anti_afk=Anti-AFK
+setting_auto_puzzle_ahmarra=Auto Puzzle (Ahmarra)
 setting_bg_color=Background
 setting_alt_bg=Input Background
 setting_text_color=Text Color

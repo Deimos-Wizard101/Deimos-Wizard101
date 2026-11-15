@@ -13,11 +13,29 @@ from typing import Optional
 WIZARD_EXE = "WizardGraphicalClient.exe"
 
 
+# xdotool talks to the X server, which can briefly stall (compositor hiccup,
+# workspace switch under XWayland). These calls run synchronously inside the
+# backend's asyncio loop, so a call that never returns freezes the whole backend
+# (hooks stop, the app won't close) even though the Qt GUI thread stays alive.
+# A timeout turns any such stall into a recoverable no-op instead of a hang.
+_XDOTOOL_TIMEOUT = 5
+
+
 def _run(args) -> str:
     try:
-        return subprocess.run(args, capture_output=True, text=True, check=False).stdout.strip()
-    except FileNotFoundError:
+        return subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=_XDOTOOL_TIMEOUT
+        ).stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
+
+
+def _run_nowait(args):
+    """Fire-and-forget xdotool call that can't block the caller forever."""
+    try:
+        subprocess.run(args, check=False, timeout=_XDOTOOL_TIMEOUT)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
 
 
 # ---- process / instance ----
@@ -108,7 +126,7 @@ def get_foreground_window() -> Optional[int]:
 
 
 def set_foreground_window(win: int) -> bool:
-    subprocess.run(["xdotool", "windowactivate", str(win)], check=False)
+    _run_nowait(["xdotool", "windowactivate", str(win)])
     return True
 
 
@@ -117,7 +135,7 @@ def get_window_title(handle: int, max_size: int = 100) -> str:
 
 
 def set_window_title(handle: int, title: str):
-    subprocess.run(["xdotool", "set_window", "--name", title, str(handle)], check=False)
+    _run_nowait(["xdotool", "set_window", "--name", title, str(handle)])
 
 
 # ---- input (xdotool; delivered to the focused window via XTEST) ----
@@ -139,8 +157,39 @@ def send_key_to_window(win: int, vk: int):
     keysym = keysym_for_vk(vk)
     if keysym is None:
         return
-    subprocess.run(["xdotool", "windowactivate", str(win)], check=False)
-    subprocess.run(["xdotool", "key", "--clearmodifiers", keysym], check=False)
+    _run_nowait(["xdotool", "windowactivate", str(win)])
+    _run_nowait(["xdotool", "key", "--clearmodifiers", keysym])
+
+
+# ---- mouse (xdotool; real pointer events to the XWayland game window) ----
+# Win32 wizwalker clicks by writing the cursor into memory (mouseless hook) and
+# sending WM_LBUTTONDOWN to the HWND. On Linux there's no HWND and no way to post
+# a Win32 message in, so instead drive the real pointer over the game's X11 window
+# and send a genuine button event the window actually processes.
+def move_mouse_to_window(win: int, x: int, y: int):
+    """Move the pointer to (x, y) relative to the window's top-left (client area)."""
+    # `--` so negative coords (used to park the cursor off-client) aren't parsed
+    # as options.
+    _run_nowait(
+        ["xdotool", "mousemove", "--window", str(win), "--", str(int(x)), str(int(y))]
+    )
+
+
+def move_mouse_abs(x: int, y: int):
+    """Move the pointer to absolute screen (x, y)."""
+    _run_nowait(["xdotool", "mousemove", "--", str(int(x)), str(int(y))])
+
+
+def focus_window(win: int):
+    """Bring a window to the foreground so it receives pointer events."""
+    _run_nowait(["xdotool", "windowactivate", str(win)])
+
+
+def mouse_button(button: int, down: bool):
+    """Press (down=True) or release a mouse button: 1=left, 3=right."""
+    _run_nowait(
+        ["xdotool", "mousedown" if down else "mouseup", str(int(button))]
+    )
 
 
 # ---- install path ----

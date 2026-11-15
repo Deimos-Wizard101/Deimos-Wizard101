@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import struct
 import warnings
@@ -668,17 +669,33 @@ class Client:
             await self.hook_handler.write_bytes(je, b"\x90" * 6)
 
         if purge_on_after_unuser_fixer:
+            timed_out = False
             try:
                 await maybe_wait_for_value_with_timeout(
                     self._teleport_helper.should_update,
+                    # On Linux the je's stay NOPed until this returns and Python
+                    # restores them, so poll tightly: at the default 0.5 s cadence
+                    # the movement code is disabled for up to half a second after
+                    # landing and residual motion (worse with speedhack) drifts
+                    # the character. A few ms keeps it close to Windows' same-frame
+                    # restore. Windows self-restores in the hook, so cadence is moot.
+                    sleep_time=0.005 if sys.platform != "win32" else 0.5,
                     value=False,
                     timeout=purge_on_after_unuser_fixer_timeout,
                 )
             except ExceptionalTimeout:
+                timed_out = True
+
+            # On Windows the injected hook restores the NOPed je bytes itself right
+            # after applying the teleport, so only a timeout (teleport never landed)
+            # needs the manual fixer. On Linux the hook can't self-modify its own
+            # r-x .text, so the je's must be restored here on every path; a timeout
+            # additionally means should_update must be cleared by hand.
+            if timed_out or sys.platform != "win32":
                 movement_teleport_hook = self.hook_handler._get_hook_by_type(MovementTeleportHook)
                 for je, old_bytes in zip(jes, movement_teleport_hook._old_jes_bytes):
                     await self.hook_handler.write_bytes(je, old_bytes)
-
+            if timed_out:
                 await self._teleport_helper.write_should_update(False)
 
     async def enable_drops(self):

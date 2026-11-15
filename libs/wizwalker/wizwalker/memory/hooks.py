@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import ctypes
 import ctypes.wintypes
@@ -431,6 +432,25 @@ class MovementTeleportHook(SimpleHook):
         packed_jes_and = struct.pack("<Q", jes[0])
         packed_jes_cmp = struct.pack("<Q", jes[1])
 
+        # Restoring the NOPed je's is done by the game writing back their original
+        # bytes from here (self-modifying code). That needs the je's .text page to
+        # be writable by the target itself. On Windows prehook raises it to RWX via
+        # VirtualProtectEx; on Linux page protection cannot be changed in another
+        # process, so the target's write to its own r-x code faults and crashes the
+        # client. Replace the four restore instructions with NOPs of identical
+        # length (so every relative offset in this block is unchanged) and let the
+        # Python teleport path restore the je's instead (its /proc write to r-x is
+        # fine). See Client._teleport_object.
+        if sys.platform == "win32":
+            je_restore = (
+                b"\x48\xB8" + jes_and_bytes +   # mov rax, <orig je[0] bytes>
+                b"\x48\xA3" + packed_jes_and +  # mov [je[0]], rax
+                b"\x48\xB8" + jes_cmp_bytes +   # mov rax, <orig je[1] bytes>
+                b"\x48\xA3" + packed_jes_cmp    # mov [je[1]], rax
+            )
+        else:
+            je_restore = b"\x90" * 40
+
         # fmt: off
         bytecode = (
             b"\x50"  # push rax
@@ -454,10 +474,7 @@ class MovementTeleportHook(SimpleHook):
             b"\x89\x42\x08"  # mov[rdx+08], eax
             b"\x48\xB8\x00\x00\x00\x00\x00\x00\x00\x00"  # mov rax,0000000000000000
             b"\xA2" + packed_should_update +  # mov [should_update_bool],al
-            b"\x48\xB8" + jes_and_bytes +
-            b"\x48\xA3" + packed_jes_and +
-            b"\x48\xB8" + jes_cmp_bytes +
-            b"\x48\xA3" + packed_jes_cmp +
+            je_restore +  # restore je's (Win) / NOPs on Linux, same length
             b"\x58" # pop rax
             b"\x40\x57" # push rdi (original bytes)
             b"\x48\x83\xEC\x30" # sub rsp,30 (original bytes)

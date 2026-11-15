@@ -2,6 +2,7 @@ import asyncio
 import functools
 import regex
 import struct
+import sys
 from typing import Any, Union
 
 import pefile
@@ -208,13 +209,26 @@ class MemoryReader:
         Raises:
             ValueError: No symbol/module with that name
         """
-        if not module_dir:
-            module_dir = utils.get_system_directory()
-
-        file_path = module_dir / module_name
-
-        if not file_path.exists():
+        module = pymem.process.module_from_name(
+            self.process.process_handle, module_name
+        )
+        if module is None:
             raise ValueError(f"No module named {module_name}")
+
+        if sys.platform != "win32" and module_dir is None:
+            # On Linux the DLL is a Wine PE loaded from the Proton tree, not a
+            # Windows system dir (get_system_directory is a stub here). Resolve
+            # symbols from the exact file backing the loaded mapping so the
+            # export RVAs match what is actually in memory.
+            file_path = self._backing_file_for(module.lpBaseOfDll)
+            if file_path is None:
+                raise ValueError(f"No backing file for module {module_name}")
+        else:
+            if not module_dir:
+                module_dir = utils.get_system_directory()
+            file_path = module_dir / module_name
+            if not file_path.exists():
+                raise ValueError(f"No module named {module_name}")
 
         symbols = await self.run_in_executor(
             self._get_symbols, file_path, force_reload=force_reload
@@ -223,11 +237,26 @@ class MemoryReader:
         if not (symbol := symbols.get(symbol_name)):
             raise ValueError(f"No symbol named {symbol_name} in module {module_name}")
 
-        module = pymem.process.module_from_name(
-            self.process.process_handle, module_name
-        )
-
         return module.lpBaseOfDll + symbol
+
+    def _backing_file_for(self, address: int):
+        """The on-disk file backing the mapping containing `address` in the
+        target, from /proc/<pid>/maps — lets Linux resolve a Wine DLL's symbols
+        from the exact PE image the process loaded."""
+        pid = self.process.process_id
+        try:
+            with open(f"/proc/{pid}/maps") as f:
+                for line in f:
+                    parts = line.split(maxsplit=5)
+                    if len(parts) < 6:
+                        continue
+                    lo, _, hi = parts[0].partition("-")
+                    if int(lo, 16) <= address < int(hi, 16):
+                        path = parts[5].strip()
+                        return path if path.startswith("/") else None
+        except OSError:
+            pass
+        return None
 
     async def allocate(self, size: int) -> int:
         """

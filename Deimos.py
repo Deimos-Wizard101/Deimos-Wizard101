@@ -133,6 +133,7 @@ use_potions = True
 rpc_status = True
 drop_status = True
 anti_afk_status = True
+auto_puzzle_status = False
 gui_on_top = True
 gui_langcode = "en"
 gui_font = "Segoe UI"
@@ -167,6 +168,7 @@ use_potions = _json_settings.get("use_potions", use_potions)
 rpc_status = _json_settings.get("rich_presence", rpc_status)
 drop_status = _json_settings.get("drop_logging", drop_status)
 anti_afk_status = _json_settings.get("use_anti_afk", anti_afk_status)
+auto_puzzle_status = _json_settings.get("auto_puzzle", auto_puzzle_status)
 buy_potions = _json_settings.get("buy_potions", buy_potions)
 client_resizing = _json_settings.get("client_resizing", client_resizing)
 chained_teleport = _json_settings.get("chained_teleport", chained_teleport)
@@ -307,14 +309,29 @@ def generate_timestamp() -> str:
 
 def build_account_list_payload() -> list[dict]:
     """Enrich the saved-account list with per-account validation state for the
-    launcher GUI. Each entry: {'nick', 'error' (None if valid), 'steam'}."""
+    launcher GUI. Each entry: {'nick', 'error' (None if valid), 'steam'}.
+
+    Resilient to a locked/unavailable credential store: on Linux the store
+    passphrase cannot be gathered from a GUI that has no terminal, so
+    list_accounts may raise. Swallowing it keeps the command loop alive (the
+    user can still hook already-running clients); accounts appear once the
+    passphrase is supplied via WIZLAUNCH_STORE_PASSPHRASE."""
     payload = []
-    for nick in wizlaunch.list_accounts():
-        payload.append({
-            "nick": nick,
-            "error": wizlaunch.validate_account(nick),
-            "steam": wizlaunch.get_account_steam(nick),
-        })
+    try:
+        nicks = wizlaunch.list_accounts()
+    except Exception as e:
+        logger.warning(f"Could not read the saved-account list (store locked?): {e}")
+        return payload
+    for nick in nicks:
+        try:
+            entry = {
+                "nick": nick,
+                "error": wizlaunch.validate_account(nick),
+                "steam": wizlaunch.get_account_steam(nick),
+            }
+        except Exception as e:
+            entry = {"nick": nick, "error": str(e), "steam": None}
+        payload.append(entry)
     return payload
 
 
@@ -894,9 +911,9 @@ async def main():
                     if debug:
                         logger.debug("Freecam hotkey pressed, enabling freecam.")
 
-                    freecam_status = True
                     await sync_camera(foreground_client)
                     await foreground_client.camera_freecam()
+                    freecam_status = True
                     gui_send_queue.put(
                         deimosgui.GUICommand(
                             deimosgui.GUICommandType.UpdateWindow,
@@ -1744,10 +1761,23 @@ async def main():
             CHAINED_TELEPORT_DISTANCE if chained_teleport else 0
         )
 
+    async def _apply_auto_puzzle(client):
+        # Ahmarra auto-puzzle is a hook-written memory flag; set it per the
+        # 'Auto Puzzle (Ahmarra)' General setting. Needs the hook active, so
+        # swallow+log if a client isn't fully hooked yet.
+        try:
+            if auto_puzzle_status:
+                await client.enable_auto_puzzle()
+            else:
+                await client.disable_auto_puzzle()
+        except Exception as e:
+            logger.debug(f"Failed to apply auto puzzle setting: {e}")
+
     async def _init_client_attrs(client):
         """Initialize all per-client attributes. Called once per client after hooking."""
         client_speeds[client.process_id] = await client.client_object.speed_multiplier()
         await _apply_chained_teleport(client)
+        await _apply_auto_puzzle(client)
         client.combat_status = False
         client.questing_status = False
         client.sigil_status = False
@@ -3848,6 +3878,7 @@ async def main():
                                 discard_duplicate_cards
                             global check_for_updates, auto_install_updates
                             global chained_teleport
+                            global auto_puzzle_status
                             settings_dict = com.data
                             for key, value in settings_dict.items():
                                 match key:
@@ -3898,12 +3929,24 @@ async def main():
                                                 await _apply_chained_teleport(c)
                                             except Exception as e:
                                                 logger.debug(f"Failed to apply chained teleport setting: {e}")
+                                    case "auto_puzzle":
+                                        auto_puzzle_status = value
+                                        for c in walker.clients:
+                                            await _apply_auto_puzzle(c)
                             logger.debug(
                                 f"Settings updated: {list(settings_dict.keys())}"
                             )
 
             except queue.Empty:
                 pass
+            except Exception as _cmd_err:
+                # Containment: a command/hotkey handler raised. Log it and keep the
+                # command loop alive. Letting it escape kills handle_gui, which
+                # silently freezes the whole GUI (every later click ignored). A single
+                # unsupported feature (e.g. freecam needing remote thread exec on Linux)
+                # must never brick the app.
+                _ct = getattr(locals().get("com"), "com_type", "?")
+                logger.opt(exception=_cmd_err).error(f"Command handler for {_ct} crashed (continuing)")
 
             if walker.clients:
                 gui_send_queue.put(

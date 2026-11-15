@@ -852,16 +852,147 @@ class HotkeyCapture(QDialog):
         self.accept()
 
 
+# --- Linux (X11/XWayland) overlay primitives ---
+# The highlight overlay must be an override-redirect, click-through, always-raised
+# X11 window so it sits over the game (also X11/XWayland) without being tiled,
+# swallowing clicks, or sinking behind the game. These wrap the X11 SHAPE call
+# (empty input region = true click-through) and XRaiseWindow via ctypes.
+if sys.platform != "win32":
+    import subprocess as _subprocess
+    import ctypes.util as _ctypesutil
+
+    def _load_x_lib(name, sonames):
+        p = _ctypesutil.find_library(name)
+        for cand in ([p] if p else []) + sonames:
+            try:
+                return ctypes.CDLL(cand)
+            except OSError:
+                continue
+        return None
+
+    _x11 = _load_x_lib("X11", ["libX11.so.6"])
+    _xext = _load_x_lib("Xext", ["libXext.so.6"])
+    _x_dpy = None
+    if _x11 is not None:
+        _x11.XOpenDisplay.restype = ctypes.c_void_p
+        _x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        _x11.XFlush.argtypes = [ctypes.c_void_p]
+        _x11.XRaiseWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        _x11.XInternAtom.restype = ctypes.c_ulong
+        _x11.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+        _x11.XDefaultRootWindow.restype = ctypes.c_ulong
+        _x11.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+        _x11.XSendEvent.restype = ctypes.c_int
+        _x11.XSendEvent.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_long, ctypes.c_void_p,
+        ]
+        _x_dpy = _x11.XOpenDisplay(None)
+
+    class _XClientMessageData(ctypes.Union):
+        _fields_ = [("b", ctypes.c_char * 20), ("s", ctypes.c_short * 10), ("l", ctypes.c_long * 5)]
+
+    class _XClientMessageEvent(ctypes.Structure):
+        _fields_ = [
+            ("type", ctypes.c_int),
+            ("serial", ctypes.c_ulong),
+            ("send_event", ctypes.c_int),
+            ("display", ctypes.c_void_p),
+            ("window", ctypes.c_ulong),
+            ("message_type", ctypes.c_ulong),
+            ("format", ctypes.c_int),
+            ("data", _XClientMessageData),
+        ]
+    if _xext is not None:
+        _xext.XShapeCombineRectangles.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        ]
+
+    def _x_set_click_through(xid: int):
+        if _xext is not None and _x_dpy:
+            _xext.XShapeCombineRectangles(_x_dpy, xid, 2, 0, 0, None, 0, 0, 0)  # ShapeInput, empty
+            _x11.XFlush(_x_dpy)
+
+    def _x_raise(xid: int):
+        if _x11 is not None and _x_dpy:
+            _x11.XRaiseWindow(_x_dpy, xid)
+            _x11.XFlush(_x_dpy)
+
+    def _x_set_above(xid: int, on: bool) -> bool:
+        """Toggle always-on-top via the EWMH ``_NET_WM_STATE_ABOVE`` client message.
+
+        DE-agnostic: honored by any EWMH-compliant WM (GNOME/KDE/XFCE/i3/
+        Hyprland-XWayland...). Unlike flipping Qt's WindowStaysOnTopHint it doesn't
+        recreate the native window, so the window doesn't flicker, get re-tiled, or
+        jump. Returns False if X11 isn't reachable (e.g. native Wayland), so callers
+        can fall back to the Qt flag.
+        """
+        if _x11 is None or not _x_dpy or not xid:
+            return False
+        try:
+            ev = _XClientMessageEvent()
+            ev.type = 33  # ClientMessage
+            ev.send_event = 1
+            ev.display = _x_dpy
+            ev.window = ctypes.c_ulong(xid).value
+            ev.message_type = _x11.XInternAtom(_x_dpy, b"_NET_WM_STATE", False)
+            ev.format = 32
+            ev.data.l[0] = 1 if on else 0  # _NET_WM_STATE_ADD / _REMOVE
+            ev.data.l[1] = ctypes.c_long(
+                _x11.XInternAtom(_x_dpy, b"_NET_WM_STATE_ABOVE", False)
+            ).value
+            ev.data.l[2] = 0
+            ev.data.l[3] = 1  # source indication: normal application
+            ev.data.l[4] = 0
+            root = _x11.XDefaultRootWindow(_x_dpy)
+            # SubstructureRedirectMask | SubstructureNotifyMask
+            _x11.XSendEvent(_x_dpy, root, 0, 0xC0000, ctypes.byref(ev))
+            _x11.XFlush(_x_dpy)
+            return True
+        except Exception:
+            return False
+
+    _geom_cache = {}
+
+    def _x_window_geometry(win_id: int):
+        # Cached briefly: update_box runs on the GUI thread at ~30fps, and a
+        # blocking xdotool spawn every frame would stutter it.
+        now = time.monotonic()
+        hit = _geom_cache.get(win_id)
+        if hit and now - hit[0] < 0.5:
+            return hit[1]
+        try:
+            out = _subprocess.run(
+                ["xdotool", "getwindowgeometry", "--shell", str(win_id)],
+                capture_output=True, text=True, timeout=2,
+            ).stdout
+            g = {k: int(v) for k, v in (ln.split("=", 1) for ln in out.splitlines() if "=" in ln)}
+            res = (g.get("X"), g.get("Y"), g.get("WIDTH"), g.get("HEIGHT"))
+        except Exception:
+            res = None
+        _geom_cache[win_id] = (now, res)
+        return res
+
+
 class HighlightOverlay(QWidget):
     """Transparent, click-through overlay that covers the game window."""
     THICKNESS = 3
 
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.Tool
-        )
+        if sys.platform == "win32":
+            flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
+        else:
+            # Override-redirect: exact placement, no tiling, above managed windows.
+            # No Tool flag (it hides on app deactivation, i.e. when the game is
+            # clicked). Kept on top by re-raising on each update.
+            flags = (
+                Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.WindowStaysOnTopHint
+                | Qt.WindowType.X11BypassWindowManagerHint
+            )
+        self.setWindowFlags(flags)
+        self.setWindowTitle("DeimosHighlightOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self._box_rect = (0, 0, 0, 0)
@@ -879,6 +1010,26 @@ class HighlightOverlay(QWidget):
 
     def update_box(self, game_hwnd, x1, y1, x2, y2):
         if sys.platform != "win32":
+            # game_hwnd is the X11 window id on Linux; read its live screen rect.
+            geo = _x_window_geometry(game_hwnd)
+            if geo is None or None in geo:
+                return
+            gx, gy, gw, gh = geo
+            dpr = self.devicePixelRatioF()
+            self.setGeometry(
+                round(gx / dpr), round(gy / dpr), round(gw / dpr), round(gh / dpr)
+            )
+            self._box_rect = (
+                round(x1 / dpr), round(y1 / dpr), round(x2 / dpr), round(y2 / dpr)
+            )
+            self._has_box = True
+            if not self.isVisible():
+                self.show()
+            if not self._click_through_set:
+                self._click_through_set = True
+                _x_set_click_through(int(self.winId()))
+            _x_raise(int(self.winId()))  # stay above the focused game window
+            self.update()
             return
         self._ensure_click_through()
         origin = ctypes.wintypes.POINT(0, 0)

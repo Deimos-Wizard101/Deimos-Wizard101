@@ -1,6 +1,7 @@
 import os
 import queue
 import re
+import signal
 import sys
 import time
 
@@ -19,6 +20,10 @@ from PyQt6.QtSvg import QSvgRenderer
 from src.lang import load_lang
 from src.gui.commands import GUICommand, GUICommandType, GUIKeys, _format_binding
 from src.gui.widgets import AnimatedTabWidget, ConsoleTextEdit, PyQtSink, HighlightOverlay
+try:
+    from src.gui.widgets import _x_set_above  # X11/XWayland EWMH always-on-top (non-Windows)
+except ImportError:
+    _x_set_above = None
 from src.gui.helpers import (
     resource_path, centered_label, copy_icon_btn, copy_callback, build_shared_svgs,
     init_recent_imports,
@@ -189,9 +194,16 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
             insert_after = HWND_TOPMOST if _is_pinned[0] else HWND_NOTOPMOST
             _SetWindowPos(hwnd, insert_after, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
         else:
-            from PyQt6.QtCore import Qt as _Qt
-            window.setWindowFlag(_Qt.WindowType.WindowStaysOnTopHint, bool(_is_pinned[0]))
-            window.show()
+            # EWMH client message: no native-window recreation, so the window
+            # doesn't flicker/re-tile/jump on tiling WMs. Fall back to the Qt flag
+            # (preserving geometry across the forced re-show) only if X11 isn't
+            # reachable, e.g. native Wayland.
+            if not (_x_set_above and _x_set_above(int(window.winId()), bool(_is_pinned[0]))):
+                from PyQt6.QtCore import Qt as _Qt
+                _geo = window.geometry()
+                window.setWindowFlag(_Qt.WindowType.WindowStaysOnTopHint, bool(_is_pinned[0]))
+                window.show()
+                window.setGeometry(_geo)
 
     pin_btn.clicked.connect(_toggle_pin)
     titlebar_layout.addWidget(pin_btn)
@@ -232,11 +244,19 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
     close_btn.clicked.connect(window.close)
     titlebar_layout.addWidget(close_btn)
 
-    # Drag support
+    # Drag support. Prefer the compositor's own interactive move (DE-agnostic:
+    # X11 _NET_WM_MOVERESIZE / Wayland xdg_toplevel.move) via startSystemMove —
+    # manual window.move() fights tiling WMs (Hyprland), making the window dance
+    # around during a drag; handing the drag to the WM also lets it float the
+    # window. Fall back to manual move only if the compositor declines.
     _drag_pos = [None]
     def _titlebar_mouse_press(event):
         if event.button() == Qt.MouseButton.LeftButton:
-            _drag_pos[0] = event.globalPosition().toPoint() - window.frameGeometry().topLeft()
+            handle = window.windowHandle()
+            if handle is not None and handle.startSystemMove():
+                _drag_pos[0] = None
+            else:
+                _drag_pos[0] = event.globalPosition().toPoint() - window.frameGeometry().topLeft()
     def _titlebar_mouse_move(event):
         if _drag_pos[0] is not None and event.buttons() & Qt.MouseButton.LeftButton:
             window.move(event.globalPosition().toPoint() - _drag_pos[0])
@@ -495,6 +515,33 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
         send_queue.put(GUICommand(GUICommandType.AttemptedClose))
 
     window.closeEvent = close_event
+
+    # Route termination signals (SIGTERM from `kill`/service stop, SIGINT from
+    # Ctrl-C) into the same graceful close as the window button, so the backend
+    # unhooks and restores the autobot before exit instead of leaving the game
+    # client dangling. Handlers run on this (main/Qt) thread; the 16ms poll_queue
+    # timer keeps the interpreter live so a pending signal fires within a frame.
+    # SIGKILL and hard crashes are uncatchable by design — the on-hook disk
+    # self-heal recovers those on the next run. Linux only: keep Windows' default
+    # Ctrl-C (KeyboardInterrupt) behavior untouched.
+    if sys.platform != "win32":
+        _shutdown_signaled = [False]
+
+        def _signal_graceful_close(signum, frame):
+            if _shutdown_signaled[0]:
+                return
+            _shutdown_signaled[0] = True
+            logger.info(f"Received signal {signum}; closing gracefully (unhooking first).")
+            try:
+                send_queue.put(GUICommand(GUICommandType.AttemptedClose))
+            except Exception:
+                pass
+
+        for _sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                signal.signal(_sig, _signal_graceful_close)
+            except (ValueError, OSError):
+                pass  # not on the main thread, or signal unavailable
 
     # ==================== Event Loop Timer ====================
     entity_popup_ref = [None]
@@ -771,6 +818,11 @@ def manage_gui(send_queue: queue.Queue, recv_queue: queue.Queue, theme_dict, too
     timer.start(16)
 
     window.show()
+    # Reassert always-on-top through EWMH once mapped: at creation Qt's
+    # WindowStaysOnTopHint may be dropped/ignored by tiling WMs, but the
+    # _NET_WM_STATE_ABOVE client message on the live window is honored.
+    if gui_on_top and _x_set_above is not None:
+        _x_set_above(int(window.winId()), True)
     # Lock width to the tab bar width + content margins
     tab_bar_width = tabs.tabBar().sizeHint().width()
     margins = content_layout.contentsMargins()

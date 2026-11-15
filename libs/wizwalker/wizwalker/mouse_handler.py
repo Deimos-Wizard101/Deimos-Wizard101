@@ -1,10 +1,14 @@
 import asyncio
 import ctypes
 import ctypes.wintypes
+import sys
 
 import wizwalker
 from wizwalker import user32
 from wizwalker.memory.hooks import MouselessCursorMoveHook
+
+if sys.platform != "win32":
+    from wizwalker import _linux
 
 
 class MouseHandler:
@@ -43,9 +47,15 @@ class MouseHandler:
                 await self._deactivate_mouseless()
     
     async def _activate_mouseless(self):
+        # Linux drives the real X11 pointer via xdotool, so no in-game cursor
+        # hook is needed; the context manager still ref-counts, just no-ops here.
+        if sys.platform != "win32":
+            return
         await self.client.hook_handler.activate_mouseless_cursor_hook()
 
     async def _deactivate_mouseless(self):
+        if sys.platform != "win32":
+            return
         await self.client.hook_handler.deactivate_mouseless_cursor_hook()
 
     async def activate_mouseless(self):
@@ -136,6 +146,26 @@ class MouseHandler:
             sleep_duration: How long to sleep between messages
             use_post: If PostMessage should be used instead of SendMessage
         """
+        if sys.platform != "win32":
+            # Real X11 click on the game window: position the pointer over the
+            # target (window-relative) and press/release the button. click_predelay
+            # lets the game register the move before the press, as on Windows.
+            button = 3 if right_click else 1
+            if self.click_lock is None:
+                self.click_lock = asyncio.Lock()
+            async with self.click_lock:
+                # the window must be foreground to receive a real pointer click
+                _linux.focus_window(self.client.window_handle)
+                await self.set_mouse_position(x, y)
+                await asyncio.sleep(self.click_predelay)
+                _linux.mouse_button(button, True)
+                if sleep_duration > 0:
+                    await asyncio.sleep(sleep_duration)
+                _linux.mouse_button(button, False)
+                # move pointer off the client afterwards, matching Windows
+                await self.set_mouse_position(-100, -100)
+            return
+
         # We don't have to check if the hook is active since it will just error
         if right_click:
             button_down_message = 0x204
@@ -183,6 +213,15 @@ class MouseHandler:
             convert_from_client: If the position should be converted from client to screen
             use_post: If PostMessage should be used instead of SendMessage
         """
+        if sys.platform != "win32":
+            # xdotool --window takes window-relative (client) coords directly, so
+            # no ClientToScreen is needed; absolute screen coords skip --window.
+            if convert_from_client:
+                _linux.move_mouse_to_window(self.client.window_handle, x, y)
+            else:
+                _linux.move_mouse_abs(x, y)
+            return None
+
         if use_post:
             send_method = user32.PostMessageW
         else:

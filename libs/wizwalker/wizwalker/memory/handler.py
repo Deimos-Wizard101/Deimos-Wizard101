@@ -1,12 +1,46 @@
 import asyncio
+import os
 import struct
+import sys
 from typing import Any
 import warnings
 import traceback
 
 import pymem
 import pymem.exception
+import pymem.process
 from loguru import logger
+
+
+def _build_rpc_trampoline(done_addr: int, shell_addr: int, orig_bytes: bytes, ret_addr: int) -> bytes:
+    """One-shot self-restoring trampoline for the Linux thread-hijack RPC.
+
+    Reached by a jmp planted over ``orig_bytes`` at a per-frame game call site.
+    It saves every volatile register and the flags, and if the done byte is still
+    0 it 16-aligns the stack (matching a fresh thread's entry, as CreateRemoteThread
+    gives) and calls ``shell_addr`` once, then marks done. Either way it restores
+    the registers, re-runs the hijacked ``orig_bytes`` (so the game's own work still
+    happens) and jumps back past them. Non-volatile registers are untouched and are
+    preserved across the shellcode's calls by the x64 callee convention.
+    """
+    p = lambda a: struct.pack("<Q", a)
+    guarded = (
+        b"\x55\x48\x89\xE5\x48\x83\xE4\xF0"          # push rbp; mov rbp,rsp; and rsp,-16
+        b"\x48\xB8" + p(shell_addr) + b"\xFF\xD0"    # mov rax,shell; call rax
+        b"\x48\x89\xEC\x5D"                           # mov rsp,rbp; pop rbp
+        b"\x48\xB8" + p(done_addr) + b"\xC6\x00\x01"  # mov rax,done; mov byte[rax],1
+    )
+    pre = (
+        b"\x50\x51\x52\x41\x50\x41\x51\x41\x52\x41\x53\x9C"  # push rax,rcx,rdx,r8,r9,r10,r11; pushfq
+        b"\x48\xB8" + p(done_addr) + b"\x80\x38\x00"          # mov rax,done; cmp byte[rax],0
+        b"\x75" + bytes([len(guarded)])                      # jnz +len(guarded)  (skip the call)
+    )
+    post = (
+        b"\x9D\x41\x5B\x41\x5A\x41\x59\x41\x58\x5A\x59\x58"  # popfq; pop r11,r10,r9,r8,rdx,rcx,rax
+        + orig_bytes +
+        b"\xFF\x25\x00\x00\x00\x00" + p(ret_addr)            # jmp qword[rip+0]; dq ret_addr
+    )
+    return pre + guarded + post
 
 from wizwalker import HookAlreadyActivated, HookNotActive, HookNotReady
 from .hooks import (
@@ -55,6 +89,9 @@ class HookHandler(MemoryReader):
         self._original_autobot_bytes = b""
         self._autobot_pos = 0
 
+        # Linux thread-hijack RPC (start_thread): a cached writable done-flag.
+        self._rpc_done = None
+
         # TODO: Is this signature correct?
         self._active_hooks: dict[type, MemoryHook] = {}
         self._base_addrs = {}
@@ -75,22 +112,84 @@ class HookHandler(MemoryReader):
         return addr
 
     async def _get_autobot_address(self):
-        addr = await self.pattern_scan(
-            self.AUTOBOT_PATTERN, module="WizardGraphicalClient.exe"
-        )
+        from wizwalker import PatternFailed
+
+        try:
+            addr = await self.pattern_scan(
+                self.AUTOBOT_PATTERN, module="WizardGraphicalClient.exe"
+            )
+        except PatternFailed:
+            addr = None
+
+        # A prior session that exited uncleanly (SIGKILL/crash) can leave the
+        # autobot zeroed, so the in-memory pattern no longer matches. The region
+        # is real .text present in the module on disk, so recover it from there and
+        # carry on — no client restart needed. Linux only; Windows wizwalker keeps
+        # its original behavior.
+        if addr is None and sys.platform != "win32":
+            addr = await self._heal_autobot_from_disk()
+
         if addr is None:
             raise RuntimeError("Pattern scan failed for autobot pattern")
 
         self._autobot_address = addr
+
+    def _autobot_from_disk(self):
+        """``(rva, pristine_bytes)`` for the autobot in the on-disk module, or None.
+
+        The autobot's bytes are RIP/register-relative .text with no base
+        relocations in the matched span, so the on-disk bytes equal the loaded
+        ones regardless of load base.
+        """
+        try:
+            import regex
+            import pefile
+            from wizwalker import utils
+
+            exe = utils.get_wiz_install() / "Bin" / "WizardGraphicalClient.exe"
+            data = exe.read_bytes()
+            match = regex.search(self.AUTOBOT_PATTERN, data, regex.DOTALL)
+            if match is None:
+                return None
+            file_off = match.start()
+            rva = pefile.PE(str(exe), fast_load=True).get_rva_from_offset(file_off)
+            return rva, data[file_off:file_off + self.AUTOBOT_SIZE]
+        except Exception as exc:
+            logger.opt(exception=exc).debug("Autobot disk lookup failed")
+            return None
+
+    async def _heal_autobot_from_disk(self):
+        """Rewrite a zeroed/corrupt autobot from the on-disk module, returning its
+        address, or None if the module or pattern can't be resolved."""
+        found = self._autobot_from_disk()
+        if found is None:
+            return None
+        rva, pristine = found
+        module = pymem.process.module_from_name(
+            self.process.process_handle, "WizardGraphicalClient.exe"
+        )
+        if module is None:
+            return None
+        addr = module.lpBaseOfDll + rva
+        logger.warning(
+            "Autobot not found in memory; restoring it from the on-disk module "
+            "(a previous session likely exited without cleaning up). Recovering in place."
+        )
+        await self.write_bytes(addr, pristine)
+        return addr
 
     # noinspection PyTypeChecker
     async def _prepare_autobot(self):
         if self._autobot_address is None:
             await self._get_autobot_address()
 
-            # we only need to write back the pattern
+            # Save the whole region we are about to zero, not just the pattern:
+            # the autobot spans real code (only a fraction of AUTOBOT_SIZE is
+            # padding), so a pattern-length restore leaves the rest zeroed and
+            # corrupts the target's .text once unhooked. Restoring the full span
+            # returns the client to a pristine state after close().
             self._original_autobot_bytes = await self.read_bytes(
-                self._autobot_address, len(self.AUTOBOT_PATTERN)
+                self._autobot_address, self.AUTOBOT_SIZE
             )
             logger.debug(
                 f"Got original bytes {self._original_autobot_bytes} from autobot"
@@ -100,12 +199,12 @@ class HookHandler(MemoryReader):
     async def _rewrite_autobot(self):
         if self._autobot_address is not None:
             compare_bytes = await self.read_bytes(
-                self._autobot_address, len(self.AUTOBOT_PATTERN)
+                self._autobot_address, self.AUTOBOT_SIZE
             )
             # Give some time for execution point to leave hooks
             await asyncio.sleep(0.5)
 
-            # Only write if the pattern isn't there
+            # Only write if the original isn't already back in place
             if compare_bytes != self._original_autobot_bytes:
                 logger.debug(
                     f"Rewriting bytes {self._original_autobot_bytes} to autobot"
@@ -118,6 +217,91 @@ class HookHandler(MemoryReader):
         address = await self._get_open_autobot_address(size)
 
         return address
+
+    # Reserve the tail of the autobot as reusable scratch for the RPC trampoline +
+    # shellcode, so repeated calls don't bump-exhaust the autobot.
+    RPC_SCRATCH = 512
+
+    async def start_thread(self, address: int):
+        """Run the shellcode at ``address`` once in the target.
+
+        On Windows this is CreateRemoteThread (the base implementation). Linux has
+        no such call, so execute via a one-shot thread hijack: copy the shellcode
+        into executable memory (the autobot, since ``allocate`` hands out writable,
+        non-executable data memory on Linux), plant a self-restoring trampoline at a
+        per-frame game call site that runs it once, wait for it, and restore. Same
+        signature, so callers (e.g. camera freecam) are unchanged.
+        """
+        if sys.platform == "win32":
+            return await super().start_thread(address)
+
+        size = self.process.allocation_size(address)
+        if size is None:
+            raise RuntimeError(
+                "start_thread on Linux needs the shellcode length; allocate it via "
+                "process.allocate so its size is tracked"
+            )
+        shellcode = await self.read_bytes(address, size)
+
+        # Linux one-shot RPC via thread-hijack. Default: zhol's native
+        # rpc_via_hijack (the mechanism lives in the library now, drop-safe and
+        # reusable; validated against a live client). Set DEIMOS_ZHOL_RPC=0 to fall
+        # back to the in-Python path below.
+        if os.environ.get("DEIMOS_ZHOL_RPC", "1") != "0":
+            # zhol executes the shellcode + trampoline from a code cave (the done
+            # byte stays in its writable data cave). Hand it the autobot's reserved
+            # RPC scratch as that code cave: executable .text, within rel32 of the
+            # hijack site, and large enough — Wizard101's own .text padding isn't.
+            await self._check_for_autobot()
+            scratch = self._autobot_address + self.AUTOBOT_SIZE - self.RPC_SCRATCH
+            self.process.process_handle.register_cave(scratch, self.RPC_SCRATCH)
+            mua = await self.client._get_movement_update_address()
+            ran = await self.run_in_executor(
+                self.process.process_handle.rpc_via_hijack,
+                mua, shellcode, 10, 0, 2000,
+            )
+            if not ran:
+                logger.warning(
+                    "start_thread (zhol rpc_via_hijack): shellcode did not run within timeout"
+                )
+            return
+
+        await self._check_for_autobot()
+        scratch = self._autobot_address + self.AUTOBOT_SIZE - self.RPC_SCRATCH
+        if scratch < self._autobot_address + self._autobot_pos:
+            raise RuntimeError("autobot too full for RPC scratch")
+        shell_addr = scratch
+        tramp_addr = (shell_addr + len(shellcode) + 15) & ~15
+
+        if self._rpc_done is None:
+            self._rpc_done = self.process.allocate(8)
+        done = self._rpc_done
+
+        # Hijack the per-frame movement-update call site (always present, main
+        # thread, clean stack). Whatever is there now (possibly NOPed by a freecam
+        # movement patch) is captured and re-run by the trampoline, then restored.
+        mua = await self.client._get_movement_update_address()
+        orig = await self.read_bytes(mua, 10)
+        tramp = _build_rpc_trampoline(done, shell_addr, orig, mua + 10)
+        if (tramp_addr - shell_addr) + len(tramp) > self.RPC_SCRATCH:
+            raise RuntimeError("RPC shellcode + trampoline exceed scratch")
+
+        await self.write_bytes(done, b"\x00" * 8)
+        await self.write_bytes(shell_addr, shellcode)
+        await self.write_bytes(tramp_addr, tramp)
+
+        rel = tramp_addr - (mua + 5)
+        hijack = b"\xE9" + struct.pack("<i", rel) + b"\x90" * 5
+        try:
+            await self.write_bytes(mua, hijack)
+            for _ in range(400):  # up to ~2s at 5 ms
+                await asyncio.sleep(0.005)
+                if (await self.read_bytes(done, 1))[0] == 1:
+                    break
+            else:
+                logger.warning("start_thread: shellcode did not run within timeout")
+        finally:
+            await self.write_bytes(mua, orig)
 
     async def close(self):
         for hook in self._active_hooks.values():

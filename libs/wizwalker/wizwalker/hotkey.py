@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import ctypes
 import ctypes.wintypes
@@ -456,3 +457,11 @@ class HotkeyListener:
             await _hotkey_id_manager.free_id(hotkey_id)
 
         return success
+
+
+# Platform select (like a cfg! branch): Wayland/X11 won't grant the global key
+# grab RegisterHotKey needs, so on Linux swap in the evdev-backed listener. Same
+# public API — add_hotkey/remove_hotkey/start/stop/clear — so callers are
+# unchanged; only the implementation that runs differs.
+if sys.platform != "win32":
+    from wizwalker._linux_hotkey import _LinuxHotkeyListener as HotkeyListener  # noqa: F811,E402

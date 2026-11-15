@@ -20,6 +20,7 @@ DEFAULT_SETTINGS = {
     "rich_presence": True,
     "drop_logging": True,
     "use_anti_afk": True,
+    "auto_puzzle": False,
     "buy_potions": True,
     # [gui]
     "on_top": True,
@@ -67,6 +68,7 @@ _INI_SETTINGS_MAP = {
     ("settings", "rich_presence"): ("rich_presence", bool),
     ("settings", "drop_logging"): ("drop_logging", bool),
     ("settings", "use_anti_afk"): ("use_anti_afk", bool),
+    ("settings", "auto_puzzle"): ("auto_puzzle", bool),
     ("settings", "buy_potions"): ("buy_potions", bool),
     ("gui", "on_top"): ("on_top", bool),
     ("gui", "theme"): ("theme", str),
