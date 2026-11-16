@@ -532,6 +532,16 @@ class Client:
             purge_on_after_unuser_fixer: If should wait for inuse flag after and reset if not set
             purge_on_after_unuser_fixer_timeout: Time to wait for inuse flag to reset if not set
         """
+        if not self.hook_handler._supports_inline_hooks:
+            # macOS/Rosetta: the inline movement-teleport hook can't fire. Apply the
+            # teleport by writing the player's position directly — visually confirmed
+            # to move the character. There's no collision stepping, so a target inside
+            # geometry may be snapped back by the server (same as a short Windows hop).
+            await self.body.write_position(xyz)
+            if yaw is not None:
+                await self.body.write_yaw(yaw)
+            return
+
         client_object_addr = await self.client_object.read_base_address()
 
         player_is_mounted = False
