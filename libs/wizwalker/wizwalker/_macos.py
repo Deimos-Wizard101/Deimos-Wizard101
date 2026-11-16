@@ -268,8 +268,9 @@ def _post(event):
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 
-def focus_window(win: int):
-    """Bring the game app to the foreground so it receives pointer/key events."""
+def focus_window(win: int) -> bool:
+    """Bring the game app to the foreground so it receives pointer/key events.
+    Returns True if the activation call was issued."""
     info = _find_game_window(win)
     owner = info.get("kCGWindowOwnerPID") if info else _WINDOW_OWNER_CACHE.get(win, win)
     try:
@@ -278,11 +279,14 @@ def focus_window(win: int):
         app = NSRunningApplication.runningApplicationWithProcessIdentifier_(int(owner))
         if app is not None:
             app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+            return True
     except Exception as e:
         _warn_input_once(f"macOS focus_window failed: {e}")
+    return False
 
 
-def send_key_to_window(win: int, vk: int):
+def send_keydown_to_window(win: int, vk: int):
+    """Press (and hold) a key. Focuses the game first so it receives the event."""
     mac_kc = keysym_for_vk(vk)
     if mac_kc is None:
         return
@@ -290,12 +294,28 @@ def send_key_to_window(win: int, vk: int):
         import Quartz
 
         focus_window(win)
-        down = Quartz.CGEventCreateKeyboardEvent(None, int(mac_kc), True)
-        up = Quartz.CGEventCreateKeyboardEvent(None, int(mac_kc), False)
-        _post(down)
-        _post(up)
+        _post(Quartz.CGEventCreateKeyboardEvent(None, int(mac_kc), True))
     except Exception as e:
-        _warn_input_once(f"macOS send_key failed: {e}")
+        _warn_input_once(f"macOS keydown failed: {e}")
+
+
+def send_keyup_to_window(win: int, vk: int):
+    """Release a key previously pressed with ``send_keydown_to_window``."""
+    mac_kc = keysym_for_vk(vk)
+    if mac_kc is None:
+        return
+    try:
+        import Quartz
+
+        _post(Quartz.CGEventCreateKeyboardEvent(None, int(mac_kc), False))
+    except Exception as e:
+        _warn_input_once(f"macOS keyup failed: {e}")
+
+
+def send_key_to_window(win: int, vk: int):
+    """Tap a key (down then up)."""
+    send_keydown_to_window(win, vk)
+    send_keyup_to_window(win, vk)
 
 
 def move_mouse_to_window(win: int, x: int, y: int):

@@ -161,6 +161,23 @@ def send_key_to_window(win: int, vk: int):
     _run_nowait(["xdotool", "key", "--clearmodifiers", keysym])
 
 
+def send_keydown_to_window(win: int, vk: int):
+    """Press (and hold) a key on the game window."""
+    keysym = keysym_for_vk(vk)
+    if keysym is None:
+        return
+    _run_nowait(["xdotool", "windowactivate", str(win)])
+    _run_nowait(["xdotool", "keydown", "--clearmodifiers", keysym])
+
+
+def send_keyup_to_window(win: int, vk: int):
+    """Release a held key."""
+    keysym = keysym_for_vk(vk)
+    if keysym is None:
+        return
+    _run_nowait(["xdotool", "keyup", "--clearmodifiers", keysym])
+
+
 # ---- mouse (xdotool; real pointer events to the XWayland game window) ----
 # Win32 wizwalker clicks by writing the cursor into memory (mouseless hook) and
 # sending WM_LBUTTONDOWN to the HWND. On Linux there's no HWND and no way to post

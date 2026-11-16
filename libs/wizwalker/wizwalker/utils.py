@@ -1002,17 +1002,12 @@ if sys.platform != "win32":
         return Path("C:/windows/system32")
 
     def _send_keydown(window_handle: int, key):  # noqa: F811
-        import subprocess
-        ks = _lx.keysym_for_vk(key.value)
-        if ks:
-            subprocess.run(["xdotool", "windowactivate", str(window_handle)], check=False)
-            subprocess.run(["xdotool", "keydown", "--clearmodifiers", ks], check=False)
+        # Through the platform backend (xdotool on Linux, CGEvent on macOS) so held
+        # keys work on both; calling xdotool directly broke macOS (FileNotFoundError).
+        _lx.send_keydown_to_window(window_handle, key.value)
 
     def _send_keyup(window_handle: int, key):  # noqa: F811
-        import subprocess
-        ks = _lx.keysym_for_vk(key.value)
-        if ks:
-            subprocess.run(["xdotool", "keyup", "--clearmodifiers", ks], check=False)
+        _lx.send_keyup_to_window(window_handle, key.value)
 
     async def _send_keydown_forever(window_handle: int, key):  # noqa: F811
         _send_keydown(window_handle, key)
