@@ -405,12 +405,19 @@ class MemoryReader:
         sequence as guest code via the one-shot RPC. On Windows/Linux this is an
         ordinary memory write.
         """
-        if sys.platform == "darwin":
-            await self.run_in_executor(
-                self.process.process_handle.write_code, address, value
-            )
-        else:
+        if sys.platform != "darwin":
             await self.write_bytes(address, value)
+            return
+        # If a batch is open on the owning hook handler, defer this write into it so
+        # a whole burst of installs flushes in one RPC (see HookHandler flush).
+        owner = getattr(self, "hook_handler", self)
+        batch = getattr(owner, "_code_write_batch", None)
+        if batch is not None:
+            batch.append((address, bytes(value)))
+            return
+        await self.run_in_executor(
+            self.process.process_handle.write_code, address, value
+        )
 
     async def allocate_near(self, size: int, near: int) -> int:
         """

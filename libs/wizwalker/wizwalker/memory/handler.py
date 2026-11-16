@@ -106,6 +106,11 @@ class HookHandler(MemoryReader):
         self._active_hooks: dict[type, MemoryHook] = {}
         self._base_addrs = {}
 
+        # When a list, macOS `write_code` calls append (addr, bytes) here instead of
+        # issuing an RPC, so a burst of hook installs (activate_hooks) is applied in a
+        # single guest W^X RPC on flush instead of one round trip per site.
+        self._code_write_batch = None
+
         self._hook_cache = {}
         self._dance_moves_transtable = str.maketrans("abcd", "WDSA")
 
@@ -373,6 +378,15 @@ class HookHandler(MemoryReader):
             # TODO: replace error
             raise TimeoutError("Hook value took too long")
 
+    async def _flush_code_batch(self):
+        """Apply all deferred macOS code writes in one RPC and close the batch."""
+        batch = self._code_write_batch
+        self._code_write_batch = None
+        if batch:
+            await self.run_in_executor(
+                self.process.process_handle.write_code_batch, batch
+            )
+
     # TODO: make this faster
     async def activate_all_hooks(
         self, *, wait_for_ready: bool = True, timeout: float = None
@@ -396,13 +410,22 @@ class HookHandler(MemoryReader):
         # per-frame capture hooks (root window, render context) fill within a frame,
         # well before the user interacts.
         if sys.platform == "darwin":
-            await self.activate_quest_hook()
-            await self.activate_root_window_hook(wait_for_ready=False)
-            await self.activate_render_context_hook(wait_for_ready=False)
-            await self.activate_drops_toggle_hook(wait_for_ready=False)
-            await self.activate_auto_puzzle_hook(wait_for_ready=False)
-            await self.activate_update_zone_counter_hook(wait_for_ready=False)
-            await self.activate_server_move_snapback_hook(wait_for_ready=False)
+            # Batch every hook's jump write into one guest W^X RPC. Each install is
+            # otherwise its own RPC that waits ~seconds for the backgrounded game to
+            # tick (attach took ~20s+); batched it is a single round trip. The caves
+            # are still written immediately (plain writes to fresh pages); only the
+            # .text jumps are deferred and applied together on flush.
+            self._code_write_batch = []
+            try:
+                await self.activate_quest_hook()
+                await self.activate_root_window_hook(wait_for_ready=False)
+                await self.activate_render_context_hook(wait_for_ready=False)
+                await self.activate_drops_toggle_hook(wait_for_ready=False)
+                await self.activate_auto_puzzle_hook(wait_for_ready=False)
+                await self.activate_update_zone_counter_hook(wait_for_ready=False)
+                await self.activate_server_move_snapback_hook(wait_for_ready=False)
+            finally:
+                await self._flush_code_batch()
             return
 
         await self.activate_player_hook(wait_for_ready=False)
