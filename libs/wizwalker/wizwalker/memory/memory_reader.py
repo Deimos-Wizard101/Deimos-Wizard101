@@ -334,6 +334,34 @@ class MemoryReader:
             else:
                 raise MemoryWriteError(address)
 
+    async def write_code(self, address: int, value: bytes):
+        """
+        Write bytes into EXECUTABLE memory so the patch takes effect.
+
+        On macOS an inline patch must be applied as a guest W^X write — Rosetta
+        ignores an external write to already-translated code, so a plain write_bytes
+        to a hook site never fires. zhol.write_code performs the
+        VirtualProtect(RW) -> write -> VirtualProtect(RX) -> FlushInstructionCache
+        sequence as guest code via the one-shot RPC. On Windows/Linux this is an
+        ordinary memory write.
+        """
+        if sys.platform == "darwin":
+            await self.run_in_executor(
+                self.process.process_handle.write_code, address, value
+            )
+        else:
+            await self.write_bytes(address, value)
+
+    async def allocate_near(self, size: int, near: int) -> int:
+        """
+        Allocate executable memory reachable by a 5-byte E9 rel32 jump from ``near``
+        (a hook's patch site). On macOS the cave is placed within ±2 GiB of ``near``
+        so the jump reaches; elsewhere ``near`` is advisory.
+        """
+        if sys.platform == "darwin":
+            return self.process.process_handle.allocate_near(size, near)
+        return await self.allocate(size)
+
     async def read_typed(self, address: int, data_type: Primitive) -> Any:
         """
         Read typed bytes from memory
