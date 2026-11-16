@@ -42,6 +42,38 @@ If libpython isn't found at runtime, point `DYLD_LIBRARY_PATH` or `PYTHONHOME` a
 the framework (the `allow-dyld-environment-variables` entitlement permits this),
 e.g. `PYTHONHOME=/opt/homebrew/Frameworks/Python.framework/Versions/3.13`.
 
+## Permissions (hotkeys, input sending, overlay)
+
+Memory features (attach/read/hooks/freecam) need only the `cs.debugger`
+entitlement + the get-task-allow'd Wine loader. The **window/input/hotkey**
+features need macOS TCC permissions granted to **this launcher binary** (it is the
+process the kernel checks), in System Settings > Privacy & Security:
+
+- **Input Monitoring** — required for GLOBAL HOTKEYS (the `CGEventTap` keyboard
+  listener). Gotcha: `CGEventTapCreate` *succeeds without this permission* but then
+  silently receives zero events, so a "tap failed" check can't detect it — Deimos
+  preflights `CGPreflightListenEventAccess()` and warns instead. Keyboard listening
+  is gated by Input Monitoring, **not** Accessibility.
+- **Accessibility** — required for INPUT SENDING (`CGEventPost` of synthetic
+  key/mouse events) and bringing the game to the foreground. Deimos preflights
+  `CGPreflightPostEventAccess()`.
+- The **overlay** (entity highlight) needs no permission.
+
+On first run Deimos calls `CGRequestListenEventAccess()` / `CGRequestPostEventAccess()`
+so the launcher appears in those lists and macOS prompts; toggle both on, then
+relaunch.
+
+> **Re-grant after every rebuild.** The launcher is ad-hoc signed, so each rebuild
+> changes its code identity (cdhash) and macOS silently drops the TCC grants. After
+> `build.sh` you must re-enable Input Monitoring + Accessibility for it. A stable
+> identity (sign with a fixed self-signed certificate, or ship as a `.app` with a
+> `CFBundleIdentifier` so TCC keys on the bundle id) would make the grants persist —
+> a future improvement.
+
+Python deps for these features (into the venv): `pip install pyobjc-framework-Quartz
+pyobjc-framework-Cocoa` (Quartz for the event tap / CGEvents / CGWindowList, Cocoa
+for AppKit focus + the overlay's native NSWindow).
+
 ## Notes
 
 - Ad-hoc signed, **no** hardened runtime: library validation is therefore not
