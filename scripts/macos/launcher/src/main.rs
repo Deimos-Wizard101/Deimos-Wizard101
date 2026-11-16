@@ -44,6 +44,35 @@ fn main() -> ExitCode {
                     sys_path.insert(i, PyString::new_bound(py, entry))?;
                 }
             }
+            // The script's own directory at sys.path[0], exactly as `python
+            // script.py` does — so a script can `import` its sibling packages
+            // (e.g. Deimos.py importing `src`).
+            if let Some(dir) = std::path::Path::new(&script).parent() {
+                if let Some(d) = dir.to_str() {
+                    let d = if d.is_empty() { "." } else { d };
+                    sys_path.insert(0, PyString::new_bound(py, d))?;
+                }
+            }
+
+            // Point child processes (subprocess[sys.executable], multiprocessing
+            // spawn) at the real framework python, not this launcher binary — else
+            // `sys.executable -c ...` treats "-c" as a script path. Children don't
+            // need the debugger entitlement.
+            let fix_exe = r#"
+import os, sys
+for _c in (getattr(sys, '_base_executable', None),
+           os.path.join(sys.base_prefix, 'bin', 'python3.13'),
+           os.path.join(sys.base_prefix, 'bin', 'python3')):
+    if _c and os.path.exists(_c) and 'deimos-launcher' not in _c:
+        sys.executable = _c
+        try:
+            import multiprocessing
+            multiprocessing.set_executable(_c)
+        except Exception:
+            pass
+        break
+"#;
+            let _ = py.run_bound(fix_exe, None, None);
 
             // sys.argv = [script, args...], as a normal `python script.py ...` run.
             let argv = PyList::empty_bound(py);

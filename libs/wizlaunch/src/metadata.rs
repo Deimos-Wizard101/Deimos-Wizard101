@@ -51,11 +51,37 @@ impl Default for AccountMetadata {
 }
 
 fn metadata_path() -> Result<PathBuf, VaultError> {
-    let appdata = std::env::var("APPDATA")
-        .map_err(|_| VaultError::MetadataIo("APPDATA not set".to_string()))?;
-    let dir = PathBuf::from(appdata).join("Deimos");
+    // Windows: %APPDATA%\Deimos. Off-Windows (macOS/Linux): a per-user config dir
+    // (XDG_CONFIG_HOME or ~/Library/Application Support / ~/.config), so the
+    // account-metadata store works there too.
+    let base = match std::env::var("APPDATA") {
+        Ok(a) if !a.is_empty() => PathBuf::from(a),
+        _ => {
+            if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+                if !xdg.is_empty() {
+                    PathBuf::from(xdg)
+                } else {
+                    default_config_home()?
+                }
+            } else {
+                default_config_home()?
+            }
+        }
+    };
+    let dir = base.join("Deimos");
     fs::create_dir_all(&dir)?;
     Ok(dir.join("account_metadata.json"))
+}
+
+fn default_config_home() -> Result<PathBuf, VaultError> {
+    let home = std::env::var("HOME")
+        .map_err(|_| VaultError::MetadataIo("HOME not set".to_string()))?;
+    let home = PathBuf::from(home);
+    if cfg!(target_os = "macos") {
+        Ok(home.join("Library").join("Application Support"))
+    } else {
+        Ok(home.join(".config"))
+    }
 }
 
 pub fn load() -> Result<AccountMetadata, VaultError> {
