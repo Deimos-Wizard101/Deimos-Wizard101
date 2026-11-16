@@ -876,8 +876,9 @@ class Client:
 
         movement_update_address = await self._get_movement_update_address()
         self._movement_update_original_bytes = await self.hook_handler.read_bytes(movement_update_address, 3)
-        # 3x nop
-        await self.hook_handler.write_bytes(movement_update_address, b"\x90\x90\x90")
+        # 3x nop — via write_code so it takes effect under Rosetta (an external write
+        # to already-translated code is ignored; the guest W^X write re-translates).
+        await self.hook_handler.write_code(movement_update_address, b"\x90\x90\x90")
 
         self._movement_update_patched = True
 
@@ -886,7 +887,7 @@ class Client:
             return
 
         movement_update_address = await self._get_movement_update_address()
-        await self.hook_handler.write_bytes(movement_update_address, self._movement_update_original_bytes)
+        await self.hook_handler.write_code(movement_update_address, self._movement_update_original_bytes)
 
         self._movement_update_patched = False
 
