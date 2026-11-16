@@ -777,7 +777,11 @@ class HotkeyCapture(QDialog):
 
     def _modifier_prefix(self, qt_mods):
         parts = []
-        if qt_mods & Qt.KeyboardModifier.ControlModifier:
+        # macOS: Command -> ControlModifier, physical Control -> MetaModifier; show
+        # both as "Ctrl" to match how the binding is stored/fired.
+        if qt_mods & Qt.KeyboardModifier.ControlModifier or (
+            sys.platform == "darwin" and qt_mods & Qt.KeyboardModifier.MetaModifier
+        ):
             parts.append("Ctrl")
         if qt_mods & Qt.KeyboardModifier.ShiftModifier:
             parts.append("Shift")
@@ -801,7 +805,12 @@ class HotkeyCapture(QDialog):
         qt_mods = event.modifiers()
         if qt_mods & Qt.KeyboardModifier.ShiftModifier:
             mods.append("SHIFT")
-        if qt_mods & Qt.KeyboardModifier.ControlModifier:
+        # macOS: Qt reports the Command key as ControlModifier and the PHYSICAL
+        # Control key as MetaModifier. Treat both as CTRL so a user can bind with the
+        # physical Ctrl key naturally (the _macos_hotkey listener matches both too).
+        if qt_mods & Qt.KeyboardModifier.ControlModifier or (
+            sys.platform == "darwin" and qt_mods & Qt.KeyboardModifier.MetaModifier
+        ):
             mods.append("CTRL")
         if qt_mods & Qt.KeyboardModifier.AltModifier:
             mods.append("ALT")

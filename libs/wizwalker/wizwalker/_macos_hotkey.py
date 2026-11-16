@@ -198,7 +198,13 @@ class _MacHotkeyListener:
                     return event
                 flags = Quartz.CGEventGetFlags(event)
                 mods = 0
-                if flags & Quartz.kCGEventFlagMaskControl:
+                # Accept EITHER physical Control OR Command as CTRL: Qt on macOS
+                # reports Command as Qt::ControlModifier, so the GUI's rebind capture
+                # records Command as "CTRL" — honoring both keys here means a Ctrl
+                # binding fires whichever the user reaches for.
+                if flags & (
+                    Quartz.kCGEventFlagMaskControl | Quartz.kCGEventFlagMaskCommand
+                ):
                     mods |= int(ModifierKeys.CTRL)
                 if flags & Quartz.kCGEventFlagMaskShift:
                     mods |= int(ModifierKeys.SHIFT)
