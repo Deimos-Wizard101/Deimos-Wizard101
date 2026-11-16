@@ -470,6 +470,17 @@ class HookHandler(MemoryReader):
         Returns:
             The player base address
         """
+        if not self._supports_inline_hooks:
+            # PlayerHook captures the local player's ActorBody (it reads [rax+0x58],
+            # the body position field). That body is current_client.actor_body()
+            # (AnimationBehavior +0x70) — resolvable hook-free.
+            from .memory_objects import DynamicClientObject
+
+            cc = await self._macos_current_client_base()
+            body = await DynamicClientObject(self, cc).actor_body()
+            if body is None:
+                raise HookNotReady("Player")
+            return await body.read_base_address()
         return await self._read_hook_base_addr("player_struct", "Player")
 
     async def activate_quest_hook(
@@ -560,6 +571,17 @@ class HookHandler(MemoryReader):
         Returns:
             The player stat base address
         """
+        if not self._supports_inline_hooks:
+            # PlayerStatHook captures current_client.game_stats; resolve it from the
+            # hook-free current client (offset 560) instead of the inline hook.
+            cc = await self._macos_current_client_base()
+            try:
+                addr = await self.read_typed(cc + 560, Primitive.int64)
+            except pymem.exception.MemoryReadError:
+                raise HookNotReady("Player stat")
+            if not addr:
+                raise HookNotReady("Player stat")
+            return addr
         return await self._read_hook_base_addr("player_stat_struct", "Player stat")
 
     async def activate_client_hook(
@@ -598,6 +620,26 @@ class HookHandler(MemoryReader):
 
         del self._base_addrs["current_client"]
 
+    async def _macos_current_client_base(self) -> int:
+        """Resolve the current client object without an inline hook (macOS/Rosetta).
+
+        Inline value-capture hooks never fire under Rosetta, but the game's camera
+        resolution is static and works. The elastic camera is attached to the local
+        player's client object (``attached_client_object``, offset 264) — the exact
+        pointer ClientHook captures on Linux/Windows. Pure reads, so it works where
+        inline hooks can't.
+        """
+        from .memory_objects import CurrentGameClient
+
+        gc = CurrentGameClient(self)
+        cam = await gc.elastic_camera_controller()
+        if cam is None:
+            raise HookNotReady("Client")
+        attached = await cam.attached_client_object()
+        if attached is None:
+            raise HookNotReady("Client")
+        return await attached.read_base_address()
+
     async def read_current_client_base(self) -> int:
         """
         Read cureent client base address
@@ -605,6 +647,8 @@ class HookHandler(MemoryReader):
         Returns:
             The current client base address
         """
+        if not self._supports_inline_hooks:
+            return await self._macos_current_client_base()
         return await self._read_hook_base_addr("current_client", "Client")
 
     async def activate_root_window_hook(
