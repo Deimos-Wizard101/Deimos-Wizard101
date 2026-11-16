@@ -66,6 +66,7 @@ impl From<serde_json::Error> for VaultError {
     }
 }
 
+#[cfg(windows)]
 impl From<windows::core::Error> for VaultError {
     fn from(err: windows::core::Error) -> Self {
         VaultError::WindowsApi(err.to_string())
