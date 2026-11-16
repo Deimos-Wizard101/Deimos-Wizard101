@@ -144,6 +144,29 @@ class _MacHotkeyListener:
             self._running = False
             return
 
+        # Keyboard LISTENING on macOS is gated by Input Monitoring (kTCCServiceListenEvent),
+        # NOT Accessibility. CGEventTapCreate SUCCEEDS without it but then silently
+        # delivers no key events — so a "tap is None" check never fires. Preflight the
+        # permission, request it (registers this process in the TCC list and prompts),
+        # and warn based on the preflight result.
+        try:
+            granted = bool(Quartz.CGPreflightListenEventAccess())
+            if not granted:
+                Quartz.CGRequestListenEventAccess()  # prompt / register
+                granted = bool(Quartz.CGPreflightListenEventAccess())
+        except Exception:
+            granted = True  # older pyobjc without these APIs; assume usable
+        if not granted and not self._warned_perm:
+            self._warned_perm = True
+            logger.warning(
+                "Global hotkeys need INPUT MONITORING permission. Enable it for the "
+                "launcher in System Settings > Privacy & Security > Input Monitoring "
+                "(and Accessibility, for input sending), then relaunch Deimos. NOTE: "
+                "re-grant after each launcher rebuild — ad-hoc signing changes the "
+                "binary's identity and macOS silently drops the grant. GUI keys still "
+                "work meanwhile."
+            )
+
         mac_to_vk = _build_mac_to_vk()
         mask = (
             Quartz.CGEventMaskBit(Quartz.kCGEventKeyDown)

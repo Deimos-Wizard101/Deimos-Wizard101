@@ -233,9 +233,38 @@ def keysym_for_vk(vk: int):
     return _build_vk_to_mac().get(vk)
 
 
+_post_access_checked = False
+
+
+def _ensure_post_access():
+    """Posting synthetic events on macOS needs Accessibility (post-event access).
+    Preflight once and request it (registers the process in the TCC list + prompts);
+    warn clearly if still denied."""
+    global _post_access_checked
+    if _post_access_checked:
+        return
+    _post_access_checked = True
+    try:
+        import Quartz
+
+        if not bool(Quartz.CGPreflightPostEventAccess()):
+            Quartz.CGRequestPostEventAccess()
+            if not bool(Quartz.CGPreflightPostEventAccess()):
+                _warn_input_once(
+                    "macOS input sending needs ACCESSIBILITY permission. Enable the "
+                    "launcher in System Settings > Privacy & Security > Accessibility, "
+                    "then relaunch Deimos (re-grant after each launcher rebuild — "
+                    "ad-hoc signing changes the binary identity). Memory features work "
+                    "meanwhile."
+                )
+    except Exception:
+        pass
+
+
 def _post(event):
     import Quartz
 
+    _ensure_post_access()
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 
