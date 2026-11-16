@@ -85,10 +85,12 @@ def check_if_process_running(handle) -> bool:
     return pid_alive(pid) if pid is not None else False
 
 
-# ---- windows ----
-# The memory/hook path is pid-based, so on macOS the "handle" IS the pid. Real
-# window geometry/focus is a later CoreGraphics sub-stage; these keep callers
-# working for memory-only features.
+# ---- windows (CoreGraphics / Quartz) ----
+# The memory/hook path is pid-based, so on macOS the "handle" IS the (Wine) pid.
+# Window geometry/focus/input go through Quartz. The macOS NSWindow that Wine's Mac
+# driver creates may be owned by a DIFFERENT macOS pid than the WizardGraphicalClient
+# Wine pid (preloader/helper), so we resolve the game window by owner-pid first and
+# fall back to a "Wizard101"-titled on-screen window, caching the resolution.
 def windows_for_pid(pid: int) -> list:
     return [pid] if pid_alive(pid) else []
 
@@ -109,66 +111,208 @@ def get_pid_from_handle(handle: int) -> int:
     return handle or 0
 
 
+def _cg_window_list():
+    import Quartz
+
+    opts = (
+        Quartz.kCGWindowListOptionOnScreenOnly
+        | Quartz.kCGWindowListExcludeDesktopElements
+    )
+    return Quartz.CGWindowListCopyWindowInfo(opts, Quartz.kCGNullWindowID) or []
+
+
+# pid (our Wine pid) -> the macOS owner pid of its game window, once resolved.
+_WINDOW_OWNER_CACHE: dict = {}
+
+
+def _find_game_window(win: int):
+    """The CGWindowList entry for the game whose Wine pid is `win` (== handle).
+
+    Matches the macOS window-owner pid first; else the largest on-screen window
+    titled 'Wizard101'. Returns the window-info dict or None.
+    """
+    import Quartz  # noqa: F401
+
+    try:
+        wins = _cg_window_list()
+    except Exception:
+        return None
+
+    owner = _WINDOW_OWNER_CACHE.get(win)
+    want_pids = {owner} if owner else set()
+    want_pids.add(win)
+
+    best = None
+    best_area = -1
+    for w in wins:
+        bounds = w.get("kCGWindowBounds")
+        if not bounds:
+            continue
+        area = float(bounds.get("Width", 0)) * float(bounds.get("Height", 0))
+        owner_pid = w.get("kCGWindowOwnerPID")
+        name = w.get("kCGWindowName") or ""
+        is_match = owner_pid in want_pids or ("Wizard101" in name and area > 10000)
+        if is_match and area > best_area:
+            best = w
+            best_area = area
+    if best is not None:
+        _WINDOW_OWNER_CACHE[win] = best.get("kCGWindowOwnerPID")
+    return best
+
+
 def window_rect(win: int):
-    # Window geometry not implemented yet on macOS (CoreGraphics sub-stage).
-    return None
+    """(X, Y, WIDTH, HEIGHT) of the game window in global screen coords, or None."""
+    info = _find_game_window(win)
+    if info is None:
+        return None
+    b = info.get("kCGWindowBounds")
+    try:
+        return (int(b["X"]), int(b["Y"]), int(b["Width"]), int(b["Height"]))
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def get_foreground_window() -> Optional[int]:
-    return None
+    try:
+        from AppKit import NSWorkspace
+
+        app = NSWorkspace.sharedWorkspace().frontmostApplication()
+        return int(app.processIdentifier()) if app else None
+    except Exception:
+        return None
 
 
 def set_foreground_window(win: int) -> bool:
-    return False
+    return focus_window(win)
 
 
 def get_window_title(handle: int, max_size: int = 100) -> str:
+    info = _find_game_window(handle)
+    if info:
+        name = info.get("kCGWindowName")
+        if name:
+            return str(name)
     return "Wizard101"
 
 
 def set_window_title(handle: int, title: str):
+    # Wine owns its NSWindow title; not settable from outside without Accessibility
+    # scripting. No-op (title is cosmetic for our features).
     pass
 
 
-# ---- input (CGEvent sub-stage; no-op for now) ----
+# ---- input (Quartz CGEvent; real events to the game window) ----
+# Win32 wizwalker clicks by writing the cursor into memory (mouseless hook) and
+# posting WM_LBUTTONDOWN. On macOS there is no HWND; like the Linux XTEST path we
+# drive the real pointer/keyboard through CoreGraphics so Wine's Mac driver turns
+# the native event into the Win32 message the game processes. Needs Accessibility
+# permission on the host (same as global hotkeys).
 _VK_TO_KEYSYM: dict = {}  # unused on macOS; kept for API parity
 
 _warned_input = False
 
 
-def _warn_input_once():
+def _warn_input_once(msg: str = None):
     global _warned_input
     if not _warned_input:
         _warned_input = True
         logger.warning(
-            "macOS pointer/key input is not implemented yet; input-driven "
-            "features (clicking, key sends) are no-ops. Memory features work."
+            msg
+            or (
+                "macOS input via CGEvent failed (needs pyobjc-framework-Quartz and "
+                "Accessibility permission for the launcher). Input features disabled."
+            )
         )
 
 
 def keysym_for_vk(vk: int):
-    return None
+    # On macOS we post hardware keycodes directly; expose the macOS keycode so
+    # callers that gate on "is this key sendable" still work.
+    from wizwalker._macos_hotkey import _build_vk_to_mac
+
+    return _build_vk_to_mac().get(vk)
 
 
-def send_key_to_window(win: int, vk: int):
-    _warn_input_once()
+def _post(event):
+    import Quartz
 
-
-def move_mouse_to_window(win: int, x: int, y: int):
-    _warn_input_once()
-
-
-def move_mouse_abs(x: int, y: int):
-    _warn_input_once()
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 
 def focus_window(win: int):
-    # No-op: bringing the game forward isn't needed for memory features.
-    pass
+    """Bring the game app to the foreground so it receives pointer/key events."""
+    info = _find_game_window(win)
+    owner = info.get("kCGWindowOwnerPID") if info else _WINDOW_OWNER_CACHE.get(win, win)
+    try:
+        from AppKit import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
+
+        app = NSRunningApplication.runningApplicationWithProcessIdentifier_(int(owner))
+        if app is not None:
+            app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+    except Exception as e:
+        _warn_input_once(f"macOS focus_window failed: {e}")
+
+
+def send_key_to_window(win: int, vk: int):
+    mac_kc = keysym_for_vk(vk)
+    if mac_kc is None:
+        return
+    try:
+        import Quartz
+
+        focus_window(win)
+        down = Quartz.CGEventCreateKeyboardEvent(None, int(mac_kc), True)
+        up = Quartz.CGEventCreateKeyboardEvent(None, int(mac_kc), False)
+        _post(down)
+        _post(up)
+    except Exception as e:
+        _warn_input_once(f"macOS send_key failed: {e}")
+
+
+def move_mouse_to_window(win: int, x: int, y: int):
+    """Move the pointer to (x, y) relative to the window's top-left (client area)."""
+    rect = window_rect(win)
+    if rect is None:
+        return
+    move_mouse_abs(rect[0] + int(x), rect[1] + int(y))
+
+
+def move_mouse_abs(x: int, y: int):
+    """Move the pointer to absolute global screen (x, y)."""
+    try:
+        import Quartz
+
+        pt = Quartz.CGPointMake(float(x), float(y))
+        Quartz.CGWarpMouseCursorPosition(pt)
+        ev = Quartz.CGEventCreateMouseEvent(
+            None, Quartz.kCGEventMouseMoved, pt, Quartz.kCGMouseButtonLeft
+        )
+        _post(ev)
+    except Exception as e:
+        _warn_input_once(f"macOS move_mouse failed: {e}")
 
 
 def mouse_button(button: int, down: bool):
-    _warn_input_once()
+    """Press/release a mouse button at the current pointer position. 1=left,
+    2=middle, 3=right (xdotool numbering, for cross-platform callers)."""
+    try:
+        import Quartz
+        from Quartz import CGEventGetLocation, CGEventCreate
+
+        pos = CGEventGetLocation(CGEventCreate(None))
+        if button == 3:
+            etype = Quartz.kCGEventRightMouseDown if down else Quartz.kCGEventRightMouseUp
+            cg_btn = Quartz.kCGMouseButtonRight
+        elif button == 2:
+            etype = Quartz.kCGEventOtherMouseDown if down else Quartz.kCGEventOtherMouseUp
+            cg_btn = Quartz.kCGMouseButtonCenter
+        else:
+            etype = Quartz.kCGEventLeftMouseDown if down else Quartz.kCGEventLeftMouseUp
+            cg_btn = Quartz.kCGMouseButtonLeft
+        ev = Quartz.CGEventCreateMouseEvent(None, etype, pos, cg_btn)
+        _post(ev)
+    except Exception as e:
+        _warn_input_once(f"macOS mouse_button failed: {e}")
 
 
 # ---- install path ----
