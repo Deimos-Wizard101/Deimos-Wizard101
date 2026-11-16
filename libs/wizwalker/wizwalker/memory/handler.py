@@ -384,18 +384,20 @@ class HookHandler(MemoryReader):
             wait_for_ready: Wait for hook values to be written
             timeout: How long to wait for hook values to be written (None for no timeout)
         """
-        # macOS/Rosetta: inline value-capture hooks can't fire (and installing them
-        # would also fail the rel32 reach to a fresh page), so skip them and don't
-        # wait — otherwise `_wait_for_value` blocks forever on a value that is never
-        # written. Memory reads and camera/RPC features don't need these hooks.
-        if not self._supports_inline_hooks:
-            if not self._warned_no_inline_hooks:
-                self._warned_no_inline_hooks = True
-                logger.warning(
-                    "Inline value-capture hooks are unsupported on macOS (Rosetta); "
-                    "skipping them. Memory reads and camera/RPC features still work; "
-                    "hook-dependent reads (player/stats/quest) are unavailable here."
-                )
+        # macOS/Rosetta: player/client/stat reads come from the hook-free camera
+        # chain and teleport from a direct position write, so those hooks aren't
+        # installed here. The remaining hooks DO work on macOS — their .text writes
+        # go through zhol's guest W^X `write_code` into a rel32-near cave — so
+        # install them for full feature parity (drops / auto-puzzle / snapback) plus
+        # the quest arrow. Don't block on wait_for_ready: these fire on game events
+        # (a drop, a snapback, the quest arrow appearing), not every frame, so their
+        # value is legitimately 0 until that event, and waiting would hang.
+        if sys.platform == "darwin":
+            await self.activate_quest_hook()
+            await self.activate_drops_toggle_hook(wait_for_ready=False)
+            await self.activate_auto_puzzle_hook(wait_for_ready=False)
+            await self.activate_update_zone_counter_hook(wait_for_ready=False)
+            await self.activate_server_move_snapback_hook(wait_for_ready=False)
             return
 
         await self.activate_player_hook(wait_for_ready=False)
