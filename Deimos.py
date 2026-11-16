@@ -3939,6 +3939,13 @@ async def main():
 
             except queue.Empty:
                 pass
+            except deimosgui.ToolClosedException:
+                # The user asked to close while clients are attached. This is the
+                # graceful-shutdown signal, NOT a crashed handler — let it propagate
+                # out of handle_gui so the main loop runs tool_finish() (unhooks every
+                # client and restores each patched site) before the process exits.
+                # Swallowing it here is what left the GUI running with clients hooked.
+                raise
             except Exception as _cmd_err:
                 # Containment: a command/hotkey handler raised. Log it and keep the
                 # command loop alive. Letting it escape kills handle_gui, which
