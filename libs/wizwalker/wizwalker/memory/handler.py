@@ -386,14 +386,19 @@ class HookHandler(MemoryReader):
         """
         # macOS/Rosetta: player/client/stat reads come from the hook-free camera
         # chain and teleport from a direct position write, so those hooks aren't
-        # installed here. The remaining hooks DO work on macOS — their .text writes
-        # go through zhol's guest W^X `write_code` into a rel32-near cave — so
-        # install them for full feature parity (drops / auto-puzzle / snapback) plus
-        # the quest arrow. Don't block on wait_for_ready: these fire on game events
-        # (a drop, a snapback, the quest arrow appearing), not every frame, so their
-        # value is legitimately 0 until that event, and waiting would hang.
+        # installed here. Every other hook DOES work on macOS — its .text writes go
+        # through zhol's guest W^X `write_code` into a rel32-near cave — so install
+        # them for full feature parity: root-window and render-context (which have no
+        # camera-free path and are needed by the GUI's window-tree reads, e.g.
+        # is_free/freecam), drops / auto-puzzle / snapback, and the quest arrow.
+        # Don't block on wait_for_ready: the event hooks (a drop, a snapback, the
+        # quest arrow) are legitimately 0 until the event, so waiting would hang; the
+        # per-frame capture hooks (root window, render context) fill within a frame,
+        # well before the user interacts.
         if sys.platform == "darwin":
             await self.activate_quest_hook()
+            await self.activate_root_window_hook(wait_for_ready=False)
+            await self.activate_render_context_hook(wait_for_ready=False)
             await self.activate_drops_toggle_hook(wait_for_ready=False)
             await self.activate_auto_puzzle_hook(wait_for_ready=False)
             await self.activate_update_zone_counter_hook(wait_for_ready=False)
