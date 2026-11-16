@@ -973,6 +973,43 @@ if sys.platform != "win32":
         _geom_cache[win_id] = (now, res)
         return res
 
+    _mac_geom_cache = {}
+
+    def _mac_window_geometry(pid: int):
+        """(X, Y, WIDTH, HEIGHT) in global points of the game window owned by `pid`,
+        via CGWindowList. On macOS the overlay's `game_hwnd` IS the game pid, and the
+        Wine NSWindow is owned by that same pid (verified). Cached briefly (~30fps)."""
+        if sys.platform != "darwin":
+            return None
+        now = time.monotonic()
+        hit = _mac_geom_cache.get(pid)
+        if hit and now - hit[0] < 0.3:
+            return hit[1]
+        res = None
+        try:
+            import Quartz
+
+            opts = (
+                Quartz.kCGWindowListOptionOnScreenOnly
+                | Quartz.kCGWindowListExcludeDesktopElements
+            )
+            best, best_area = None, -1.0
+            for w in (Quartz.CGWindowListCopyWindowInfo(opts, Quartz.kCGNullWindowID) or []):
+                if w.get("kCGWindowOwnerPID") != pid:
+                    continue
+                b = w.get("kCGWindowBounds")
+                if not b:
+                    continue
+                area = float(b.get("Width", 0)) * float(b.get("Height", 0))
+                if area > best_area:
+                    best, best_area = b, area
+            if best is not None:
+                res = (int(best["X"]), int(best["Y"]), int(best["Width"]), int(best["Height"]))
+        except Exception:
+            res = None
+        _mac_geom_cache[pid] = (now, res)
+        return res
+
 
 class HighlightOverlay(QWidget):
     """Transparent, click-through overlay that covers the game window."""
@@ -982,6 +1019,15 @@ class HighlightOverlay(QWidget):
         super().__init__()
         if sys.platform == "win32":
             flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
+        elif sys.platform == "darwin":
+            # Frameless + on-top; the native NSWindow gets click-through, a high
+            # level, and all-spaces/fullscreen-auxiliary behavior in
+            # _mac_setup_window once winId() exists. (X11BypassWindowManagerHint is
+            # X11-only and would do nothing here.)
+            flags = (
+                Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.WindowStaysOnTopHint
+            )
         else:
             # Override-redirect: exact placement, no tiling, above managed windows.
             # No Tool flag (it hides on app deactivation, i.e. when the game is
@@ -1008,7 +1054,49 @@ class HighlightOverlay(QWidget):
             ex_style = ctypes.windll.user32.GetWindowLongW(hwnd, -20)
             ctypes.windll.user32.SetWindowLongW(hwnd, -20, ex_style | 0x20 | 0x80000)
 
+    def _mac_setup_window(self):
+        """Make the native NSWindow click-through, above the game, and present on
+        all spaces / over fullscreen. Idempotent; needs pyobjc (Cocoa)."""
+        if self._click_through_set:
+            return
+        try:
+            import objc
+            from AppKit import (
+                NSWindowCollectionBehaviorCanJoinAllSpaces,
+                NSWindowCollectionBehaviorFullScreenAuxiliary,
+                NSStatusWindowLevel,
+            )
+
+            view = objc.objc_object(c_void_p=int(self.winId()))
+            win = view.window() if view is not None else None
+            if win is not None:
+                win.setIgnoresMouseEvents_(True)  # click-through to the game
+                win.setLevel_(NSStatusWindowLevel)  # above normal + game windows
+                win.setCollectionBehavior_(
+                    NSWindowCollectionBehaviorCanJoinAllSpaces
+                    | NSWindowCollectionBehaviorFullScreenAuxiliary
+                )
+                self._click_through_set = True
+        except Exception:
+            pass
+
     def update_box(self, game_hwnd, x1, y1, x2, y2):
+        if sys.platform == "darwin":
+            # game_hwnd is the game pid on macOS; read its live window rect (global
+            # points, same coordinate space as Qt geometry — no DPR division).
+            geo = _mac_window_geometry(game_hwnd)
+            if geo is None or None in geo:
+                return
+            gx, gy, gw, gh = geo
+            self.setGeometry(gx, gy, gw, gh)
+            self._box_rect = (round(x1), round(y1), round(x2), round(y2))
+            self._has_box = True
+            if not self.isVisible():
+                self.show()
+            self._mac_setup_window()  # native click-through + level (idempotent)
+            self.raise_()
+            self.update()
+            return
         if sys.platform != "win32":
             # game_hwnd is the X11 window id on Linux; read its live screen rect.
             geo = _x_window_geometry(game_hwnd)
