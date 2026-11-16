@@ -636,9 +636,16 @@ class HookHandler(MemoryReader):
         pointer ClientHook captures on Linux/Windows. Pure reads, so it works where
         inline hooks can't.
         """
-        from .memory_objects import CurrentGameClient
+        # Reuse one CurrentGameClient so its game_client base (pattern scan) and the
+        # camera-controller offset (pattern_scan_offset_cached) are resolved once and
+        # cached per-instance — otherwise every per-tick read re-scans the module and
+        # the live view crawls. Only the cheap pointer reads run each call.
+        gc = self.__dict__.get("_macos_game_client")
+        if gc is None:
+            from .memory_objects import CurrentGameClient
 
-        gc = CurrentGameClient(self)
+            gc = CurrentGameClient(self)
+            self._macos_game_client = gc
         cam = await gc.elastic_camera_controller()
         if cam is None:
             raise HookNotReady("Client")
