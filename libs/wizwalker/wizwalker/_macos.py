@@ -268,6 +268,48 @@ def _post(event):
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 
+_event_source = None
+_event_source_tried = False
+
+
+def _source():
+    """One cached CGEventSource. Events created with a NULL source carry no HID/
+    keyboard metadata and Wine's winemac.drv drops them (proven: keys only moved the
+    character once a real HIDSystemState source was passed). Mouse events worked with
+    None too, but we use the same source for consistency."""
+    global _event_source, _event_source_tried
+    if not _event_source_tried:
+        _event_source_tried = True
+        try:
+            import Quartz
+
+            _event_source = Quartz.CGEventSourceCreate(
+                Quartz.kCGEventSourceStateHIDSystemState
+            )
+        except Exception:
+            _event_source = None
+    return _event_source
+
+
+def _focus_with_settle(win: int):
+    """Focus the game only if it isn't already frontmost; give it a brief moment to
+    become the key window so the first key event isn't dropped."""
+    try:
+        from AppKit import NSWorkspace
+
+        info = _find_game_window(win)
+        owner = info.get("kCGWindowOwnerPID") if info else _WINDOW_OWNER_CACHE.get(win, win)
+        front = NSWorkspace.sharedWorkspace().frontmostApplication()
+        if front is not None and int(front.processIdentifier()) == int(owner):
+            return  # already focused; no activate, no settle
+    except Exception:
+        pass
+    if focus_window(win):
+        import time
+
+        time.sleep(0.2)
+
+
 def focus_window(win: int) -> bool:
     """Bring the game app to the foreground so it receives pointer/key events.
     Returns True if the activation call was issued."""
@@ -293,8 +335,8 @@ def send_keydown_to_window(win: int, vk: int):
     try:
         import Quartz
 
-        focus_window(win)
-        _post(Quartz.CGEventCreateKeyboardEvent(None, int(mac_kc), True))
+        _focus_with_settle(win)
+        _post(Quartz.CGEventCreateKeyboardEvent(_source(), int(mac_kc), True))
     except Exception as e:
         _warn_input_once(f"macOS keydown failed: {e}")
 
@@ -307,7 +349,7 @@ def send_keyup_to_window(win: int, vk: int):
     try:
         import Quartz
 
-        _post(Quartz.CGEventCreateKeyboardEvent(None, int(mac_kc), False))
+        _post(Quartz.CGEventCreateKeyboardEvent(_source(), int(mac_kc), False))
     except Exception as e:
         _warn_input_once(f"macOS keyup failed: {e}")
 
@@ -334,7 +376,7 @@ def move_mouse_abs(x: int, y: int):
         pt = Quartz.CGPointMake(float(x), float(y))
         Quartz.CGWarpMouseCursorPosition(pt)
         ev = Quartz.CGEventCreateMouseEvent(
-            None, Quartz.kCGEventMouseMoved, pt, Quartz.kCGMouseButtonLeft
+            _source(), Quartz.kCGEventMouseMoved, pt, Quartz.kCGMouseButtonLeft
         )
         _post(ev)
     except Exception as e:
@@ -358,7 +400,7 @@ def mouse_button(button: int, down: bool):
         else:
             etype = Quartz.kCGEventLeftMouseDown if down else Quartz.kCGEventLeftMouseUp
             cg_btn = Quartz.kCGMouseButtonLeft
-        ev = Quartz.CGEventCreateMouseEvent(None, etype, pos, cg_btn)
+        ev = Quartz.CGEventCreateMouseEvent(_source(), etype, pos, cg_btn)
         _post(ev)
     except Exception as e:
         _warn_input_once(f"macOS mouse_button failed: {e}")
