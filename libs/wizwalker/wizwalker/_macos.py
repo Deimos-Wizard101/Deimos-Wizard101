@@ -311,6 +311,51 @@ def _source():
     return _event_source
 
 
+_ax_last = {}  # game pid -> monotonic time we last set it frontmost via AX
+
+
+def _ax_set_frontmost(pid: int) -> bool:
+    """Make the game's window the key window via the Accessibility API. On macOS 26
+    this is what actually routes posted events to Wine: NSRunningApplication.activate
+    is ignored for a background, non-bundled process, but AXUIElementSetAttributeValue
+    (kAXFrontmost) gives Wine's window key status so CGEventPostToPid reaches it —
+    WITHOUT changing the user-visible frontmost app (NSWorkspace still reports the
+    user's real front app, and the real cursor/focus are untouched). Needs
+    Accessibility permission (already required to post)."""
+    try:
+        from ApplicationServices import (
+            AXUIElementCreateApplication,
+            AXUIElementSetAttributeValue,
+            kAXFrontmostAttribute,
+        )
+
+        app_el = AXUIElementCreateApplication(int(pid))
+        AXUIElementSetAttributeValue(app_el, kAXFrontmostAttribute, True)
+        return True
+    except Exception as e:
+        _warn_input_once(
+            "macOS input needs the Accessibility API (pip install "
+            f"pyobjc-framework-ApplicationServices): {e}"
+        )
+        return False
+
+
+def _ensure_game_key(pid: int):
+    """Give the game key status before posting input. The AX set is cheap and
+    idempotent, so always issue it; only pay the settle when (re)establishing key
+    status after a gap, so rapid key/click sequences stay fast."""
+    if not pid:
+        return
+    import time
+
+    _ax_set_frontmost(pid)
+    now = time.monotonic()
+    last = _ax_last.get(int(pid))
+    if last is None or now - last > 1.5:
+        time.sleep(0.15)  # settle only when (re)establishing key status
+    _ax_last[int(pid)] = now
+
+
 def focus_window(win: int) -> bool:
     """Bring the game app to the foreground so it receives pointer/key events.
     Returns True if the activation call was issued."""
@@ -337,6 +382,7 @@ def send_keydown_to_window(win: int, vk: int):
         import Quartz
 
         _remember_pid(win)
+        _ensure_game_key(win)
         _post(Quartz.CGEventCreateKeyboardEvent(_source(), int(mac_kc), True), win)
     except Exception as e:
         _warn_input_once(f"macOS keydown failed: {e}")
@@ -364,19 +410,29 @@ def send_key_to_window(win: int, vk: int):
 def move_mouse_to_window(win: int, x: int, y: int):
     """Move the pointer to (x, y) relative to the window's top-left (client area)."""
     _remember_pid(win)
+    _ensure_game_key(win)  # so the move (and the click that follows) are processed
     rect = window_rect(win)
     if rect is None:
         return
     move_mouse_abs(rect[0] + int(x), rect[1] + int(y))
 
 
+# The intended click position (global screen points) from the last move. We post
+# mouse events carrying THIS location to the game pid and never warp the real
+# cursor — Wine's macdrv uses the event location, and the user's pointer must not
+# move (parity with "don't steal focus").
+_last_mouse_pos = (0.0, 0.0)
+
+
 def move_mouse_abs(x: int, y: int):
-    """Move the pointer to absolute global screen (x, y)."""
+    """Record+post an absolute-screen (x, y) pointer move to the game, without
+    moving the user's real cursor (no CGWarpMouseCursorPosition)."""
+    global _last_mouse_pos
     try:
         import Quartz
 
+        _last_mouse_pos = (float(x), float(y))
         pt = Quartz.CGPointMake(float(x), float(y))
-        Quartz.CGWarpMouseCursorPosition(pt)
         ev = Quartz.CGEventCreateMouseEvent(
             _source(), Quartz.kCGEventMouseMoved, pt, Quartz.kCGMouseButtonLeft
         )
@@ -386,13 +442,15 @@ def move_mouse_abs(x: int, y: int):
 
 
 def mouse_button(button: int, down: bool):
-    """Press/release a mouse button at the current pointer position. 1=left,
-    2=middle, 3=right (xdotool numbering, for cross-platform callers)."""
+    """Press/release a mouse button at the last posted move position (NOT the real
+    cursor). 1=left, 2=middle, 3=right (xdotool numbering, for cross-platform
+    callers)."""
     try:
         import Quartz
-        from Quartz import CGEventGetLocation, CGEventCreate
 
-        pos = CGEventGetLocation(CGEventCreate(None))
+        if down and _last_input_pid:
+            _ensure_game_key(_last_input_pid)
+        pos = Quartz.CGPointMake(_last_mouse_pos[0], _last_mouse_pos[1])
         if button == 3:
             etype = Quartz.kCGEventRightMouseDown if down else Quartz.kCGEventRightMouseUp
             cg_btn = Quartz.kCGMouseButtonRight
