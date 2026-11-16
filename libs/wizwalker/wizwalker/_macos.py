@@ -261,11 +261,31 @@ def _ensure_post_access():
         pass
 
 
-def _post(event):
+# The last game pid any windowed input touched, so the position-only mouse calls
+# (move_mouse_abs / mouse_button carry no window) can target the same process.
+_last_input_pid = None
+
+
+def _remember_pid(win):
+    global _last_input_pid
+    if win:
+        _last_input_pid = int(win)
+
+
+def _post(event, pid: int = None):
+    """Deliver a synthetic event. Prefer CGEventPostToPid(game pid): macOS 26.5 won't
+    let a background, non-bundled process steal activation, so focus-then-post sends
+    keys to whatever is actually frontmost — but posting straight to the game's pid
+    reaches it regardless of focus (and without stealing the user's focus, which is
+    what a bot wants). Falls back to the HID tap if no pid is known."""
     import Quartz
 
     _ensure_post_access()
-    Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
+    target = pid if pid is not None else _last_input_pid
+    if target:
+        Quartz.CGEventPostToPid(int(target), event)
+    else:
+        Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 
 _event_source = None
@@ -291,25 +311,6 @@ def _source():
     return _event_source
 
 
-def _focus_with_settle(win: int):
-    """Focus the game only if it isn't already frontmost; give it a brief moment to
-    become the key window so the first key event isn't dropped."""
-    try:
-        from AppKit import NSWorkspace
-
-        info = _find_game_window(win)
-        owner = info.get("kCGWindowOwnerPID") if info else _WINDOW_OWNER_CACHE.get(win, win)
-        front = NSWorkspace.sharedWorkspace().frontmostApplication()
-        if front is not None and int(front.processIdentifier()) == int(owner):
-            return  # already focused; no activate, no settle
-    except Exception:
-        pass
-    if focus_window(win):
-        import time
-
-        time.sleep(0.2)
-
-
 def focus_window(win: int) -> bool:
     """Bring the game app to the foreground so it receives pointer/key events.
     Returns True if the activation call was issued."""
@@ -328,15 +329,15 @@ def focus_window(win: int) -> bool:
 
 
 def send_keydown_to_window(win: int, vk: int):
-    """Press (and hold) a key. Focuses the game first so it receives the event."""
+    """Press (and hold) a key — delivered straight to the game's pid, no focus."""
     mac_kc = keysym_for_vk(vk)
     if mac_kc is None:
         return
     try:
         import Quartz
 
-        _focus_with_settle(win)
-        _post(Quartz.CGEventCreateKeyboardEvent(_source(), int(mac_kc), True))
+        _remember_pid(win)
+        _post(Quartz.CGEventCreateKeyboardEvent(_source(), int(mac_kc), True), win)
     except Exception as e:
         _warn_input_once(f"macOS keydown failed: {e}")
 
@@ -349,7 +350,7 @@ def send_keyup_to_window(win: int, vk: int):
     try:
         import Quartz
 
-        _post(Quartz.CGEventCreateKeyboardEvent(_source(), int(mac_kc), False))
+        _post(Quartz.CGEventCreateKeyboardEvent(_source(), int(mac_kc), False), win)
     except Exception as e:
         _warn_input_once(f"macOS keyup failed: {e}")
 
@@ -362,6 +363,7 @@ def send_key_to_window(win: int, vk: int):
 
 def move_mouse_to_window(win: int, x: int, y: int):
     """Move the pointer to (x, y) relative to the window's top-left (client area)."""
+    _remember_pid(win)
     rect = window_rect(win)
     if rect is None:
         return
