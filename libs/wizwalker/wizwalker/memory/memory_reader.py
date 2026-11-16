@@ -23,6 +23,12 @@ from wizwalker import (
 )
 
 
+# Cached module reads for pattern scanning, keyed by (pid, module_name, base). A
+# loaded image's bytes don't move, so scanning many patterns (e.g. installing all
+# hooks) reads each module once instead of per pattern.
+_MODULE_SCAN_CACHE = {}
+
+
 class MemoryReader:
     """
     Represents anything that needs to read/write from/to memory
@@ -136,6 +142,51 @@ class MemoryReader:
 
         return found
 
+    @staticmethod
+    def _read_module_regions(handle, module):
+        """Read a module's committed, readable regions once as (base, bytes) pairs.
+
+        Pattern scanning a module otherwise re-reads the whole image (tens of MB,
+        region by region) for every pattern — the dominant cost when installing many
+        hooks. The image's code/data don't move, so the read is cached per
+        (pid, module) and every scan runs against the cached bytes.
+        """
+        base = module.lpBaseOfDll
+        max_address = base + module.SizeOfImage
+        allowed_protections = [
+            pymem.ressources.structure.MEMORY_PROTECTION.PAGE_EXECUTE_READ,
+            pymem.ressources.structure.MEMORY_PROTECTION.PAGE_EXECUTE_READWRITE,
+            pymem.ressources.structure.MEMORY_PROTECTION.PAGE_READWRITE,
+            pymem.ressources.structure.MEMORY_PROTECTION.PAGE_READONLY,
+        ]
+        regions = []
+        addr = base
+        while addr < max_address:
+            mbi = pymem.memory.virtual_query(handle, addr)
+            next_region = mbi.BaseAddress + mbi.RegionSize
+            if next_region <= addr:  # no forward progress — stop
+                break
+            if (
+                mbi.state == pymem.ressources.structure.MEMORY_STATE.MEM_COMMIT
+                and mbi.protect in allowed_protections
+            ):
+                size = min(mbi.RegionSize, max_address - mbi.BaseAddress)
+                regions.append(
+                    (mbi.BaseAddress, pymem.memory.read_bytes(handle, mbi.BaseAddress, size))
+                )
+            addr = next_region
+        return regions
+
+    @staticmethod
+    def _scan_cached_regions(regions, pattern, return_multiple):
+        # Collect every match (not just the first) so the caller can still detect
+        # PatternMultipleResults — matching the live _scan_entire_module semantics.
+        found = []
+        for region_base, region_bytes in regions:
+            for match in regex.finditer(pattern, region_bytes, regex.DOTALL):
+                found.append(region_base + match.span()[0])
+        return found
+
     async def pattern_scan(
         self, pattern: bytes, *, module: str = None, return_multiple: bool = False
     ) -> Union[list, int]:
@@ -160,13 +211,22 @@ class MemoryReader:
             if module_object is None:
                 raise ValueError(f"{module} module not found.")
 
-            # this can take a long time to run when collecting multiple results
-            # so must be run in an executor
+            # Read the module once and scan the cached bytes: a module's code/data
+            # don't move, and re-reading the whole image per pattern is the dominant
+            # cost when installing many hooks (e.g. activate_hooks). Cached per
+            # (pid, module, base).
+            key = (self.process.process_id, module, module_object.lpBaseOfDll)
+            regions = _MODULE_SCAN_CACHE.get(key)
+            if regions is None:
+                regions = await self.run_in_executor(
+                    self._read_module_regions,
+                    self.process.process_handle,
+                    module_object,
+                )
+                _MODULE_SCAN_CACHE[key] = regions
+
             found_addresses = await self.run_in_executor(
-                self._scan_entire_module,
-                self.process.process_handle,
-                module_object,
-                pattern,
+                self._scan_cached_regions, regions, pattern, return_multiple
             )
 
         else:
