@@ -528,7 +528,7 @@ async def navmap_teleport(
     # collision-valid point and walks any remaining gap to a walk-reachable target.
     async def client_navmap_teleport(client: Client, xyz: XYZ = None):
         if not xyz:
-            xyz = await client.quest_position.position()
+            xyz = await client.calescent_tracker_position.position() if await client.is_calescent_tracker_active() else await client.quest_position.position()
         await collision_tp(client, xyz)
 
     if debug:
