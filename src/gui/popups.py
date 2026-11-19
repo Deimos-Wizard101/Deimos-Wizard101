@@ -11,7 +11,10 @@ from PyQt6.QtWidgets import (
     QComboBox, QPlainTextEdit, QTextEdit, QFormLayout,
 )
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QFont, QTextFormat, QTextCursor, QKeySequence, QShortcut, QColor, QPainter
+from PyQt6.QtGui import (
+    QFont, QFontMetrics, QTextFormat, QTextCursor,
+    QKeySequence, QShortcut, QColor, QPainter, QTextDocument
+)
 from PyQt6 import sip
 
 from src import bot_registry
@@ -730,7 +733,6 @@ class CodeEditor(QTextEdit):
         if not self.show_line_numbers:
             return 0
         digits = max(1, len(str(max(1, self.blockCount()))))
-        from PyQt6.QtGui import QFont, QFontMetrics
         line_font = QFont(self.font().family(), max(7, self.font().pointSize() - 2))
         fm = QFontMetrics(line_font)
         # Balanced 4px left margin + max digits width + 4px right margin to hairline
@@ -770,15 +772,7 @@ class CodeEditor(QTextEdit):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        cr = self.contentsRect()
-        w = self.line_number_area_width()
-        if self.show_line_numbers:
-            self.setViewportMargins(w, 0, 0, 0)
-            self.line_number_area.setGeometry(cr.left(), cr.top(), w, cr.height())
-            self.line_number_area.update()
-        else:
-            self.setViewportMargins(0, 0, 0, 0)
-            self.line_number_area.setGeometry(0, 0, 0, 0)
+        self.update_line_number_area_width(0)
         if self.viewport().width() > 0:
             self.document().setTextWidth(self.viewport().width())
 
@@ -814,7 +808,6 @@ class CodeEditor(QTextEdit):
     def line_number_area_paint_event(self, event):
         if not self.show_line_numbers:
             return
-        from PyQt6.QtGui import QPainter, QColor, QFont, QFontMetrics
         painter = QPainter(self.line_number_area)
         painter.fillRect(event.rect(), self.palette().base().color())
 
@@ -1005,9 +998,6 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
         btn.setAutoDefault(False)
         btn.setDefault(False)
         svg_content = ctx.svgs.get(svg_key, '')
-        if not svg_content and svg_key == 'check':
-            sc = getattr(ctx, 'stroke_color', '#61afef')
-            svg_content = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{sc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
         btn.setIcon(ctx.titlebar_svg_icon(svg_content, 22))
         btn.setFixedSize(30, 30)
         btn.setStyleSheet(ctx.icon_btn_style)
@@ -1030,7 +1020,6 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
             elif hasattr(ctx, 'console_psg') and ctx.console_psg:
                 ctx.console_psg.copy()
             else:
-                import pyperclip
                 pyperclip.copy(parent_editor.toPlainText())
 
         copy_btn = make_popup_icon_btn('copy_logs', ctx.tl('copy_logs'), _copy_logs, 'copy_logs')
@@ -1235,7 +1224,7 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
     match_count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
     find_prev_btn = QPushButton()
-    find_prev_svg = ctx.svgs.get('arrow_up', f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{getattr(ctx, "stroke_color", "#61afef")}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>')
+    find_prev_svg = ctx.svgs.get('arrow_up', '')
     find_prev_btn.setIcon(ctx.titlebar_svg_icon(find_prev_svg, 14))
     find_prev_btn.setFixedSize(26, 24)
     find_prev_btn.setToolTip(ctx.tl('find_prev'))
@@ -1243,7 +1232,7 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
     find_prev_btn.setStyleSheet(ctx.icon_btn_style)
 
     find_next_btn = QPushButton()
-    find_next_svg = ctx.svgs.get('arrow_down', f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{getattr(ctx, "stroke_color", "#61afef")}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>')
+    find_next_svg = ctx.svgs.get('arrow_down', '')
     find_next_btn.setIcon(ctx.titlebar_svg_icon(find_next_svg, 14))
     find_next_btn.setFixedSize(26, 24)
     find_next_btn.setToolTip(ctx.tl('find_next'))
@@ -1381,7 +1370,6 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
         query = find_input.text()
         if not query:
             return
-        from PyQt6.QtGui import QTextDocument
         if not big_editor.find(query, QTextDocument.FindFlag.FindBackward):
             # Wrap around to document end
             big_editor.moveCursor(QTextCursor.MoveOperation.End)
@@ -1482,22 +1470,13 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
     dialog.close_find_replace_fn = close_find_replace
 
     def toggle_find_bar(show_replace=False):
-        curr_h = dialog.height()
-        curr_w = dialog.width()
         # If already visible in the requested mode, pressing shortcut again closes it
         if find_replace_widget.isVisible():
-            if is_console:
+            if is_console or show_replace == replace_row_widget.isVisible():
                 close_find_replace()
-                dialog.resize(curr_w, curr_h)
-                return
-            replace_is_shown = replace_row_widget.isVisible()
-            if show_replace == replace_is_shown:
-                close_find_replace()
-                dialog.resize(curr_w, curr_h)
                 return
             # Switch between Find-only and Replace modes
             replace_row_widget.setVisible(show_replace)
-            dialog.resize(curr_w, curr_h)
             if show_replace:
                 replace_input.setFocus()
                 replace_input.selectAll()
@@ -1510,7 +1489,6 @@ def show_bot_editor_popup(ctx, parent_editor, run_cb=None, kill_cb=None, set_run
         if not is_console:
             replace_row_widget.setVisible(show_replace)
         find_replace_widget.show()
-        dialog.resize(curr_w, curr_h)
         cursor = big_editor.textCursor()
         if cursor.hasSelection():
             sel = cursor.selectedText().strip()
