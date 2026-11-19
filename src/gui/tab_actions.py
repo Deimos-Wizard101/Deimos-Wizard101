@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QFileD
 from PyQt6.QtCore import Qt
 
 from src.gui.commands import GUICommand, GUICommandType
+from src.gui.playstyle_apply import PlaystyleApplyFeedback
 from src.gui.helpers import centered_label, repo_icon_btn, add_recent, show_recent_menu
 
 
@@ -195,6 +196,9 @@ def build_combat_tab(ctx):
     editor = QTextEdit()
     ctx.widget_tags['combat_config'] = editor
     layout.addWidget(editor, 1)
+    feedback = PlaystyleApplyFeedback(editor, ctx.tl, tab, context=ctx)
+    layout.addWidget(feedback.label)
+    ctx.exports['combat'] = {'validation_result': feedback.receive, 'retheme': feedback.retheme}
 
     btn_row = QHBoxLayout()
 
@@ -218,7 +222,7 @@ def build_combat_tab(ctx):
                 pass
 
     def set_playstyles_callback():
-        ctx.send_queue.put(GUICommand(GUICommandType.SetPlaystyles, editor.toPlainText()))
+        ctx.send_queue.put(GUICommand(GUICommandType.SetPlaystyles, feedback.request()))
 
     recent_btn = ctx.registry.action_icon_btn(ctx.svgs['recent'], ctx.tl('recent_imports'), lambda: None)
     recent_btn.clicked.disconnect()
